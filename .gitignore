@@ -1,0 +1,33 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Python (desktop)
+__pycache__/
+*.pyc
+venv/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Node (backend) — هر پوشه gitignore خودش را هم دارد
+node_modules/
+.env
+.env.local
+.env.*.local
+logs/
+uploads/
+backups/
+
+# Flutter (mobile)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# سیستم
+Thumbs.db
+.DS_Store
+*.log

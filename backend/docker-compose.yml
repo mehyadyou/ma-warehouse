@@ -1,0 +1,126 @@
+﻿services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ma-warehouse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ma_warehouse
+    ports:
+      - "5433:5432"
+    mem_limit: 3g
+    command:
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "log_min_duration_statement=200"
+      - "-c"
+      - "log_lock_waits=on"
+      - "-c"
+      - "log_temp_files=0"
+      - "-c"
+      - "log_checkpoints=on"
+      - "-c"
+      - "log_autovacuum_min_duration=1000"
+      - "-c"
+      - "shared_buffers=2GB"
+      - "-c"
+      - "effective_cache_size=10GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "statement_timeout=30s"
+      - "-c"
+      - "idle_in_transaction_session_timeout=60s"
+      - "-c"
+      - "lock_timeout=10s"
+      - "-c"
+      - "autovacuum_vacuum_scale_factor=0.05"
+      - "-c"
+      - "autovacuum_vacuum_threshold=50"
+      - "-c"
+      - "autovacuum_analyze_scale_factor=0.02"
+      - "-c"
+      - "wal_compression=on"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "min_wal_size=256MB"
+      - "-c"
+      - "archive_mode=on"
+      - "-c"
+      - "archive_command=test ! -f /wal_archive/%f && cp %p /wal_archive/%f"
+      - "-c"
+      - "archive_timeout=60"
+      - "-c"
+      - "ssl=on"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - wal_archive:/wal_archive
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ma_warehouse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ma-warehouse-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    mem_limit: 512m
+    volumes:
+      - redis_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # PgBouncer — استخر اتصال با auth_type=scram-sha-256 + userlist.
+  # userlist.txt شامل هش SCRAM کاربران است؛ TLS هم برای کلاینت (app) و هم سرور (postgres).
+  pgbouncer:
+    image: edoburu/pgbouncer
+    container_name: ma-warehouse-pgbouncer
+    restart: unless-stopped
+    mem_limit: 512m
+    volumes:
+      - ./docker/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./docker/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+      - postgres_data:/var/lib/postgresql/data:ro
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  wal_archive:
+  redis_data:

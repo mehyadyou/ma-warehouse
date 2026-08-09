@@ -1,0 +1,14 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+# بیلد و خروجی‌های محلی — هرگز وارد ورژن کنترل نشوند
+/dist
+
+# پشتیبان‌های دیتابیس
+/backups
+*.log
+
+/src/generated/prisma
+
+/src/generated/prisma

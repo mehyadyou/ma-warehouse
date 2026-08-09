@@ -1,0 +1,118 @@
+{
+  "template": {
+    "name": "standard-v1",
+    "version": "1.0.0",
+    "description": "برچسب استاندارد QR Code برای سیستم مدیریت انبار MA",
+    "sizes": {
+      "large": {
+        "width": "100mm",
+        "height": "70mm",
+        "name": "کارتن",
+        "fontSize": 11
+      },
+      "medium": {
+        "width": "60mm",
+        "height": "40mm",
+        "name": "محصول تکی",
+        "fontSize": 9
+      },
+      "small": {
+        "width": "40mm",
+        "height": "25mm",
+        "name": "لیست",
+        "fontSize": 7
+      }
+    },
+    "fields": [
+      {
+        "key": "productName",
+        "label": "محصول",
+        "icon": "",
+        "visible": true,
+        "order": 1
+      },
+      {
+        "key": "modelName",
+        "label": "مدل",
+        "icon": "",
+        "visible": true,
+        "order": 2
+      },
+      {
+        "key": "type",
+        "label": "نوع بسته",
+        "icon": "",
+        "visible": true,
+        "order": 3,
+        "format": "badge"
+      },
+      {
+        "key": "capacity",
+        "label": "ظرفیت",
+        "icon": "",
+        "visible": true,
+        "order": 4,
+        "suffix": "عدد/کارتن"
+      },
+      {
+        "key": "qrUuid",
+        "label": "کد یکتا",
+        "icon": "",
+        "visible": true,
+        "order": 5,
+        "format": "shortUuid"
+      },
+      {
+        "key": "createdAt",
+        "label": "تاریخ ورود",
+        "icon": "",
+        "visible": true,
+        "order": 6,
+        "format": "jalaliDate"
+      },
+      {
+        "key": "warehouseName",
+        "label": "انبار",
+        "icon": "",
+        "visible": true,
+        "order": 7
+      },
+      {
+        "key": "status",
+        "label": "وضعیت",
+        "icon": "",
+        "visible": true,
+        "order": 8,
+        "format": "statusBadge"
+      }
+    ],
+    "colors": {
+      "carton": {
+        "background": "#1A1D22",
+        "border": "#4ADE80",
+        "badge": "#4ADE80",
+        "text": "#FFFFFF"
+      },
+      "individual": {
+        "background": "#1A1D22",
+        "border": "#FB923C",
+        "badge": "#FB923C",
+        "text": "#FFFFFF"
+      },
+      "scanned": {
+        "background": "#1A1D22",
+        "border": "#6B7280",
+        "badge": "#6B7280",
+        "text": "#9CA3AF",
+        "opacity": 0.5
+      }
+    },
+    "layout": {
+      "qrCodeSize": 110,
+      "showBorder": true,
+      "borderRadius": 12,
+      "padding": 14,
+      "gap": 8
+    }
+  }
+}

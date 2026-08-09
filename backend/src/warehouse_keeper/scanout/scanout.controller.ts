@@ -1,0 +1,35 @@
+import { Request, Response } from 'express';
+import { scanOutService } from './scanout.service';
+import { notificationService } from '../../notification/notification.service';
+import { realtime } from '../../realtime/realtime';
+import { RealtimeEvents } from '../../realtime/events';
+import { asyncHandler } from '../../middleware/asyncHandler';
+import { ScanOutInput } from './scanout.schema';
+
+export const scanOutController = {
+  scan: asyncHandler(async (req: Request, res: Response) => {
+    const { qrPayload, serialNumber } = req.body as ScanOutInput;
+    const userId      = req.user!.id;
+    const warehouseId = req.user!.warehouseId;
+    if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
+
+    const result = await scanOutService.scanOut({ qrPayload, serialNumber }, warehouseId, userId);
+
+    if (!result.valid) {
+      await notificationService.create(userId, 'خطای خروج', result.error, 'error', { type: 'SCAN_OUT_ERROR' });
+      realtime.toUser(userId, RealtimeEvents.QR_ERROR, { error: result.error });
+      return res.status(400).json(result);
+    }
+
+    // اعلان به مدیران و رویداد ریل‌تایم توسط دیسپچر اوتباکس (تراکنشی و بدون گم‌شدن پیام) ارسال می‌شود
+    res.json(result);
+  }),
+
+  //کارتن‌های خروج‌زده‌شده از انبار انباردار
+  listShipped: asyncHandler(async (req: Request, res: Response) => {
+    const warehouseId = req.user!.warehouseId;
+    if (!warehouseId) return res.status(403).json({ error: 'انباری تعریف نشده' });
+    const cartons = await scanOutService.listShippedCartons(warehouseId);
+    res.json({ cartons });
+  }),
+};
