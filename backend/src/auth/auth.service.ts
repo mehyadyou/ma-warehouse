@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { AppError } from '../common/exceptions/AppError';
 import { assertPasswordPolicy } from '../common/password';
+import { writeAuditStandalone } from '../utils/audit';
 import type { Prisma } from '@prisma/client';
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -202,6 +203,15 @@ export const authService = {
             data: updateData,
             select: userProfileSelect,
         });
+
+        // ممیزی تغییر رمز عبور
+        if (data.password !== undefined && data.password) {
+            await writeAuditStandalone({
+                actorId: id, action: 'user.change_password', entity: 'User', entityId: id,
+                before: { mustChangePassword: user.mustChangePassword }, after: { mustChangePassword: false },
+            }).catch(() => {});
+        }
+
         return updated;
     },
 
@@ -233,6 +243,13 @@ export const authService = {
             },
             select: { id: true, name: true, phone: true, role: true },
         });
+
+        // ممیزی ساخت مدیر اول
+        await writeAuditStandalone({
+            actorId: user.id, action: 'user.create_first_manager', entity: 'User', entityId: user.id,
+            before: null, after: { name, phone, role: 'MANAGER' },
+        }).catch(() => {});
+
         return user;
     },
 };

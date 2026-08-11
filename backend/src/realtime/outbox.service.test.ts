@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => {
     const user = { findMany: vi.fn() };
     const outboxEvent = { findMany: vi.fn(), updateMany: vi.fn() };
+    const notification = { create: vi.fn(), upsert: vi.fn() };
     return {
         user,
         outboxEvent,
+        notification,
         create: vi.fn(),
         toWarehouse: vi.fn(),
         toRole: vi.fn(),
@@ -20,7 +22,7 @@ vi.mock('../utils/prisma', () => ({
 }));
 
 vi.mock('../notification/notification.service', () => ({
-    notificationService: { create: mocks.create },
+    notificationService: { create: mocks.create, upsert: mocks.notification.upsert },
 }));
 
 vi.mock('./realtime', () => ({
@@ -61,6 +63,7 @@ beforeEach(() => {
     mocks.outboxEvent.updateMany.mockResolvedValue({ count: 1 });
     mocks.user.findMany.mockResolvedValue([{ id: 'k1' }]);
     mocks.create.mockResolvedValue({ id: 'n1' });
+    mocks.notification.upsert.mockResolvedValue({ id: 'n1' });
 });
 
 describe('dispatchOutbox - نوتیفیکیشن سفارش برای انباردار', () => {
@@ -92,14 +95,15 @@ describe('dispatchOutbox - نوتیفیکیشن سفارش برای انبارد
                 orderId: 'o1',
                 warehouseId: 'whA',
             }),
+            'ev1:k1',
         );
 
         // ریل‌تایم به اتاق همان انبار (نه انبار دیگر)
         expect(mocks.toWarehouse).toHaveBeenCalledWith('whA', 'order:created', ORDER_CREATED_PAYLOAD);
         expect(mocks.toRole).toHaveBeenCalledWith('MANAGER', 'order:created', ORDER_CREATED_PAYLOAD);
 
-        // رویداد تحویل‌شده علامت‌گذاری میشود (claim + dispatched)
-        expect(mocks.outboxEvent.updateMany).toHaveBeenCalledTimes(2);
+        // رویداد تحویل‌شده علامت‌گذاری میشود (stuck-recovery + claim + dispatched)
+        expect(mocks.outboxEvent.updateMany).toHaveBeenCalledTimes(3);
     });
 
     it('سفارش جدید: انباردارِ انبار دیگر هیچ نوتیفیکیشنی نمیگیرد', async () => {
@@ -132,6 +136,7 @@ describe('dispatchOutbox - نوتیفیکیشن سفارش برای انبارد
                 orderId: 'o1',
                 warehouseId: 'whA',
             }),
+            expect.any(String),
         );
         expect(mocks.toWarehouse).toHaveBeenCalledWith('whA', 'order:deleted', ORDER_DELETED_PAYLOAD);
     });

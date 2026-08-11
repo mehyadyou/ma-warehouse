@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../widgets/lock_settings_tile.dart';
 import 'data/settings_api_service.dart';
 import '../../core/network/api_error.dart';
-import '../../core/storage/local_storage.dart';
 
 // برش مربعی وسط تصویر — آواتار همیشه مربع کامل می‌شود و در کادر گرد هم گوشه‌ای خالی نمی‌ماند
 Uint8List squareCropAvatar(Uint8List bytes) {
@@ -277,8 +277,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                // ═══ ورود با اثر انگشت ═══
-                _biometricTile(),
+                // ═══ قفل برنامه (پین / اثر انگشت / فیس آید) ═══
+                const LockSettingsTile(),
                 const SizedBox(height: 28),
 
                 // ═══ دکمه ذخیره ═══
@@ -295,40 +295,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ],
             ),
-    );
-  }
-
-  Widget _biometricTile() {
-    return Material(
-      color: _surfaceAlt,
-      borderRadius: BorderRadius.circular(14),
-      child: SwitchListTile(
-        value: LocalStorage.getBiometricEnabled(),
-        onChanged: (value) async {
-          await LocalStorage.setBiometricEnabled(value);
-          if (!mounted) return;
-          setState(() {});
-        },
-        activeTrackColor: _green,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        secondary: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: _green.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.fingerprint_rounded, color: _green, size: 22),
-        ),
-        title: const Text(
-          'ورود با اثر انگشت / فیس آید',
-          style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          'هر بار باز کردن برنامه بدون وارد کردن رمز',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12),
-        ),
-      ),
     );
   }
 

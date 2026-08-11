@@ -9,6 +9,7 @@ export const notificationService = {
     body: string,
     type: 'info' | 'success' | 'warning' | 'error' = 'info',
     data?: Record<string, unknown>,
+    dedupeKey?: string,
   ) => {
     // اگر کاربر برای این رویداد نوتیفیکیشن را خاموش کرده باشد، ارسال نمی‌شود
     const eventType = data?.type;
@@ -21,18 +22,32 @@ export const notificationService = {
       if (settings[String(eventType)] === false) return null;
     }
 
-    const notification = await prisma.notification.create({
-      data: { userId, title, body, type, data: data as any },
-    });
-    realtime.toUser(userId, RealtimeEvents.NOTIFICATION, {
-      id:        notification.id,
-      title:     notification.title,
-      body:      notification.body,
-      type:      notification.type,
-      isRead:    notification.isRead,
-      data:      notification.data,
-      createdAt: notification.createdAt,
-    });
+    const baseData = { userId, title, body, type, data: data as any };
+    const emit = (notification: any) =>
+      realtime.toUser(userId, RealtimeEvents.NOTIFICATION, {
+        id:        notification.id,
+        title:     notification.title,
+        body:      notification.body,
+        type:      notification.type,
+        isRead:    notification.isRead,
+        data:      notification.data,
+        createdAt: notification.createdAt,
+      });
+
+    // با dedupeKey: ساخت اتمیک — اگر رکورد از قبل باشد (retry) هیچ‌چیز ساخته نمی‌شود
+    // و ریل‌تایم هم emit نمی‌شود (نوتیف تکراری روی سوکت ممنوع است)
+    if (dedupeKey) {
+      const created = await prisma.notification.createMany({
+        data: [{ ...baseData, dedupeKey }],
+        skipDuplicates: true,
+      });
+      const notification = await prisma.notification.findUnique({ where: { dedupeKey } });
+      if (created.count > 0 && notification) emit(notification);
+      return notification;
+    }
+
+    const notification = await prisma.notification.create({ data: { ...baseData, dedupeKey } });
+    emit(notification);
     return notification;
   },
 

@@ -16,6 +16,22 @@ export interface QrPayloadParts {
 
 const sanitize = (value: string): string => value.replace(/\|/g, '/').trim();
 
+// امضای کامل (۱۲۸ بیت / ۳۲ هگز) — طول قبلی ۱۶ هگز (۶۴ بیت) برای بروت‌فورس ضعیف بود
+const HMAC_LENGTH = 32;
+
+const digest = (body: string): string =>
+    crypto.createHmac('sha256', QR_SECRET).update(body).digest('hex');
+
+const signBody = (body: string): string => digest(body).slice(0, HMAC_LENGTH);
+
+// هر دو طول ۱۶ (قدیمی — QRهای چاپ‌شده) و ۳۲ (جدید) پذیرفته می‌شود — گذار بدون شکستن QRهای موجود
+const verifyBody = (body: string, hmac: string): boolean => {
+    const full = digest(body);
+    return hmac.length === HMAC_LENGTH
+        ? full.slice(0, HMAC_LENGTH) === hmac
+        : full.slice(0, 16) === hmac;
+};
+
 export const signPayload = (parts: QrPayloadParts): { qrPayload: string; hmac: string } => {
     const body = [
         PREFIX,
@@ -25,11 +41,7 @@ export const signPayload = (parts: QrPayloadParts): { qrPayload: string; hmac: s
         parts.uuid,
     ].join(SEPARATOR);
 
-    const hmac = crypto
-        .createHmac('sha256', QR_SECRET)
-        .update(body)
-        .digest('hex')
-        .slice(0, 16);
+    const hmac = signBody(body);
 
     return { qrPayload: `${body}${SEPARATOR}${hmac}`, hmac };
 };
@@ -47,13 +59,8 @@ export const verifyPayload = (raw: string): VerifiedPayload => {
 
     const [, productCode, modelCode, capacityRaw, uuid, hmac] = segments;
     const body = segments.slice(0, 5).join(SEPARATOR);
-    const expected = crypto
-        .createHmac('sha256', QR_SECRET)
-        .update(body)
-        .digest('hex')
-        .slice(0, 16);
 
-    if (expected !== hmac) {
+    if (!verifyBody(body, hmac!)) {
         throw new AppError('امضای QR نامعتبر است', 400);
     }
 
@@ -79,11 +86,7 @@ export interface SerialQrParts {
 // MA|SN|<serial>|<uuid>|<hmac>
 export const buildQrForSerial = (parts: SerialQrParts): { qrPayload: string; hmac: string } => {
     const body = [PREFIX, 'SN', sanitize(parts.serial), parts.uuid].join(SEPARATOR);
-    const hmac = crypto
-        .createHmac('sha256', QR_SECRET)
-        .update(body)
-        .digest('hex')
-        .slice(0, 16);
+    const hmac = signBody(body);
     return { qrPayload: `${body}${SEPARATOR}${hmac}`, hmac };
 };
 
@@ -102,13 +105,8 @@ export const verifySerialPayload = (raw: string): VerifiedSerialPayload => {
 
     const [, , serial, uuid, hmac] = segments;
     const body = segments.slice(0, 4).join(SEPARATOR);
-    const expected = crypto
-        .createHmac('sha256', QR_SECRET)
-        .update(body)
-        .digest('hex')
-        .slice(0, 16);
 
-    if (expected !== hmac) {
+    if (!verifyBody(body, hmac!)) {
         throw new AppError('امضای QR نامعتبر است', 400);
     }
 

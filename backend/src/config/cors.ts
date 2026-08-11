@@ -6,3 +6,12 @@ export function getAllowedOrigins(): string[] {
         .map((s) => s.trim())
         .filter(Boolean);
 }
+
+// `*` در پیکربندی به معنای «همهٔ مبدأها مجاز» است (مثل رفتار لیست خالی).
+// مقدار literalِ "*" در آرایه، توسط پکیج cors به‌عنوان وایلدکارت شناخته نمی‌شود.
+export function isCorsAllowAll(): boolean {
+    const origins = getAllowedOrigins();
+    // در production هرگز fail-open نباش — نبودِ ALLOWED_ORIGINS یعنی «بسته»، نه «همه مجاز»
+    if (process.env.NODE_ENV === 'production') return false;
+    return origins.length === 0 || origins.includes('*');
+}

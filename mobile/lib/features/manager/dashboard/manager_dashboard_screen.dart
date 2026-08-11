@@ -17,7 +17,7 @@ import 'bottom_nav_bar/bottom_nav_bar.dart';
 import 'navigation_drawer/screens/settings/settings_screen.dart';
 import 'navigation_drawer/screens/history_screen.dart';
 import 'navigation_drawer/screens/archive_screen.dart';
-import 'navigation_drawer/app_drawer.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);

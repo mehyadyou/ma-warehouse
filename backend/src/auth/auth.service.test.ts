@@ -218,17 +218,26 @@ describe('authService.updateProfile', () => {
         (prisma.user.findUnique as any).mockResolvedValue(baseUser());
         await expect(
             authService.updateProfile('u1', { password: 'short' })
-        ).rejects.toThrow('حداقل 8 کاراکتر');
+        ).rejects.toThrow('حداقل 10 کاراکتر');
+        // بدون عدد → خطای «یک عدد» (طولش از حداقل رد شده)
         await expect(
-            authService.updateProfile('u1', { password: 'abcdefgh' })
+            authService.updateProfile('u1', { password: 'abcdefghijk' })
         ).rejects.toThrow('یک عدد');
+        // بدون حرف (فقط عدد) → خطای «یک حرف»
+        await expect(
+            authService.updateProfile('u1', { password: '12345678901' })
+        ).rejects.toThrow('یک حرف');
+        // رمز فارسی (حروف فارسی + عدد) → باید پذیرفته شود
+        (prisma.user.update as any).mockResolvedValue(baseUser());
+        await authService.updateProfile('u1', { password: 'پارسکالا1234' });
+        expect(prisma.user.update).toHaveBeenCalled();
     });
 
     it('تغییر رمز موفق: هش + برداشتن پرچم تغییر اجباری', async () => {
         (prisma.user.findUnique as any).mockResolvedValue(baseUser());
         (prisma.user.update as any).mockResolvedValue(baseUser());
 
-        await authService.updateProfile('u1', { password: 'newpass1' });
+        await authService.updateProfile('u1', { password: 'newpass1234' });
 
         const data = (prisma.user.update as any).mock.calls[0][0].data;
         expect(data.password).toBe('hashed');

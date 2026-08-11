@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ma_app/core/network/dio_client.dart';
 import 'package:ma_app/core/storage/local_storage.dart';
+import 'package:ma_app/features/auth/lock/lock_config.dart';
+import 'package:ma_app/features/auth/lock/lock_storage.dart';
 import 'package:ma_app/features/auth/providers/auth_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -99,10 +101,10 @@ void main() {
     return container.read(authProvider);
   }
 
-  group('AuthNotifier (بیومتریک)', () {
-    test('نشست ذخیره + بیومتریک فعال → isLocked=true (صفحه قفل)', () async {
+  group('AuthNotifier (قفل برنامه)', () {
+    test('نشست ذخیره + روش قفل فعال → isLocked=true (صفحه قفل)', () async {
       store['refresh_token'] = 'old-refresh';
-      await LocalStorage.setBiometricEnabled(true);
+      await LockStorage.saveMethod(LockMethod.fingerprint);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
 
       final container = ProviderContainer();
@@ -116,7 +118,7 @@ void main() {
     });
 
     test('بدون توکن رفرش → قفل نمی‌شود', () async {
-      await LocalStorage.setBiometricEnabled(true);
+      await LockStorage.saveMethod(LockMethod.pin);
 
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -127,9 +129,9 @@ void main() {
       expect(state.isLoggedIn, isFalse);
     });
 
-    test('unlock با رفرش شکست‌خورده → logout و بازگشت به حالت خالی', () async {
+    test('unlock با رفرش شکست‌خورده (401) → logout و بازگشت به حالت خالی', () async {
       store['refresh_token'] = 'expired-refresh';
-      await LocalStorage.setBiometricEnabled(true);
+      await LockStorage.saveMethod(LockMethod.pin);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
       await LocalStorage.saveUserData(
         name: 'کاربر تست',
@@ -145,9 +147,9 @@ void main() {
 
       final unlocked = await container
           .read(authProvider.notifier)
-          .unlockWithBiometrics();
+          .unlock();
 
-      expect(unlocked, isFalse);
+      expect(unlocked, UnlockResult.invalidSession);
       final after = container.read(authProvider);
       expect(after.isLocked, isFalse);
       expect(after.isLoggedIn, isFalse);
@@ -155,9 +157,46 @@ void main() {
       expect(store['refresh_token'], isNull);
     });
 
-    test('بیومتریک خاموش + نشست ذخیره → بازیابی مستقیم (بدون قفل)', () async {
+    test('unlock با خطای شبکه → روی قفل می‌ماند و نشست حفظ می‌شود', () async {
+      store['refresh_token'] = 'valid-refresh';
+      await LockStorage.saveMethod(LockMethod.pin);
+      await LocalStorage.saveRole('WAREHOUSE_KEEPER');
+      await LocalStorage.saveUserData(
+        name: 'کاربر تست',
+        phone: '0912',
+        avatarUrl: null,
+      );
+
+      final adapter = FakeHttpAdapter(
+        (_) async => throw DioException(
+          requestOptions: RequestOptions(path: '/auth/refresh'),
+          type: DioExceptionType.connectionError,
+        ),
+      );
+      AuthSession.debugDioFactory =
+          () => Dio(BaseOptions(baseUrl: 'http://test.local'))
+            ..httpClientAdapter = adapter;
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final state = await settled(container);
+      expect(state.isLocked, isTrue);
+
+      final unlocked = await container
+          .read(authProvider.notifier)
+          .unlock();
+
+      expect(unlocked, UnlockResult.networkError);
+      final after = container.read(authProvider);
+      expect(after.isLocked, isTrue);
+      expect(after.isLoggedIn, isFalse);
+      expect(store['refresh_token'], 'valid-refresh');
+    });
+
+    test('روش قفل none + نشست ذخیره → بازیابی مستقیم (بدون قفل)', () async {
       store['access_token'] = 'valid-access';
-      await LocalStorage.setBiometricEnabled(false);
+      await LockStorage.saveMethod(LockMethod.none);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
       await LocalStorage.saveUserData(
         name: 'کاربر تست',
@@ -173,6 +212,22 @@ void main() {
       expect(state.isLocked, isFalse);
       expect(state.isLoggedIn, isTrue);
       expect(state.token, 'valid-access');
+    });
+
+    test('logout → پین و روش قفل پاک می‌شوند (مصوب)', () async {
+      store['refresh_token'] = 'old-refresh';
+      await LockStorage.saveMethod(LockMethod.pin);
+      await LockStorage.setPin('1234');
+      await LocalStorage.saveRole('WAREHOUSE_KEEPER');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await settled(container);
+      await container.read(authProvider.notifier).logout();
+
+      expect(await LockStorage.getMethod(), LockMethod.none);
+      expect(await LockStorage.hasPin(), isFalse);
     });
   });
 }

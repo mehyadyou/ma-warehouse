@@ -56,3 +56,43 @@ export const rateLimit = (options: { windowMs: number; max: number; keyPrefix?: 
         next();
     };
 };
+
+// نسخهٔ مبتنی بر کاربر — کلید `${req.user?.id ?? req.ip}` برای کاربران پشت NAT
+export const userRateLimit = (options: { windowMs: number; max: number; keyPrefix?: string }) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        const id = req.user?.id ?? req.ip ?? req.socket.remoteAddress ?? 'unknown';
+        const key = `${options.keyPrefix ?? 'url'}:${id}`;
+        const now = Date.now();
+
+        try {
+            const redis = await getRedis();
+            if (redis) {
+                const count = await redis.incr(key);
+                if (count === 1) await redis.pexpire(key, options.windowMs);
+                if (count > options.max) {
+                    return res.status(429).json({
+                        error: 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید',
+                    });
+                }
+                return next();
+            }
+        } catch {
+            // ادامه با fallback محلی
+        }
+
+        const entry = windows.get(key);
+        if (!entry || entry.resetAt <= now) {
+            windows.set(key, { count: 1, resetAt: now + options.windowMs });
+            return next();
+        }
+
+        entry.count += 1;
+        if (entry.count > options.max) {
+            return res.status(429).json({
+                error: 'تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید',
+            });
+        }
+
+        next();
+    };
+};

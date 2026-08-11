@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import path from 'path';
 import { prisma } from './utils/prisma';
 import { redisIsReady } from './utils/redis';
-import { getAllowedOrigins } from './config/cors';
+import { getAllowedOrigins, isCorsAllowAll } from './config/cors';
 import { authRoutes } from './auth/auth.routes';
 import { managerRoutes } from './manager/manager.routes';
 import { warehouseRoutes } from './warehouse_keeper/warehouse.routes';
@@ -12,9 +12,13 @@ import { notificationRoutes } from './notification/notification.routes';
 import { badgeRoutes } from './badge/badge.routes';
 import driverRoutes from './driver/driver.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { requestId, logger } from './utils/logger';
 
 export function createApp() {
   const app = express();
+
+  // شناسهٔ یکتای درخواست — قبل از همهٔ middleware ها
+  app.use(requestId);
 
   // پشت پروکسی (nginx/ترمیم): آدرس IP واقعی کاربر برای rate limit
   app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
@@ -22,9 +26,15 @@ export function createApp() {
   // هدرهای امنیتی (X-Content-Type-Options, HSTS, ...)
   app.use(helmet());
 
-  // CORS با لیست مبدأ مجاز (ALLOWED_ORIGINS)؛ اگر خالی باشد، همه مجازند (MVP)
+  // CORS با لیست مبدأ مجاز (ALLOWED_ORIGINS)؛ اگر خالی یا شامل `*` باشد، همه مجازند (فقط غیر-production)
   const corsOrigins = getAllowedOrigins();
-  const corsOptions: CorsOptions = corsOrigins.length > 0
+
+  // هشدار بوت: در production لیست خالی یعنی CORS بسته (fail-closed) — نه همه‌مجاز
+  if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
+    logger.warn('ALLOWED_ORIGINS در production خالی است — CORS بسته است؛ همهٔ مبدأها رد می‌شوند');
+  }
+
+  const corsOptions: CorsOptions = !isCorsAllowAll()
     ? {
         origin: (origin, callback) => {
           // درخواست‌های بدون Origin (اپ موبایل / سرور) مجازند
@@ -46,13 +56,12 @@ export function createApp() {
   //سرو کردن فایل‌های آپلود شده
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  app.get('/', async (req, res) => {
-    try {
-      await prisma.$connect();
-      res.send('اتصال به دیتابیس با موفقیت انجام شد!');
-    } catch {
-      res.status(500).send('خطا در اتصال به دیتابیس');
-    }
+  app.get('/', (_req, res) => res.send('ma-warehouse API is running'));
+
+  // لاگ درخواست‌ها — ساختاریافته با requestId
+  app.use((req, res, next) => {
+    logger.info({ reqId: req.id, method: req.method, url: req.originalUrl });
+    next();
   });
 
   // وضعیت سلامت سرویس — برای مانیتورینگ/دکور

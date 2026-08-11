@@ -42,7 +42,7 @@ export const badgeService = {
                     },
                 },
             },
-            orderBy: { sequence: 'asc' },
+            orderBy: { createdAt: 'asc' },
         });
         if (badges.length === 0) return null;
         return badges;

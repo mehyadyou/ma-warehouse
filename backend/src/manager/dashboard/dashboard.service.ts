@@ -1,8 +1,9 @@
 import { prisma } from '../../utils/prisma';
+import { cached } from '../../utils/cache';
 
 export const dashboardService = {
     //داشبورد مدیر
-    getDashboard: async () => {
+    getDashboard: async () => cached('dash:manager', 45, async () => {
         const [usersCount, warehousesCount, driversCount, keepersCount] = await Promise.all([
             prisma.user.count({ where: { deletedAt: null } }),
             prisma.warehouse.count({ where: { deletedAt: null } }),
@@ -16,7 +17,7 @@ export const dashboardService = {
             driversCount,
             keepersCount,
         };
-    },
+    }),
 
     //همه تراکنش‌ها در یک روز
     getAllTransactionsByDate: async (date: string) => {

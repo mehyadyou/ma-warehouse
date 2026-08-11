@@ -85,10 +85,11 @@ class AppDrawer extends StatelessWidget {
               ],
             ),
           ),
-_buildItem(context, Icons.dashboard, 'داشبورد', onDashboardTap),
+          _buildItem(context, Icons.dashboard, 'داشبورد', onDashboardTap),
           if (onInventoryTap != null)
             _buildItem(context, Icons.inventory, 'موجودی', onInventoryTap),
-          _buildItem(context, Icons.history, 'تراکنش‌ها', onTransactionsTap),
+          if (onTransactionsTap != null)
+            _buildItem(context, Icons.history, 'تراکنش‌ها', onTransactionsTap),
           if (onHistoryTap != null)
             _buildItem(context, Icons.event_note_rounded, 'تاریخچه', onHistoryTap),
           if (onArchiveTap != null)

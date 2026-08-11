@@ -40,4 +40,26 @@ class SecureStorage {
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
   }
+
+  /// نوشتن مقدار دلخواه — روی وب به SharedPreferences برمی‌گردد
+  static Future<void> write({required String key, required String value}) async {
+    if (kIsWeb) {
+      await LocalStorage.saveRaw(key, value);
+      return;
+    }
+    await _storage.write(key: key, value: value);
+  }
+
+  static Future<String?> read({required String key}) async {
+    if (kIsWeb) return LocalStorage.getRaw(key);
+    return _storage.read(key: key);
+  }
+
+  static Future<void> delete({required String key}) async {
+    if (kIsWeb) {
+      await LocalStorage.removeRaw(key);
+      return;
+    }
+    await _storage.delete(key: key);
+  }
 }

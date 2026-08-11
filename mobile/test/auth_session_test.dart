@@ -133,6 +133,53 @@ void main() {
       expect(adapter.requestCount, 0);
     });
 
+    test('رفرش با خطای شبکه: null برمی‌گردد ولی توکن‌ها حفظ می‌شوند', () async {
+      store['refresh_token'] = 'old-refresh';
+      store['access_token'] = 'old-access';
+      final adapter = FakeHttpAdapter(
+        (_) async => throw DioException(
+          requestOptions: RequestOptions(path: '/auth/refresh'),
+          type: DioExceptionType.connectionError,
+        ),
+      );
+      AuthSession.debugDioFactory = () => fakeDio(adapter);
+
+      final token = await AuthSession.refreshAccessToken();
+
+      expect(token, isNull);
+      expect(store['access_token'], 'old-access');
+      expect(store['refresh_token'], 'old-refresh');
+    });
+
+    test('refreshWithOutcome: 401 → invalidSession، خطای شبکه → network', () async {
+      store['refresh_token'] = 'r1';
+      AuthSession.debugDioFactory = () => fakeDio(
+        FakeHttpAdapter(
+          (_) async => jsonResponse({'message': 'unauthorized'}, 401),
+        ),
+      );
+
+      var outcome = await AuthSession.refreshWithOutcome();
+      expect(outcome.isOk, isFalse);
+      expect(outcome.failure, RefreshFailure.invalidSession);
+      expect(store['refresh_token'], isNull);
+
+      store['refresh_token'] = 'r2';
+      AuthSession.debugDioFactory = () => fakeDio(
+        FakeHttpAdapter(
+          (_) async => throw DioException(
+            requestOptions: RequestOptions(path: '/auth/refresh'),
+            type: DioExceptionType.receiveTimeout,
+          ),
+        ),
+      );
+
+      outcome = await AuthSession.refreshWithOutcome();
+      expect(outcome.isOk, isFalse);
+      expect(outcome.failure, RefreshFailure.network);
+      expect(store['refresh_token'], 'r2');
+    });
+
     test('single-flight: دو درخواست همزمان فقط یک بار شبکه را می‌زنند', () async {
       store['refresh_token'] = 'old-refresh';
       final adapter = FakeHttpAdapter(

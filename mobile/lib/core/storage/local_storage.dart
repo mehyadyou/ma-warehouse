@@ -31,6 +31,49 @@ class LocalStorage {
     return _prefs.getBool('biometric_enabled') ?? true;
   }
 
+  /// آیا کلید قدیمی سوئیچ بیومتریک اصلاً تنظیم شده است (برای مهاجرت یک‌باره)
+  static bool hasBiometricSetting() => _prefs.containsKey('biometric_enabled');
+
+  // ═══ قفل برنامه (روش قفل + پین) ═══
+  // روش قفل روی همه پلتفرم‌ها اینجا می‌ماند؛ پین روی وب (بدون SecureStorage) هم اینجا
+  static const _lockMethodKey = 'lock_method';
+  static const _pinSaltKey = 'lock_pin_salt';
+  static const _pinHashKey = 'lock_pin_hash';
+
+  static Future<void> saveLockMethod(String method) async {
+    await _prefs.setString(_lockMethodKey, method);
+  }
+
+  static String? getLockMethod() => _prefs.getString(_lockMethodKey);
+
+  static Future<void> savePinData({
+    required String salt,
+    required String hash,
+  }) async {
+    await _prefs.setString(_pinSaltKey, salt);
+    await _prefs.setString(_pinHashKey, hash);
+  }
+
+  static String? getPinSalt() => _prefs.getString(_pinSaltKey);
+
+  static String? getPinHash() => _prefs.getString(_pinHashKey);
+
+  static Future<void> clearPinData() async {
+    await _prefs.remove(_pinSaltKey);
+    await _prefs.remove(_pinHashKey);
+  }
+
+  /// نوشتن مقدار دلخواه (فال‌بک وب برای SecureStorage)
+  static Future<void> saveRaw(String key, String value) async {
+    await _prefs.setString(key, value);
+  }
+
+  static String? getRaw(String key) => _prefs.getString(key);
+
+  static Future<void> removeRaw(String key) async {
+    await _prefs.remove(key);
+  }
+
   static Future<void> saveRole(String role) async {
     await _prefs.setString('user_role', role);
   }

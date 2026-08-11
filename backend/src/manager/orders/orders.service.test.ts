@@ -4,12 +4,14 @@ import fs from 'fs';
 vi.mock('../../utils/prisma', () => ({
     prisma: {
         $transaction: vi.fn(),
+        $queryRaw: vi.fn(),
         order: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
         carton: { findMany: vi.fn() },
         delivery: { findUnique: vi.fn() },
         activityLog: { create: vi.fn() },
         warehouse: { findUnique: vi.fn() },
         product: { findMany: vi.fn() },
+        productModel: { findMany: vi.fn() },
     },
 }));
 
@@ -28,10 +30,11 @@ function makeTx(overrides: Record<string, any> = {}) {
             createMany: vi.fn().mockResolvedValue({}),
             findMany: vi.fn().mockResolvedValue([]),
         },
-        badge: { deleteMany: vi.fn().mockResolvedValue({}), createMany: vi.fn().mockResolvedValue({}) },
-        carton: { updateMany: vi.fn().mockResolvedValue({}) },
+        badge: { deleteMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
+        carton: { updateMany: vi.fn().mockResolvedValue({}), count: vi.fn().mockResolvedValue(0) },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
         outboxEvent: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
         ...overrides,
     };
 }
@@ -123,6 +126,11 @@ describe('ordersService.createOrder', () => {
         (prisma.order.findUniqueOrThrow as any).mockResolvedValue(mockMappedOrder());
         (prisma.warehouse.findUnique as any).mockResolvedValue({ id: 'wh1', name: 'انبار تست' });
         (prisma.product.findMany as any).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
+        (prisma.productModel.findMany as any).mockResolvedValue([]);
+        (prisma.$queryRaw as any).mockResolvedValue([
+            { productId: 'p1', available: 100 },
+            { productId: 'p2', available: 100 },
+        ]);
         await ordersService.createOrder(...args);
         return tx;
     };
@@ -139,8 +147,8 @@ describe('ordersService.createOrder', () => {
         ]);
 
         const createData = tx.order.create.mock.calls[0][0].data;
-        // 3 + 2 = 5 badge
-        expect(createData.badges.createMany.data).toHaveLength(5);
+        // 3 + 2 = 5 badge (count-based)
+        expect(createData.badges.create.count).toBe(5);
         expect(createData.items.create).toHaveLength(2);
         expect(createData.status).toBe('PENDING');
     });
@@ -182,6 +190,7 @@ describe('ordersService.updateOrder', () => {
         warehouseId: 'wh1',
         createdById: 'u1',
         version: 2,
+        status: 'PENDING',
         shippingMethod: 'باربری',
         carrier: null,
         city: null,
@@ -208,25 +217,44 @@ describe('ordersService.updateOrder', () => {
         (prisma.order.findUniqueOrThrow as any).mockResolvedValue(mockMappedOrder());
 
         await ordersService.updateOrder('o1', {
-            items: [{ productId: 'p1', quantity: 2 }],
+            items: [{ productId: 'p1', quantity: 2, modelId: 'm1', model: 'مدل ۱' }],
             version: 2,
         });
 
         expect(tx.order.updateMany).toHaveBeenCalledWith(
             expect.objectContaining({ where: { id: 'o1', version: 2 } })
         );
+        expect(tx.carton.count).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { orderId: 'o1', scannedOutAt: { not: null } } })
+        );
         expect(tx.orderItem.deleteMany).toHaveBeenCalledWith({ where: { orderId: 'o1' } });
         expect(tx.orderItem.createMany).toHaveBeenCalledWith(
-            expect.objectContaining({ data: expect.arrayContaining([expect.objectContaining({ productId: 'p1', quantity: 2 })]) })
+            expect.objectContaining({ data: expect.arrayContaining([expect.objectContaining({ productId: 'p1', quantity: 2, modelId: 'm1', model: 'مدل ۱' })]) })
         );
         expect(tx.badge.deleteMany).toHaveBeenCalledWith({ where: { orderId: 'o1' } });
-        // senderName/receiverName ثابت مانده → badge بازتولید میشود (2 عدد)
-        expect(tx.badge.createMany).toHaveBeenCalled();
-        const badgeData = tx.badge.createMany.mock.calls[0][0].data;
-        expect(badgeData).toHaveLength(2);
+        // senderName/receiverName ثابت مانده → badge بازتولید میشود (count-based, count=2)
+        expect(tx.badge.create).toHaveBeenCalled();
+        const badgeData = tx.badge.create.mock.calls[0][0].data;
+        expect(badgeData.count).toBe(2);
         expect(tx.outboxEvent.create).toHaveBeenCalledWith(
             expect.objectContaining({ data: expect.objectContaining({ type: 'order:updated' }) })
         );
+    });
+
+    it('N5: وجود کارتن خروجخورده → ویرایش اقلام ممنوع است (AppError 400)', async () => {
+        (prisma.order.findUnique as any).mockResolvedValue(existingOrder());
+        const tx = makeTx();
+        tx.order.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+        tx.carton.count = vi.fn().mockResolvedValue(1);
+        (prisma.$transaction as any).mockImplementation(async (cb: any) => cb(tx));
+
+        await expect(
+            ordersService.updateOrder('o1', {
+                items: [{ productId: 'p1', quantity: 5 }],
+                version: 2,
+            })
+        ).rejects.toThrow('وارد مرحلهٔ خروج شده');
+        expect(tx.orderItem.deleteMany).not.toHaveBeenCalled();
     });
 
     it('سفارش یافت نشد → AppError 404', async () => {

@@ -5,6 +5,7 @@ import { RealtimeEvents } from '../../realtime/events';
 import { roleLabel } from '../shared';
 import { AppError } from '../../common/exceptions/AppError';
 import { assertPasswordPolicy } from '../../common/password';
+import { writeAuditStandalone } from '../../utils/audit';
 import type { Prisma, Role } from '@prisma/client';
 
 export const usersService = {
@@ -257,7 +258,7 @@ export const usersService = {
             });
         }
 
-        //ثبت در تاریخچه (تغییر نقش / تغییر انبار)
+        //ثبت در تاریخچه + ممیزی (تغییر نقش / تغییر انبار)
         if (managerId) {
             if (roleChanged) {
                 await prisma.activityLog.create({
@@ -266,6 +267,10 @@ export const usersService = {
                         label: `«${user.name}»: ${roleLabel(user.role)} → ${roleLabel(data.role)}`,
                         userId: managerId,
                     },
+                }).catch(() => {});
+                await writeAuditStandalone({
+                    actorId: managerId, action: 'user.change_role', entity: 'User', entityId: id,
+                    before: { role: user.role }, after: { role: data.role },
                 }).catch(() => {});
             }
             if (warehouseChanged) {
@@ -283,6 +288,10 @@ export const usersService = {
                         label: `«${user.name}»: ${oldW?.name ?? 'بدون انبار'} → ${newW?.name ?? 'بدون انبار'}`,
                         userId: managerId,
                     },
+                }).catch(() => {});
+                await writeAuditStandalone({
+                    actorId: managerId, action: 'user.change_warehouse', entity: 'User', entityId: id,
+                    before: { warehouseId: user.warehouseId }, after: { warehouseId: data.warehouseId ?? null },
                 }).catch(() => {});
             }
         }
@@ -316,7 +325,7 @@ export const usersService = {
             data: { revokedAt: new Date() },
         });
 
-        //ثبت در تاریخچه
+        //ثبت در تاریخچه + ممیزی
         if (managerId) {
             await prisma.activityLog.create({
                 data: {
@@ -324,6 +333,10 @@ export const usersService = {
                     label: `«${user.name}» (${roleLabel(user.role)}) حذف شد`,
                     userId: managerId,
                 },
+            }).catch(() => {});
+            await writeAuditStandalone({
+                actorId: managerId, action: 'user.delete', entity: 'User', entityId: id,
+                before: { name: user.name, role: user.role, isActive: true }, after: { isActive: false },
             }).catch(() => {});
         }
 

@@ -5,10 +5,24 @@ import '../storage/secure_storage.dart';
 import 'api_constants.dart';
 import 'api_error.dart';
 
+/// دلیل شکست رفرش توکن — تفکیک «نشست واقعاً مرده» از «خطای شبکه/سرور»
+enum RefreshFailure { invalidSession, network }
+
+/// نتیجهٔ تلاش برای رفرش توکن
+class RefreshResult {
+  const RefreshResult.ok(String this.accessToken) : failure = null;
+  const RefreshResult.failed(RefreshFailure this.failure) : accessToken = null;
+
+  final String? accessToken;
+  final RefreshFailure? failure;
+
+  bool get isOk => accessToken != null;
+}
+
 /// مدیریت نشست: رفرش تک‌ریسکی توکن + ذخیره جفت توکن جدید.
 /// چند درخواست همزمان فقط یک بار refresh می‌زنند (single-flight).
 class AuthSession {
-  static Future<String?>? _refreshFuture;
+  static Future<RefreshResult>? _refreshFuture;
 
   /// وقتی رفرش ممکن نیست (توکن رفرش منقضی/باطل) فراخوانی می‌شود تا نشست بسته شود
   static void Function()? onSessionExpired;
@@ -17,16 +31,24 @@ class AuthSession {
   @visibleForTesting
   static Dio Function()? debugDioFactory;
 
-  static Future<String?> refreshAccessToken() {
+  static Future<String?> refreshAccessToken() async {
+    final result = await _getRefresh();
+    return result.accessToken;
+  }
+
+  /// نسخهٔ آگاه از دلیل شکست — صفحه قفل با خطای شبکه روی قفل می‌ماند
+  static Future<RefreshResult> refreshWithOutcome() => _getRefresh();
+
+  static Future<RefreshResult> _getRefresh() {
     return _refreshFuture ??=
         _doRefresh().whenComplete(() => _refreshFuture = null);
   }
 
-  static Future<String?> _doRefresh() async {
+  static Future<RefreshResult> _doRefresh() async {
     final refreshToken = await SecureStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
       await SecureStorage.clearTokens();
-      return null;
+      return const RefreshResult.failed(RefreshFailure.invalidSession);
     }
     try {
       final dio = debugDioFactory != null
@@ -44,7 +66,10 @@ class AuthSession {
       final data = response.data as Map<String, dynamic>?;
       final newAccess = data?['token'] as String?;
       final newRefresh = data?['refreshToken'] as String?;
-      if (newAccess == null || newAccess.isEmpty) return null;
+      if (newAccess == null || newAccess.isEmpty) {
+        await SecureStorage.clearTokens();
+        return const RefreshResult.failed(RefreshFailure.invalidSession);
+      }
 
       await SecureStorage.saveTokens(
         accessToken: newAccess,
@@ -52,10 +77,17 @@ class AuthSession {
             ? newRefresh
             : refreshToken,
       );
-      return newAccess;
+      return RefreshResult.ok(newAccess);
+    } on DioException catch (e) {
+      // ۴۰۱ از سرور = توکن باطل/منقضی → پایان نشست؛ خطای شبکه/سرور → نشست محفوظ می‌ماند
+      if (e.response?.statusCode == 401) {
+        await SecureStorage.clearTokens();
+        return const RefreshResult.failed(RefreshFailure.invalidSession);
+      }
+      return const RefreshResult.failed(RefreshFailure.network);
     } catch (_) {
-      await SecureStorage.clearTokens();
-      return null;
+      // خطای غیر از شبکه (پارس داده و…) — مثل خطای شبکه رفتار کن
+      return const RefreshResult.failed(RefreshFailure.network);
     }
   }
 
@@ -119,10 +151,10 @@ class DioClient {
               !isAuthPath &&
               error.requestOptions.extra['_retried'] != true) {
             error.requestOptions.extra['_retried'] = true;
-            final newToken = await AuthSession.refreshAccessToken();
-            if (newToken != null) {
+            final outcome = await AuthSession.refreshWithOutcome();
+            if (outcome.isOk) {
               error.requestOptions.headers['Authorization'] =
-                  'Bearer $newToken';
+                  'Bearer ${outcome.accessToken}';
               try {
                 final response = await dio.fetch(error.requestOptions);
                 return handler.resolve(response);
@@ -130,8 +162,10 @@ class DioClient {
                 return handler.next(_friendly(e));
               }
             }
-            // رفرش ممکن نبود → پایان نشست
-            AuthSession.forceSessionExpired();
+            // فقط نشستِ واقعاً مرده بسته می‌شود؛ خطای شبکه → خروج ناگهانی ندارد
+            if (outcome.failure == RefreshFailure.invalidSession) {
+              AuthSession.forceSessionExpired();
+            }
           }
 
           // type/response حفظ می‌شود؛ فقط message طبق قرارداد سرور فارسی می‌شود

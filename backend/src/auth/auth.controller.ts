@@ -32,6 +32,21 @@ const uploadAvatar = multer({
     },
 });
 
+// بررسی magic bytes — mimetype قابل جعل است، محتوای فایل نه
+function sniffImage(filePath: string): 'jpg' | 'png' | 'webp' | null {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+        const buf = Buffer.alloc(12);
+        fs.readSync(fd, buf, 0, 12, 0);
+        if (buf[0] === 0xff && buf[1] === 0xd8) return 'jpg';
+        if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+        if (buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP') return 'webp';
+        return null;
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
 export const authController = {
     // ساخت اولین مدیر
     createFirstManager: asyncHandler(async (req: Request, res: Response) => {
@@ -89,6 +104,13 @@ export const authController = {
             }
             if (!req.file) {
                 res.status(400).json({ error: 'فایلی ارسال نشده است' });
+                return;
+            }
+
+            // اعتبارسنجی magic bytes — محتوای واقعی فایل باید تصویر باشد
+            if (!sniffImage(req.file.path)) {
+                fs.unlink(req.file.path, () => {});
+                res.status(400).json({ error: 'فایل ارسالی تصویر معتبر نیست (JPG, PNG یا WEBP)' });
                 return;
             }
 

@@ -10,6 +10,7 @@ const cartonInclude = {
 
 interface CartonWithRefs {
   id: string;
+  productId: string;
   warehouseId: string;
   status: CartonStatus;
   scannedOutAt: Date | null;
@@ -106,6 +107,7 @@ export const scanOutService = {
         data: {
           type: 'OUT',
           productName: carton.product.name + (carton.model?.name ? ` (${carton.model.name})` : ''),
+          productId: carton.productId,
           quantity: carton.isIndividual ? 1 : carton.model?.unitsPerBox ?? 1,
           warehouseId,
           userId: userId ?? carton.createdById,

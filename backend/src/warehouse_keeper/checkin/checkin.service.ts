@@ -293,6 +293,7 @@ export const checkinService = {
                     data: {
                         type: entryType === 'RETURNED' ? 'RETURN' : 'IN',
                         productName: product.name + (model ? ` (${model.name})` : ''),
+                        productId: product.id,
                         quantity: item.cartonCount * capacityPerBox + item.individualCount,
                         warehouseId,
                         userId,

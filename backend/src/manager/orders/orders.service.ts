@@ -1,21 +1,26 @@
-﻿import { prisma } from '../../utils/prisma';
+﻿import { Prisma } from '@prisma/client';
+import { prisma } from '../../utils/prisma';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { AppError } from '../../common/exceptions/AppError';
-import type { Prisma } from '@prisma/client';
+import { writeAudit } from '../../utils/audit';
 
 const orderInclude = {
     warehouse: { select: { name: true } },
     delivery: {
         select: { status: true, deliveredAt: true, notes: true, driver: { select: { name: true } } },
     },
-    _count: { select: { badges: true } },
+    badges: { select: { count: true } },
     items: { include: { product: { select: { name: true } } } },
 } satisfies Prisma.OrderInclude;
 
 type OrderWithRefs = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
+// ⚠️ خط‌مشی دقت اعشاری (L5):
+// قیمت/نرخ ارز در DB با Decimal(18,2)/(18,6) ذخیره می‌شود و اینجا فقط برای نمایش به Number
+// تبدیل می‌شود — هیچ محاسبه‌ای (جمع فاکتور، ضرب در نرخ) روی مقدار تبدیل‌شده انجام نمی‌شود.
+// اگر در آینده محاسبه لازم شد، باید در سطح Prisma.Decimal انجام شود و تبدیل فقط در لحظهٔ خروجی JSON باشد.
 const toNumber = (v: Prisma.Decimal | null | undefined): number | null =>
     v == null ? null : Number(v);
 
@@ -38,7 +43,7 @@ function mapOrder(o: OrderWithRefs) {
         deliveredAt: o.delivery?.deliveredAt ?? null,
         notes: o.delivery?.notes ?? null,
         driverName: o.delivery?.driver?.name ?? null,
-        badgeCount: o._count.badges,
+        badgeCount: o.badges?.reduce((sum, b) => sum + (b.count ?? 0), 0) ?? 0,
         items: o.items.map((i) => ({
             id: i.id,
             productId: i.productId,
@@ -121,15 +126,41 @@ export const ordersService = {
             throw new AppError('محصول یافت نشد', 400);
         }
 
+        // اعتبارسنجی تعلق modelId به productId (مثل منطق checkin)
+        const modelIds = [...new Set(items.map((it) => it.modelId).filter((v): v is string => !!v))];
+        if (modelIds.length > 0) {
+            const foundModels = await prisma.productModel.findMany({
+                where: { id: { in: modelIds } },
+                select: { id: true, productId: true },
+            });
+            const modelMap = new Map(foundModels.map((m) => [m.id, m.productId]));
+            for (const item of items) {
+                if (item.modelId && modelMap.get(item.modelId) !== item.productId) {
+                    throw new AppError('مدل انتخاب‌شده متعلق به این محصول نیست', 400);
+                }
+            }
+        }
+
+        // چک موجودی کارتنی IN_STOCK — جلوگیری از ثبت سفارش برای کالای ناموجود
+        const stockRows = await prisma.$queryRaw<{ productId: string; available: number }[]>`
+            SELECT c."productId",
+                SUM(CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END)::int AS available
+            FROM "Carton" c
+            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
+            WHERE c."warehouseId" = ${warehouseId} AND c.status = 'IN_STOCK'
+                AND c."productId" IN (${Prisma.join(productIds)})
+            GROUP BY c."productId"
+        `;
+        const stockMap = new Map(stockRows.map((r) => [r.productId, Number(r.available || 0)]));
+        for (const item of items) {
+            const available = stockMap.get(item.productId) ?? 0;
+            if (available < item.quantity) {
+                throw new AppError('موجودی کافی نیست', 400);
+            }
+        }
+
         await prisma.$transaction(async (tx) => {
-            const badgeRows = senderName && receiverName
-                ? Array.from({ length: items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0) }, (_, i) => ({
-                    id: crypto.randomUUID(),
-                    sequence: i + 1,
-                    senderName,
-                    receiverName,
-                }))
-                : [];
+            const totalUnits = items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0);
 
             await tx.order.create({
                 data: {
@@ -151,11 +182,14 @@ export const ordersService = {
                             productId: item.productId,
                             quantity: item.quantity,
                             model: item.model || null,
+                            modelId: item.modelId || null,
                             price: item.price ?? null,
                             exchangeRate: item.exchangeRate ?? null,
                         })),
                     },
-                    badges: badgeRows.length ? { createMany: { data: badgeRows } } : undefined,
+                    badges: senderName && receiverName
+                        ? { create: { count: totalUnits, senderName, receiverName } }
+                        : undefined,
                 },
             });
 
@@ -236,6 +270,13 @@ export const ordersService = {
 
             // بازنویسی اقلام
             if (data.items && data.items.length > 0) {
+                // قفل ویرایش اقلام: اگر سفارش از PENDING عبور کرده یا کارتن خروج‌خورده دارد، اقلام قابل ویرایش نیستند
+                const shipped = await tx.carton.count({
+                    where: { orderId: id, scannedOutAt: { not: null } },
+                });
+                if (existing.status !== 'PENDING' || shipped > 0) {
+                    throw new AppError('این سفارش وارد مرحلهٔ خروج شده و اقلام آن قابل ویرایش نیست', 400);
+                }
                 await tx.orderItem.deleteMany({ where: { orderId: id } });
                 await tx.orderItem.createMany({
                     data: data.items.map((item) => ({
@@ -244,13 +285,14 @@ export const ordersService = {
                         productId: item.productId,
                         quantity: item.quantity,
                         model: item.model || null,
+                        modelId: item.modelId || null,
                         price: item.price ?? null,
                         exchangeRate: item.exchangeRate ?? null,
                     })),
                 });
             }
 
-            // بازتولید بیجک‌ها بر اساس داده جدید
+            // بازتولید بیجک بر اساس داده جدید (یک ردیف با count)
             const sender = data.senderName !== undefined ? data.senderName : existing.senderName;
             const receiver = data.receiverName !== undefined ? data.receiverName : existing.receiverName;
             await tx.badge.deleteMany({ where: { orderId: id } });
@@ -259,18 +301,12 @@ export const ordersService = {
                     ? data.items
                     : await tx.orderItem.findMany({ where: { orderId: id }, select: { quantity: true } });
                 const totalUnits = currentItems.reduce((sum: number, item: any) => sum + Math.max(1, item.quantity || 1), 0);
-                await tx.badge.createMany({
-                    data: Array.from({ length: totalUnits }, (_, i) => ({
-                        id: crypto.randomUUID(),
-                        orderId: id,
-                        sequence: i + 1,
-                        senderName: sender,
-                        receiverName: receiver,
-                    })),
+                await tx.badge.create({
+                    data: { orderId: id, count: totalUnits, senderName: sender, receiverName: receiver },
                 });
             }
 
-            //ثبت در فعالیت‌های اخیر
+            //ثبت در فعالیت‌های اخیر + ممیزی
             await tx.activityLog.create({
                 data: {
                     type: 'order_updated',
@@ -278,6 +314,10 @@ export const ordersService = {
                     orderId: id,
                     userId: existing.createdById,
                 },
+            });
+            await writeAudit(tx, {
+                actorId: existing.createdById, action: 'order.update', entity: 'Order', entityId: id,
+                before: { status: existing.status }, after: { status: existing.status, updatedAt: new Date().toISOString() },
             });
             await tx.outboxEvent.create({
                 data: {
@@ -296,7 +336,7 @@ export const ordersService = {
     deleteOrder: async (id: string) => {
         const order = await prisma.order.findUnique({
             where: { id },
-            select: { id: true, warehouseId: true, senderName: true, receiverName: true, createdById: true },
+            select: { id: true, warehouseId: true, status: true, senderName: true, receiverName: true, createdById: true },
         });
         if (!order) throw new AppError('سفارش یافت نشد', 404);
 
@@ -321,7 +361,7 @@ export const ordersService = {
             // حذف سفارش؛ اقلام، بیجک‌ها و ارسال با CASCADE پاک می‌شوند
             await tx.order.delete({ where: { id } });
 
-            //ثبت در فعالیت‌های اخیر (حتی بعد از حذف سفارش)
+            //ثبت در فعالیت‌های اخیر + ممیزی (حتی بعد از حذف سفارش)
             await tx.activityLog.create({
                 data: {
                     type: 'order_deleted',
@@ -329,6 +369,11 @@ export const ordersService = {
                     orderId: id,
                     userId: order.createdById,
                 },
+            });
+            await writeAudit(tx, {
+                actorId: order.createdById, action: 'order.delete', entity: 'Order', entityId: id,
+                before: { status: order.status, senderName: order.senderName, receiverName: order.receiverName },
+                after: null,
             });
             await tx.outboxEvent.create({
                 data: {

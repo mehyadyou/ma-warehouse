@@ -3,31 +3,40 @@ import http from 'http';
 import jwt from 'jsonwebtoken';
 import { realtime } from './realtime';
 import { env } from '../config/env';
-import { getAllowedOrigins } from '../config/cors';
+import { getAllowedOrigins, isCorsAllowAll } from '../config/cors';
+import { prisma } from '../utils/prisma';
+import { logger } from '../utils/logger';
 
 const JWT_SECRET = env.JWT_SECRET;
 
 export async function initSocketServer(httpServer: http.Server) {
   const origins = getAllowedOrigins();
   const io = new Server(httpServer, {
-    cors: origins.length > 0
+    cors: !isCorsAllowAll()
       ? { origin: origins, methods: ['GET', 'POST'] }
       : { origin: '*', methods: ['GET', 'POST'] },
   });
 
   realtime.init(io);
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token) return next(new Error('احراز هویت نامعتبر'));
     try {
-      const payload = jwt.verify(token, JWT_SECRET) as { id: string; role: string; warehouseId?: string };
+      const payload = jwt.verify(token, JWT_SECRET) as { id: string; ver?: number };
+      const user = await prisma.user.findUnique({
+        where: { id: payload.id },
+        select: { isActive: true, deletedAt: true, role: true, warehouseId: true, tokenVersion: true },
+      });
+      if (!user || !user.isActive || user.deletedAt) return next(new Error('حساب غیرفعال است'));
+      if (payload.ver !== undefined && payload.ver !== user.tokenVersion)
+        return next(new Error('نشست منقضی شده'));
+
       socket.data.userId      = payload.id;
-      socket.data.role        = payload.role;
-      socket.data.warehouseId = payload.warehouseId;
+      socket.data.role        = user.role;
+      socket.data.warehouseId = user.warehouseId ?? undefined;
       next();
-    } catch (err) {
-      console.log('خطا در verify کردن JWT:', err);
+    } catch {
       next(new Error('توکن نامعتبر'));
     }
   });
@@ -37,14 +46,14 @@ export async function initSocketServer(httpServer: http.Server) {
       userId: string; role: string; warehouseId?: string;
     };
 
-    console.log(`Socket متصل شد: User ${userId}, Role: ${role}, Warehouse: ${warehouseId || 'N/A'}`);
+    logger.debug({ userId, role, warehouseId: warehouseId || null }, 'socket connected');
 
     socket.join(`user:${userId}`);
     socket.join(`role:${role}`);
     if (warehouseId) socket.join(`warehouse:${warehouseId}`);
 
     socket.on('disconnect', () => {
-      console.log(`Socket قطع شد: User ${userId}`);
+      logger.debug({ userId }, 'socket disconnected');
     });
   });
 

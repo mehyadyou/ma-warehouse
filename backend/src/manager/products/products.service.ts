@@ -1,5 +1,6 @@
 ﻿import { prisma } from '../../utils/prisma';
 import { AppError } from '../../common/exceptions/AppError';
+import { writeAuditStandalone } from '../../utils/audit';
 
 export const productsService = {
     //لیست محصولات (با مدل‌ها) — بدون موارد بایگانی‌شده
@@ -271,6 +272,7 @@ export const productsService = {
     updateProductModel: async (
         id: string,
         data: { name?: string; price?: number | null; packageType?: string | null; unitsPerBox?: number | null },
+        managerId?: string,
     ) => {
         const model = await prisma.productModel.findUnique({ where: { id } });
         if (!model) throw new AppError('مدل یافت نشد', 404);
@@ -280,6 +282,17 @@ export const productsService = {
             });
             if (dup) throw new AppError(`مدل "${data.name.trim()}" قبلاً برای این محصول ثبت شده است`, 409);
         }
-        return prisma.productModel.update({ where: { id }, data });
+        const before = { name: model.name, price: model.price, packageType: model.packageType, unitsPerBox: model.unitsPerBox };
+        const updated = await prisma.productModel.update({ where: { id }, data });
+
+        // ممیزی تغییر قیمت مدل
+        if (managerId && data.price !== undefined && (data.price ?? null) !== (model.price ? Number(model.price) : null)) {
+            await writeAuditStandalone({
+                actorId: managerId, action: 'product_model.change_price', entity: 'ProductModel', entityId: id,
+                before: { price: model.price }, after: { price: data.price },
+            }).catch(() => {});
+        }
+
+        return updated;
     },
 };

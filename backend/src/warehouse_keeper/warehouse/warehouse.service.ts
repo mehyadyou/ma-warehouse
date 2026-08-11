@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
+import { cached } from '../../utils/cache';
 
 export const warehouseService = {
     getMyWarehouse: async (warehouseId: string) => {
@@ -44,7 +46,7 @@ export const warehouseService = {
                 SELECT oi."orderId", oi.*, p.name as "productName"
                 FROM "OrderItem" oi
                 JOIN "Product" p ON oi."productId" = p.id
-                WHERE oi."orderId" IN (${orderIds})
+                WHERE oi."orderId" IN (${Prisma.join(orderIds)})
             `;
             const byOrder = new Map<string, any[]>();
             for (const item of items as any[]) {
@@ -85,56 +87,60 @@ export const warehouseService = {
         `;
     },
 
-    getInventorySummary: async (warehouseId: string) => {
-        const cartons = await prisma.carton.findMany({
-            where: { warehouseId },
-            include: {
-                product: { select: { id: true, name: true, unit: true, deletedAt: true } },
-                model: { select: { id: true, name: true, unitsPerBox: true } },
-            },
-            orderBy: [
-                { product: { name: 'asc' } },
-                { model: { name: 'asc' } },
-                { createdAt: 'desc' },
-            ],
-        });
+    getInventorySummary: async (warehouseId: string) => cached(`inv:summary:${warehouseId}`, 45, async () => {
+        // ── تجمیع کارتن‌ها در SQL (به‌جای بارگذاری همه در RAM) ──
+        const cartonStats = await prisma.$queryRaw<{
+            productId: string; productName: string; unit: string | null;
+            modelId: string | null; modelName: string | null;
+            totalCount: number; cartonCount: number; individualCount: number;
+        }[]>`
+            SELECT
+                p.id AS "productId", p.name AS "productName", p.unit,
+                pm.id AS "modelId", pm.name AS "modelName",
+                SUM(CASE WHEN c.status = 'IN_STOCK' THEN
+                        CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END
+                    ELSE 0 END)::int AS "totalCount",
+                COUNT(*) FILTER (WHERE c.status = 'IN_STOCK' AND NOT c."isIndividual")::int AS "cartonCount",
+                COUNT(*) FILTER (WHERE c.status = 'IN_STOCK' AND c."isIndividual")::int AS "individualCount"
+            FROM "Carton" c
+            JOIN "Product" p ON p.id = c."productId" AND p."deletedAt" IS NULL
+            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
+            WHERE c."warehouseId" = ${warehouseId}
+            GROUP BY p.id, p.name, p.unit, pm.id, pm.name
+        `;
+
+        const statusStats = await prisma.$queryRaw<{
+            shippedUnits: number; shippedCartons: number;
+            returnedUnits: number; returnedCartons: number;
+            totalUnits: number; totalCartons: number;
+        }[]>`
+            SELECT
+                SUM(CASE WHEN c.status = 'SHIPPED' THEN
+                        CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END
+                    ELSE 0 END)::int AS "shippedUnits",
+                COUNT(*) FILTER (WHERE c.status = 'SHIPPED')::int AS "shippedCartons",
+                SUM(CASE WHEN c.status = 'IN_STOCK' AND c."entryType" = 'RETURNED' THEN
+                        CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END
+                    ELSE 0 END)::int AS "returnedUnits",
+                COUNT(*) FILTER (WHERE c.status = 'IN_STOCK' AND c."entryType" = 'RETURNED')::int AS "returnedCartons",
+                SUM(CASE WHEN c.status = 'IN_STOCK' THEN
+                        CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END
+                    ELSE 0 END)::int AS "totalUnits",
+                COUNT(*) FILTER (WHERE c.status = 'IN_STOCK')::int AS "totalCartons"
+            FROM "Carton" c
+            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
+            WHERE c."warehouseId" = ${warehouseId}
+        `;
 
         const productMap = new Map<string, any>();
-        let totalUnits = 0;
-        let totalCartons = 0;
-        let shippedUnits = 0;
-        let shippedCartons = 0;
-        let returnedUnits = 0;
-        let returnedCartons = 0;
-
-        for (const carton of cartons) {
-            // کارتن‌های محصول بایگانی‌شده از نمای این صفحه پنهان می‌مانند (اما QR و اسکن سالم است)
-            if (carton.product.deletedAt) continue;
-            const units = carton.isIndividual ? 1 : carton.model?.unitsPerBox ?? 0;
-
-            if (carton.status === 'SHIPPED') {
-                shippedUnits += units;
-                shippedCartons += 1;
-                continue;
-            }
-
-            if (carton.status !== 'IN_STOCK') continue;
-
-            if (carton.entryType === 'RETURNED') {
-                returnedUnits += units;
-                returnedCartons += 1;
-            }
-
-            totalUnits += units;
-            totalCartons += 1;
-
-            const productKey = carton.productId;
+        for (const row of cartonStats) {
+            const productKey = row.productId;
             let productEntry = productMap.get(productKey);
             if (!productEntry) {
                 productEntry = {
-                    productId: carton.product.id,
-                    name: carton.product.name,
-                    unit: carton.product.unit?.trim() || 'عدد',
+                    productId: row.productId,
+                    name: row.productName,
+                    unit: row.unit?.trim() || 'عدد',
                     totalCount: 0,
                     cartonCount: 0,
                     individualCount: 0,
@@ -145,20 +151,17 @@ export const warehouseService = {
                 productMap.set(productKey, productEntry);
             }
 
-            productEntry.totalCount += units;
-            if (carton.isIndividual) {
-                productEntry.individualCount += 1;
-            } else {
-                productEntry.cartonCount += 1;
-            }
+            productEntry.totalCount += Number(row.totalCount || 0);
+            productEntry.cartonCount += Number(row.cartonCount || 0);
+            productEntry.individualCount += Number(row.individualCount || 0);
 
-            const modelKey = carton.model?.id ?? '__NO_MODEL__';
+            const modelKey = row.modelId ?? '__NO_MODEL__';
             let modelEntry = productEntry._modelMap.get(modelKey);
             if (!modelEntry) {
                 modelEntry = {
-                    modelId: carton.model?.id,
-                    name: carton.model?.name ?? 'بدون مدل',
-                    unit: carton.product.unit?.trim() || 'عدد',
+                    modelId: row.modelId,
+                    name: row.modelName ?? 'بدون مدل',
+                    unit: row.unit?.trim() || 'عدد',
                     totalCount: 0,
                     cartonCount: 0,
                     individualCount: 0,
@@ -166,14 +169,12 @@ export const warehouseService = {
                 productEntry._modelMap.set(modelKey, modelEntry);
                 productEntry.models.push(modelEntry);
             }
-
-            modelEntry.totalCount += units;
-            if (carton.isIndividual) {
-                modelEntry.individualCount += 1;
-            } else {
-                modelEntry.cartonCount += 1;
-            }
+            modelEntry.totalCount += Number(row.totalCount || 0);
+            modelEntry.cartonCount += Number(row.cartonCount || 0);
+            modelEntry.individualCount += Number(row.individualCount || 0);
         }
+
+        const shipped = statusStats[0] ?? { shippedUnits: 0, shippedCartons: 0, returnedUnits: 0, returnedCartons: 0, totalUnits: 0, totalCartons: 0 };
 
         // ── تراکنش‌های لِگاسی: محصولات بدون کارتن در این انبار ──
         // فقط انبار خود کاربر (warehouseId) — هیچ انبار دیگری در هیچ کوئری‌ای دیده نمی‌شود
@@ -196,10 +197,7 @@ export const warehouseService = {
                 ), 0)::int as "legacyCount"
             FROM "Product" p
             LEFT JOIN "Transaction" t
-                ON (
-                    t."productName" = p.name
-                    OR t."productName" LIKE (p.name || ' (%)')
-                )
+                ON t."productId" = p.id
                 AND t."warehouseId" = ${warehouseId}
             WHERE p."deletedAt" IS NULL
             GROUP BY p.id, p.name, p.unit
@@ -248,20 +246,20 @@ export const warehouseService = {
             });
 
         return {
-            totalUnits: products.reduce((sum, p) => sum + Number(p.totalCount || 0), 0),
-            totalCartons,
+            totalUnits: Number(shipped.totalUnits || 0),
+            totalCartons: Number(shipped.totalCartons || 0),
             totalProducts: products.length,
             totalModels: products.reduce(
                 (sum, product) => sum + product.models.length,
                 0,
             ),
-            shippedUnits,
-            shippedCartons,
-            returnedUnits,
-            returnedCartons,
+            shippedUnits: Number(shipped.shippedUnits || 0),
+            shippedCartons: Number(shipped.shippedCartons || 0),
+            returnedUnits: Number(shipped.returnedUnits || 0),
+            returnedCartons: Number(shipped.returnedCartons || 0),
             products,
         };
-    },
+    }),
 
     //موجودی محصولات فقط در انبار خود کاربر — همان منطق پنل مدیر (کارتن + لِگاسی)
     //تضمین دسترسی: هیچ کوئری‌ای خارج از warehouseId کاربر اجرا نمی‌شود
@@ -329,10 +327,7 @@ export const warehouseService = {
                 ), 0)::int as "legacyCount"
             FROM "Product" p
             LEFT JOIN "Transaction" t
-                ON (
-                    t."productName" = p.name
-                    OR t."productName" LIKE (p.name || ' (%)')
-                )
+                ON t."productId" = p.id
                 AND t."warehouseId" = ${warehouseId}
             WHERE p."deletedAt" IS NULL
             GROUP BY p.id

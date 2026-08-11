@@ -1,6 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/auth_api_service.dart';
+import '../lock/lock_config.dart';
+import '../lock/lock_provider.dart';
+import '../lock/lock_storage.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/network/dio_client.dart';
@@ -16,11 +18,18 @@ final authProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
 );
 
+/// نتیجهٔ قفل‌گشایی — تفکیک برای نمایش پیام مناسب در صفحه قفل
+enum UnlockResult { success, invalidSession, networkError }
+
 class AuthState {
   final bool isLoading;
+
+  /// باز شدن اولیه برنامه — تا پایان آن صفحه اسپلش نمایش داده می‌شود
+  final bool isInitializing;
+
   final bool isLoggedIn;
 
-  /// نشست ذخیره‌شده هست اما باید با اثر انگشت/فیس آید باز شود
+  /// نشست ذخیره‌شده هست اما باید با پین/اثر انگشت/فیس آید باز شود
   final bool isLocked;
   final String? token;
   final String? role;
@@ -31,6 +40,7 @@ class AuthState {
 
   AuthState({
     this.isLoading = false,
+    this.isInitializing = true,
     this.isLoggedIn = false,
     this.isLocked = false,
     this.token,
@@ -43,6 +53,7 @@ class AuthState {
 
   AuthState copyWith({
     bool? isLoading,
+    bool? isInitializing,
     bool? isLoggedIn,
     bool? isLocked,
     String? token,
@@ -54,6 +65,7 @@ class AuthState {
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
+      isInitializing: isInitializing ?? this.isInitializing,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isLocked: isLocked ?? this.isLocked,
       token: token ?? this.token,
@@ -82,19 +94,16 @@ class AuthNotifier extends Notifier<AuthState> {
     AuthSession.onSessionExpired = logout;
 
     final refreshToken = await SecureStorage.getRefreshToken();
-    final biometricEnabled = LocalStorage.getBiometricEnabled();
+    final lockMethod = await LockStorage.getMethod();
 
-    // نشست ذخیره‌شده + بیومتریک فعال → صفحه قفل اثر انگشت
-    // (روی وب که بیومتریک وجود ندارد این مسیر رد می‌شود)
-    if (refreshToken != null &&
-        refreshToken.isNotEmpty &&
-        biometricEnabled &&
-        !kIsWeb) {
+    // نشست ذخیره‌شده + قفل فعال → صفحه قفل (پین/اثر انگشت/فیس آید)
+    if (refreshToken != null && refreshToken.isNotEmpty && lockMethod != LockMethod.none) {
       state = state.copyWith(isLocked: true);
+      await _finishInit();
       return;
     }
 
-    // پلتفرم بدون بیومتریک (وب) یا بیومتریک خاموش: بازیابی نشست قبلی
+    // بدون قفل: بازیابی نشست قبلی
     final token = await SecureStorage.getAccessToken();
     final role = LocalStorage.getRole();
     if (token != null && token.isNotEmpty && role != null) {
@@ -114,6 +123,14 @@ class AuthNotifier extends Notifier<AuthState> {
 
       await _connectServices();
     }
+
+    await _finishInit();
+  }
+
+  /// حداقل زمان نمایش اسپلش (~۱.۵ ثانیه) + پایان وضعیت راه‌اندازی
+  Future<void> _finishInit() async {
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    state = state.copyWith(isInitializing: false);
   }
 
   Future<void> _fetchProfile() async {
@@ -130,11 +147,15 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> login(String phone, String password) async {
+    // خروج در جریان → لاگین جدیدی شروع نشود
+    if (_loggingOut) return;
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final authService = ref.read(authServiceProvider);
       final response = await authService.login(phone, password);
+      // در این فاصله خروج رخ داده → نتیجهٔ لاگین نادیده گرفته شود
+      if (_loggingOut) return;
       final token = response['token'] as String;
       final refreshToken = response['refreshToken'] as String? ?? '';
       final role = response['user']?['role'] as String? ?? '';
@@ -151,6 +172,9 @@ class AuthNotifier extends Notifier<AuthState> {
         phone: phone,
         avatarUrl: avatarUrl,
       );
+
+      // پس از ذخیره‌سازی هم بررسی می‌شود تا لاگینِ دیررس جای خروج را نگیرد
+      if (_loggingOut) return;
 
       state = state.copyWith(
         isLoading: false,
@@ -172,27 +196,47 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// پس از تأیید اثر انگشت/فیس آید: رفرش سایلنت و ورود به داشبورد
-  Future<bool> unlockWithBiometrics() async {
-    final newAccess = await AuthSession.refreshAccessToken();
-    if (newAccess == null) {
-      // رفرش توکن منقضی/باطل شده → خروج کامل (بازگشت به صفحه رمز)
-      await logout();
-      return false;
+  Future<UnlockResult>? _unlockFuture;
+
+  /// پس از تأیید پین/اثر انگشت/فیس آید: رفرش سایلنت و ورود به داشبورد.
+  /// تک‌ریسکی — لمس دوباره همان آیندهٔ در جریان را برمی‌گرداند.
+  Future<UnlockResult> unlock() {
+    return _unlockFuture ??=
+        _doUnlock().whenComplete(() => _unlockFuture = null);
+  }
+
+  Future<UnlockResult> _doUnlock() async {
+    final outcome = await AuthSession.refreshWithOutcome();
+    if (outcome.isOk) {
+      final role = LocalStorage.getRole();
+      // دفاعی: بدون نقش ذخیره‌شده مسیری برای ادامه نیست → نشست را ببند
+      if (role == null || role.isEmpty) {
+        await logout();
+        return UnlockResult.invalidSession;
+      }
+
+      state = state.copyWith(
+        isLoggedIn: true,
+        isLocked: false,
+        token: outcome.accessToken,
+        role: role,
+        name: LocalStorage.getName(),
+        phone: LocalStorage.getPhone(),
+        avatarUrl: LocalStorage.getAvatarUrl(),
+      );
+
+      await _connectServices();
+      return UnlockResult.success;
     }
 
-    state = state.copyWith(
-      isLoggedIn: true,
-      isLocked: false,
-      token: newAccess,
-      role: LocalStorage.getRole() ?? '',
-      name: LocalStorage.getName(),
-      phone: LocalStorage.getPhone(),
-      avatarUrl: LocalStorage.getAvatarUrl(),
-    );
+    if (outcome.failure == RefreshFailure.invalidSession) {
+      // نشست واقعاً مرده (توکن باطل/منقضی) → خروج کامل به صفحه رمز
+      await logout();
+      return UnlockResult.invalidSession;
+    }
 
-    await _connectServices();
-    return true;
+    // خطای شبکه/سرور — نشست معتبر است؛ روی صفحه قفل می‌ماند
+    return UnlockResult.networkError;
   }
 
   Future<void> _connectServices() async {
@@ -237,13 +281,17 @@ class AuthNotifier extends Notifier<AuthState> {
         }
       }
     } finally {
+      // اول وضعیت در حافظه ریست می‌شود — حتی اگر پاک‌سازی استوریج خطا بدهد، نشست مرده نمی‌ماند
+      _loggingOut = false;
+      state = AuthState(isInitializing: false);
+
       // Disconnect socket before logout
       SocketService().disconnect();
 
       await SecureStorage.clearTokens();
+      // پاک‌سازی قفل برنامه (پین و روش قفل) — مصوب: بعد از خروج کامل پاک شوند
+      await ref.read(lockProvider.notifier).clearAllForLogout();
       await LocalStorage.clearAll();
-      _loggingOut = false;
-      state = AuthState();
     }
   }
 }

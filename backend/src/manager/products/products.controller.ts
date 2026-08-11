@@ -74,7 +74,7 @@ export const productsController = {
       const raw = req.body.unitsPerBox;
       data.unitsPerBox = raw === null || String(raw).trim() === '' ? null : parseInt(String(raw), 10);
     }
-    const model = await productsService.updateProductModel(id, data);
+    const model = await productsService.updateProductModel(id, data, req.user!.id);
     res.json({ message: 'مدل ویرایش شد', model });
 
   }),

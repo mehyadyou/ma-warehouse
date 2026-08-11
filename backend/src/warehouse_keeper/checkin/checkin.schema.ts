@@ -13,7 +13,7 @@ export const checkinItemSchema = z.object({
 });
 
 export const submitCheckinSchema = z.object({
-    items: z.array(checkinItemSchema).min(1, 'حداقل یک محصول وارد کنید'),
+    items: z.array(checkinItemSchema).min(1, 'حداقل یک محصول وارد کنید').max(200, 'حداکثر ۲۰۰ ردیف در هر ورود'),
     // کلید ایدمپوتنسی سمت کلاینت: با یک کلید تکراری، پاسخ قبلی برگردانده می‌شود و ورود کالا دوباره ثبت نمی‌شود
     clientKey: z.string().trim().max(128).optional(),
 });

@@ -1,8 +1,9 @@
 import { prisma } from '../../utils/prisma';
+import { cached } from '../../utils/cache';
 
 export const inventoryService = {
     //موجودی کل محصولات
-    getInventorySummary: async () => {
+    getInventorySummary: async () => cached('inv:summary', 45, async () => {
         const totalRegisteredProducts = await prisma.product.count({
             where: { deletedAt: null },
         });
@@ -52,10 +53,7 @@ export const inventoryService = {
                 ), 0)::int as "legacyCount"
             FROM "Product" p
             LEFT JOIN "Transaction" t
-                ON (
-                    t."productName" = p.name
-                    OR t."productName" LIKE (p.name || ' (%)')
-                )
+                ON t."productId" = p.id
                 -- تراکنش‌های انبار بایگانی‌شده در آمار موجودی محاسبه نمی‌شوند
                 AND t."warehouseId" IN (SELECT "id" FROM "Warehouse" WHERE "deletedAt" IS NULL)
             GROUP BY p.id
@@ -104,12 +102,12 @@ export const inventoryService = {
             returnedUnits,
             inventory,
         };
-    },
+    }),
 
-    //موجودی هر انبار
+    //موجودی هر انبار — فقط ترکیب‌هایی که کارتن دارند (بدون CROSS JOIN انفجاری)
     getWarehouseInventory: async () => {
         const result = await prisma.$queryRaw`
-            SELECT 
+            SELECT
                 w.id as "warehouseId",
                 w.name as "warehouseName",
                 p.id as "productId",
@@ -124,14 +122,10 @@ export const inventoryService = {
                         ELSE 0
                     END
                 ), 0)::int as "count"
-            FROM "Warehouse" w
-            CROSS JOIN "Product" p
-            LEFT JOIN "Carton" c 
-                ON c."warehouseId" = w.id 
-                AND c."productId" = p.id
-            LEFT JOIN "ProductModel" pm ON c."modelId" = pm.id
-            WHERE p."deletedAt" IS NULL
-            AND w."deletedAt" IS NULL
+            FROM "Carton" c
+            JOIN "Warehouse" w ON w.id = c."warehouseId" AND w."deletedAt" IS NULL
+            JOIN "Product" p ON p.id = c."productId" AND p."deletedAt" IS NULL
+            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
             GROUP BY w.id, w.name, p.id, p.name
             ORDER BY w.name, p.name
         `;
@@ -147,9 +141,9 @@ export const inventoryService = {
             select: { id: true, name: true },
         });
 
-        // ── کارتن‌های در انبار: شمارش هر محصول در هر انبار ──
+        // ── کارتن‌های در انبار: شمارش هر محصول در هر انبار (فقط ترکیب‌هایی که کارتن دارند) ──
         const cartonInventory = await prisma.$queryRaw<{ productId: string; productName: string; unit: string | null; warehouseId: string; count: number }[]>`
-            SELECT 
+            SELECT
                 p.id as "productId",
                 p.name as "productName",
                 p.unit,
@@ -164,14 +158,10 @@ export const inventoryService = {
                         ELSE 0
                     END
                 ), 0)::int as "count"
-            FROM "Product" p
-            CROSS JOIN "Warehouse" w
-            LEFT JOIN "Carton" c 
-                ON c."productId" = p.id 
-                AND c."warehouseId" = w.id
-            LEFT JOIN "ProductModel" pm ON c."modelId" = pm.id
-            WHERE p."deletedAt" IS NULL
-            AND w."deletedAt" IS NULL
+            FROM "Carton" c
+            JOIN "Product" p ON p.id = c."productId" AND p."deletedAt" IS NULL
+            JOIN "Warehouse" w ON w.id = c."warehouseId" AND w."deletedAt" IS NULL
+            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
             GROUP BY p.id, p.name, p.unit, w.id
         `;
 
@@ -200,10 +190,7 @@ export const inventoryService = {
                 ), 0)::int as "legacyCount"
             FROM "Product" p
             LEFT JOIN "Transaction" t
-                ON (
-                    t."productName" = p.name
-                    OR t."productName" LIKE (p.name || ' (%)')
-                )
+                ON t."productId" = p.id
                 AND t."warehouseId" IN (SELECT "id" FROM "Warehouse" WHERE "deletedAt" IS NULL)
             WHERE p."deletedAt" IS NULL
             GROUP BY p.id, t."warehouseId"
@@ -323,7 +310,7 @@ export const inventoryService = {
             warehouseName: string;
             count: number;
         }[]>`
-            SELECT 
+            SELECT
                 pm.id as "modelId",
                 w.id as "warehouseId",
                 w.name as "warehouseName",
@@ -337,14 +324,11 @@ export const inventoryService = {
                         ELSE 0
                     END
                 ), 0)::int as "count"
-            FROM "ProductModel" pm
-            CROSS JOIN "Warehouse" w
-            LEFT JOIN "Carton" c 
-                ON c."modelId" = pm.id 
-                AND c."warehouseId" = w.id
+            FROM "Carton" c
+            JOIN "ProductModel" pm ON pm.id = c."modelId"
+            JOIN "Warehouse" w ON w.id = c."warehouseId" AND w."deletedAt" IS NULL
             WHERE pm."productId" = ${productId}
             AND pm."deletedAt" IS NULL
-            AND w."deletedAt" IS NULL
             GROUP BY pm.id, pm.name, pm."packageType", pm."unitsPerBox", w.id, w.name
             ORDER BY pm.name, w.name
         `;

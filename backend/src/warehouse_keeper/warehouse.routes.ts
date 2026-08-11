@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth';
+import { userRateLimit } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { submitCheckinSchema } from './checkin/checkin.schema';
 import { scanOutSchema } from './scanout/scanout.schema';
@@ -17,7 +18,7 @@ router.use(authenticate, authorize('WAREHOUSE_KEEPER'));
 router.get('/my-warehouse',           warehouseController.getMyWarehouse);
 router.get('/orders',                 warehouseController.getOrders);
 router.get('/inventory',              warehouseController.getInventory);
-router.get('/inventory-summary',      warehouseController.getInventorySummary);
+router.get('/inventory-summary',      userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:invsum' }), warehouseController.getInventorySummary);
 router.get('/inventory/products',     warehouseController.getProductInventory);
 router.get('/inventory/product/:productId', warehouseController.getProductModels);
 router.get('/transactions',           warehouseController.getTransactions);
@@ -27,14 +28,14 @@ router.get('/products',               warehouseController.getProducts);
 router.get('/qr-template',            qrcodeController.getTemplate);
 
 // ── Check-in ──
-router.post('/checkin', validate(submitCheckinSchema), checkinController.submit);
+router.post('/checkin', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:checkin' }), validate(submitCheckinSchema), checkinController.submit);
 router.get('/checkin/recent', checkinController.listRecent);
 
 // ── Shipped cartons ──
 router.get('/cartons/shipped', scanOutController.listShipped);
 
 // ── Scan-out ──
-router.post('/scan-out', validate(scanOutSchema), scanOutController.scan);
+router.post('/scan-out', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'w:scanout' }), validate(scanOutSchema), scanOutController.scan);
 
 // ── Loading plan ──
 router.post('/loading-plan',          loadingPlanController.generate);

@@ -1,5 +1,6 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../common/exceptions/AppError';
+import { logger } from '../utils/logger';
 
 // نقطه‌ی مرکزی پاسخ‌دهی به همه‌ی خطاها — شکل پاسخ همیشه یکدست است: { error: string }
 export const errorHandler = (
@@ -36,7 +37,7 @@ export const errorHandler = (
     });
   }
 
-  console.error('Unexpected Error:', err);
+  logger.error({ err, reqId: req.id, method: req.method, url: req.url }, 'unhandled error');
   return res.status(500).json({
     error: 'خطای داخلی سرور؛ لطفاً دوباره تلاش کنید',
   });

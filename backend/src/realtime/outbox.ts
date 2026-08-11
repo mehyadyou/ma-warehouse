@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import { realtime } from './realtime';
 import { RealtimeEvents } from './events';
 import { notificationService } from '../notification/notification.service';
+import { logger } from '../utils/logger';
 
 const MAX_ATTEMPTS = 5;
 
@@ -28,7 +29,7 @@ async function findWarehouseKeepers(warehouseId?: string | null) {
   });
 }
 
-async function deliver(type: string, rawPayload: unknown) {
+async function deliver(type: string, rawPayload: unknown, eventId: string) {
   const payload = asPayload(rawPayload);
 
   switch (type) {
@@ -50,6 +51,7 @@ async function deliver(type: string, rawPayload: unknown) {
             productName: payload.productName ?? null,
             modelName: payload.modelName ?? null,
           },
+          `${eventId}:${mgr.id}`,
         );
       }
       realtime.toRole('MANAGER', RealtimeEvents.SCANOUT_DONE, payload);
@@ -81,6 +83,7 @@ async function deliver(type: string, rawPayload: unknown) {
                 modelName: g.modelName ?? null,
                 entryType: 'RETURNED',
               },
+              `${eventId}:${mgr.id}:return`,
             );
           } else {
             await notificationService.create(
@@ -96,6 +99,7 @@ async function deliver(type: string, rawPayload: unknown) {
                 modelName: g.modelName ?? null,
                 entryType: 'NEW',
               },
+              `${eventId}:${mgr.id}:entry`,
             );
           }
         }
@@ -129,6 +133,7 @@ async function deliver(type: string, rawPayload: unknown) {
             senderName: payload.senderName ?? null,
             receiverName: payload.receiverName ?? null,
           },
+          `${eventId}:${keeper.id}`,
         );
       }
       realtime.toWarehouse(payload.warehouseId, RealtimeEvents.ORDER_CREATED, payload);
@@ -157,6 +162,7 @@ async function deliver(type: string, rawPayload: unknown) {
             senderName: payload.senderName ?? null,
             receiverName: payload.receiverName ?? null,
           },
+          `${eventId}:${keeper.id}`,
         );
       }
       realtime.toWarehouse(payload.warehouseId, RealtimeEvents.ORDER_DELETED, payload);
@@ -174,6 +180,17 @@ async function deliver(type: string, rawPayload: unknown) {
 }
 
 export async function dispatchOutbox(batch = 50): Promise<number> {
+  // بازیابی رویدادهای معلق: اگر سرور بین claim و deliver کرش کرده باشند
+  const STUCK_MS = 60_000;
+  await prisma.outboxEvent.updateMany({
+    where: {
+      status: 'DISPATCHING',
+      claimedAt: { lt: new Date(Date.now() - STUCK_MS) },
+      attempts: { lt: MAX_ATTEMPTS },
+    },
+    data: { status: 'PENDING' },
+  });
+
   const events = await prisma.outboxEvent.findMany({
     where: { status: 'PENDING' },
     orderBy: { createdAt: 'asc' },
@@ -185,12 +202,12 @@ export async function dispatchOutbox(batch = 50): Promise<number> {
     // ادعای اتمی: فقط یک مصرف‌کننده می‌تواند این رویداد را بردارد
     const claimed = await prisma.outboxEvent.updateMany({
       where: { id: ev.id, status: 'PENDING' },
-      data: { status: 'DISPATCHING', attempts: { increment: 1 } },
+      data: { status: 'DISPATCHING', attempts: { increment: 1 }, claimedAt: new Date() },
     });
     if (claimed.count !== 1) continue;
 
     try {
-      await deliver(ev.type, ev.payload);
+      await deliver(ev.type, ev.payload, ev.id);
       await prisma.outboxEvent.updateMany({
         where: { id: ev.id, status: 'DISPATCHING' },
         data: { status: 'DISPATCHED', dispatchedAt: new Date() },
@@ -209,8 +226,9 @@ export async function dispatchOutbox(batch = 50): Promise<number> {
       });
       if (failed) {
         // هشدار: رویداد دیگر دوباره تلاش نمی‌شود — اینجا باید در monitoring/گزارش دیده شود
-        console.error(
-          `[outbox] رویداد ${ev.id} (${ev.type} / ${ev.aggregate}) پس از ${MAX_ATTEMPTS} تلاش با شکست FINAL شد: ${err?.message ?? err}`,
+        logger.error(
+          { eventId: ev.id, type: ev.type, aggregate: ev.aggregate, attempts: MAX_ATTEMPTS, error: err?.message ?? err },
+          'outbox: event FINAL failed',
         );
       }
     }
@@ -220,7 +238,7 @@ export async function dispatchOutbox(batch = 50): Promise<number> {
 
 export function startOutboxDispatcher(intervalMs = 2000): () => void {
   const tick = () => {
-    dispatchOutbox().catch((e) => console.error('[outbox] dispatcher error:', e));
+    dispatchOutbox().catch((e) => logger.error({ err: e }, 'outbox: dispatcher error'));
   };
   tick();
   const timer = setInterval(tick, intervalMs);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth';
+import { userRateLimit } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { createOrderSchema, updateOrderSchema, createCarrierSchema } from './orders/orders.schema';
 import { dashboardController } from './dashboard/dashboard.controller';
@@ -16,8 +17,8 @@ const router = Router();
 router.use(authenticate, authorize('MANAGER'));
 
 // ── Dashboard ──
-router.get('/dashboard', dashboardController.dashboard);
-router.get('/transactions', dashboardController.getAllTransactionsByDate);
+router.get('/dashboard', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:dash' }), dashboardController.dashboard);
+router.get('/transactions', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:tx' }), dashboardController.getAllTransactionsByDate);
 router.get('/recent-activities', dashboardController.getRecentActivities);
 router.get('/history', dashboardController.getHistory);
 
@@ -59,15 +60,15 @@ router.get('/carriers', ordersController.getCarriers);
 router.post('/carriers', validate(createCarrierSchema), ordersController.createCarrier);
 
 // ── Inventory ──
-router.get('/inventory-summary', inventoryController.getInventorySummary);
-router.get('/warehouse-inventory', inventoryController.getWarehouseInventory);
-router.get('/inventory', inventoryController.getProductInventory);
+router.get('/inventory-summary', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:invsum' }), inventoryController.getInventorySummary);
+router.get('/warehouse-inventory', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:winv' }), inventoryController.getWarehouseInventory);
+router.get('/inventory', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:inv' }), inventoryController.getProductInventory);
 router.get('/inventory/product/:productId', inventoryController.getProductModels);
 
 // ── Search ──
-router.get('/search-products', searchController.searchProducts);
-router.get('/search/serial', searchController.searchBySerial);
-router.get('/search/shipments', searchController.searchShipments);
+router.get('/search-products', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:sp' }), searchController.searchProducts);
+router.get('/search/serial', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:ss' }), searchController.searchBySerial);
+router.get('/search/shipments', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:ssh' }), searchController.searchShipments);
 
 // ── Rate ──
 router.get('/rate/dollar', rateController.getDollarRate);
