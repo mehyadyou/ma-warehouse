@@ -7,6 +7,10 @@ import { loginSchema, createFirstManagerSchema, updateProfileSchema, refreshSche
 
 const router = Router();
 
+// محدودیت‌ها با env قابل تنظیم (فقط برای تست/staging؛ پیش‌فرض‌ها رفتار production هستند)
+const loginRateMax = Number(process.env.LOGIN_RATE_MAX) || 10;
+const refreshRateMax = Number(process.env.REFRESH_RATE_MAX) || 30;
+
 // POST /api/auth/create-first-manager — محدودیت: حداکثر ۵ بار در ساعت
 router.post('/create-first-manager',
     rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyPrefix: 'first-manager' }),
@@ -15,14 +19,14 @@ router.post('/create-first-manager',
 
 // POST /api/auth/login — محدودیت تلاش: حداکثر ۱۰ بار در ۱۵ دقیقه به ازای هر IP
 router.post('/login',
-    rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'login' }),
+    rateLimit({ windowMs: 15 * 60 * 1000, max: loginRateMax, keyPrefix: 'login' }),
     validate(loginSchema),
     authController.login,
 );
 
 // POST /api/auth/refresh — تازه‌سازی نشست با چرخش توکن رفرش
 router.post('/refresh',
-    rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyPrefix: 'refresh' }),
+    rateLimit({ windowMs: 15 * 60 * 1000, max: refreshRateMax, keyPrefix: 'refresh' }),
     validate(refreshSchema),
     authController.refresh,
 );

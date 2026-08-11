@@ -42,7 +42,14 @@ export const warehouseController = {
         res.json({ transactions });
     }),
     getProducts: asyncHandler(async (req: Request, res: Response) => {
-        const products = await warehouseService.getProducts();
-        res.json({ products });
+        const q = String(req.query.q ?? '').trim();
+        const page = req.query.page !== undefined ? Number(req.query.page) : undefined;
+        const pageSize = req.query.pageSize !== undefined ? Number(req.query.pageSize) : undefined;
+        const products = await warehouseService.getProducts({
+            ...(q ? { q } : {}),
+            ...(Number.isInteger(page) && page! > 0 ? { page } : {}),
+            ...(Number.isInteger(pageSize) && pageSize! > 0 ? { pageSize: Math.min(pageSize!, 500) } : {}),
+        });
+        res.json(Array.isArray(products) ? { products } : products);
     }),
 };

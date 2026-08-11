@@ -35,10 +35,32 @@ class ManagerApiService {
         .toList();
   }
 
-  Future<List<ProductModel>> getProducts() async {
-    final response = await _dio.get('/manager/products');
+  Future<List<ProductModel>> getProducts({String? q, int? page, int? pageSize}) async {
+    final response = await _dio.get('/manager/products', queryParameters: {
+      if (q != null && q.isNotEmpty) 'q': q,
+      if (page != null) 'page': page,
+      if (pageSize != null) 'pageSize': pageSize,
+    });
     final data = response.data['products'] as List;
     return data.map((json) => ProductModel.fromJson(json)).toList();
+  }
+
+  /// صفحهٔ مشخص از محصولات + تعداد کل (برای لیست صفحه‌بندی‌شده)
+  Future<({List<ProductModel> products, int total})> getProductsPage({
+    String? q,
+    required int page,
+    required int pageSize,
+  }) async {
+    final response = await _dio.get('/manager/products', queryParameters: {
+      if (q != null && q.isNotEmpty) 'q': q,
+      'page': page,
+      'pageSize': pageSize,
+    });
+    final data = response.data;
+    final list = (data['products'] as List)
+        .map((json) => ProductModel.fromJson(json))
+        .toList();
+    return (products: list, total: (data['total'] as int?) ?? 0);
   }
 
   /// لیست محصولات بایگانی‌شده (برای بازیابی)

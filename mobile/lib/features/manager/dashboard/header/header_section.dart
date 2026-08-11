@@ -12,19 +12,26 @@ class _UserAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 48, height: 48,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFF22262D),
+        color: Color(0xFF22262D),
+      ),
+      foregroundDecoration: BoxDecoration(
+        shape: BoxShape.circle,
         border: Border.all(color: _green.withValues(alpha: 0.5), width: 2),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: avatarUrl != null && avatarUrl!.isNotEmpty
-          ? Image.network(
-              ApiConstants.fullUrl(avatarUrl!),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: _green),
-            )
-          : const Icon(Icons.person_rounded, color: _green),
+      child: ClipOval(
+        child: SizedBox(
+          width: 48, height: 48,
+          child: avatarUrl != null && avatarUrl!.isNotEmpty
+              ? Image.network(
+                  ApiConstants.fullUrl(avatarUrl!),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: _green),
+                )
+              : const Icon(Icons.person_rounded, color: _green),
+        ),
+      ),
     );
   }
 }

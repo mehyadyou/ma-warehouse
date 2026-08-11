@@ -4,8 +4,15 @@ import { asyncHandler } from '../../middleware/asyncHandler';
 
 export const productsController = {
   getProducts: asyncHandler(async (req: Request, res: Response) => {
-    const products = await productsService.getProducts();
-    res.json({ products });
+    const q = String(req.query.q ?? '').trim();
+    const page = req.query.page !== undefined ? Number(req.query.page) : undefined;
+    const pageSize = req.query.pageSize !== undefined ? Number(req.query.pageSize) : undefined;
+    const products = await productsService.getProducts({
+      ...(q ? { q } : {}),
+      ...(Number.isInteger(page) && page! > 0 ? { page } : {}),
+      ...(Number.isInteger(pageSize) && pageSize! > 0 ? { pageSize: Math.min(pageSize!, 500) } : {}),
+    });
+    res.json(Array.isArray(products) ? { products } : products);
 
   }),
 

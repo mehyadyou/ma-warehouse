@@ -1,27 +1,53 @@
-﻿import { prisma } from '../../utils/prisma';
+﻿import { Prisma } from '@prisma/client';
+import { prisma } from '../../utils/prisma';
 import { AppError } from '../../common/exceptions/AppError';
 import { writeAuditStandalone } from '../../utils/audit';
 
 export const productsService = {
     //لیست محصولات (با مدل‌ها) — بدون موارد بایگانی‌شده
-    getProducts: async () => {
-        return await prisma.product.findMany({
-            where: { deletedAt: null },
-            orderBy: { name: 'asc' },
-            include: {
-                models: {
-                    where: { deletedAt: null },
-                    orderBy: { name: 'asc' },
-                    select: {
-                        id: true,
-                        name: true,
-                        price: true,
-                        packageType: true,
-                        unitsPerBox: true,
-                    },
+    // q: جستجوی نام محصول/مدل؛ page/pageSize: صفحه‌بندی؛ بدون پارامتر = رفتار قدیمی (همه)
+    getProducts: async (opts: { q?: string; page?: number; pageSize?: number } = {}) => {
+        const where: Prisma.ProductWhereInput = {
+            deletedAt: null,
+            ...(opts.q?.trim()
+                ? {
+                      OR: [
+                          { name: { contains: opts.q.trim(), mode: 'insensitive' } },
+                          { models: { some: { name: { contains: opts.q.trim(), mode: 'insensitive' } } } },
+                      ],
+                  }
+                : {}),
+        };
+        const include = {
+            models: {
+                where: { deletedAt: null },
+                orderBy: { name: 'asc' as const },
+                select: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    packageType: true,
+                    unitsPerBox: true,
                 },
             },
-        });
+        } satisfies Prisma.ProductInclude;
+
+        if (opts.page !== undefined && opts.pageSize !== undefined) {
+            const skip = (Math.max(1, opts.page) - 1) * Math.max(1, opts.pageSize);
+            const [products, total] = await prisma.$transaction([
+                prisma.product.findMany({
+                    where,
+                    orderBy: { name: 'asc' },
+                    include,
+                    skip,
+                    take: Math.max(1, opts.pageSize),
+                }),
+                prisma.product.count({ where }),
+            ]);
+            return { products, items: products.length, total, page: opts.page, pageSize: opts.pageSize };
+        }
+
+        return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include });
     },
 
     //محصولات بایگانی‌شده — برای بازیابی با آخرین دادهٔ کامل

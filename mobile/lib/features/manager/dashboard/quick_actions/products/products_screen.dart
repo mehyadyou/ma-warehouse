@@ -1,8 +1,11 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../data/manager_api_service.dart';
 import '../../../providers/manager_api_provider.dart';
+import '../../../models/product_model.dart';
 import '../../product_management/add_product_screen.dart';
 import '../../product_management/edit_product_screen.dart';
 import '../../../../../core/network/api_error.dart';
@@ -20,50 +23,118 @@ class ProductsScreen extends ConsumerStatefulWidget {
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   late final ManagerApiService _api = ref.read(managerApiServiceProvider);
-  List<Map<String, dynamic>> _products = [];
+  final List<Map<String, dynamic>> _products = [];
+  final TextEditingController _searchCtrl = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
+  Timer? _debounce;
+
+  int _page = 1;
+  int _total = 0;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  String _query = '';
+
+  static const int _pageSize = 100;
 
   @override
   void initState() {
     super.initState();
     _loadProducts();
+    _scrollCtrl.addListener(_onScroll);
   }
 
-  Future<void> _loadProducts() async {
-    setState(() => _loading = true);
-    try {
-      final rawProducts = await _api.getProducts();
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
-      final List<Map<String, dynamic>> flattenedList = [];
-      for (var p in rawProducts) {
-        final unit = (p.unit ?? '').trim().isNotEmpty ? p.unit! : 'عدد';
-        final models = p.models;
-        if (models.isEmpty) {
-          flattenedList.add({
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 400) {
+      _loadMore();
+    }
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _query = value.trim());
+      _loadProducts(reset: true);
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _loading) return;
+    setState(() => _loadingMore = true);
+    try {
+      final result = await _api.getProductsPage(
+        q: _query.isEmpty ? null : _query,
+        page: _page + 1,
+        pageSize: _pageSize,
+      );
+      _addRows(result.products);
+      _page += 1;
+      _hasMore = _products.length < result.total;
+      _total = result.total;
+    } catch (_) {}
+    if (mounted) setState(() => _loadingMore = false);
+  }
+
+  Future<void> _loadProducts({bool reset = true}) async {
+    if (reset) {
+      setState(() {
+        _loading = true;
+        _products.clear();
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    try {
+      final result = await _api.getProductsPage(
+        q: _query.isEmpty ? null : _query,
+        page: reset ? 1 : _page,
+        pageSize: _pageSize,
+      );
+      if (reset) _products.clear();
+      _addRows(result.products);
+      if (reset) _page = 1;
+      _total = result.total;
+      _hasMore = _products.length < result.total;
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _addRows(List<ProductModel> rawProducts) {
+    for (var p in rawProducts) {
+      final unit = (p.unit ?? '').trim().isNotEmpty ? p.unit! : 'عدد';
+      final models = p.models;
+      if (models.isEmpty) {
+        _products.add({
+          'productId': p.id,
+          'productName': p.name,
+          'unit': unit,
+          'modelId': '',
+          'modelName': '',
+          'price': null,
+        });
+      } else {
+        for (var m in models) {
+          _products.add({
             'productId': p.id,
             'productName': p.name,
             'unit': unit,
-            'modelId': '',
-            'modelName': '',
-            'price': null,
+            'modelId': m.id,
+            'modelName': m.name,
+            'price': m.price,
           });
-        } else {
-          for (var m in models) {
-            flattenedList.add({
-              'productId': p.id,
-              'productName': p.name,
-              'unit': unit,
-              'modelId': m.id,
-              'modelName': m.name,
-              'price': m.price,
-            });
-          }
         }
       }
-
-      setState(() => _products = flattenedList);
-    } catch (_) {}
-    setState(() => _loading = false);
+    }
   }
 
   void _deleteProduct(String productId, String productName) async {
@@ -222,6 +293,46 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: _onQueryChanged,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'جستجوی نام محصول یا مدل…',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
+              prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 22),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        _onQueryChanged('');
+                      },
+                    ),
+              filled: true,
+              fillColor: _surface,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        if (!_loading && _total > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${_products.length} از $_total',
+                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
+              ),
+            ),
+          ),
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: _green))
@@ -230,13 +341,29 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Icon(Icons.inventory_2_rounded, size: 48, color: Colors.white.withOpacity(0.2)),
                         const SizedBox(height: 12),
-                        Text('هیچ محصولی ثبت نشده', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14)),
+                        Text(
+                          _query.isEmpty ? 'هیچ محصولی ثبت نشده' : 'نتیجه‌ای یافت نشد',
+                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+                        ),
                       ]),
                     )
                   : ListView.builder(
+                      controller: _scrollCtrl,
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _products.length,
+                      itemCount: _products.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index >= _products.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+                              ),
+                            ),
+                          );
+                        }
                         final p = _products[index];
                         final pId = p['productId'] ?? '';
                         final pName = p['productName'] ?? '';

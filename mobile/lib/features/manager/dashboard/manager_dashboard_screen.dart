@@ -141,7 +141,6 @@ class _ManagerDashboardScreenState
           userName: auth.name ?? 'کاربر',
           userRole: _roleLabel(auth.role),
           avatarUrl: auth.avatarUrl,
-          onDashboardTap: () => setState(() => _selectedIndex = 0),
           onSettingsTap: () {
             Navigator.push(
               context,

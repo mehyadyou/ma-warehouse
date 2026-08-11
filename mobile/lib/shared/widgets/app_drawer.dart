@@ -6,7 +6,6 @@ class AppDrawer extends StatelessWidget {
   final String userName;
   final String userRole;
   final String? avatarUrl;
-  final VoidCallback? onDashboardTap;
   final VoidCallback? onInventoryTap;
   final VoidCallback? onTransactionsTap;
   final VoidCallback? onHistoryTap;
@@ -22,7 +21,6 @@ class AppDrawer extends StatelessWidget {
     required this.userName,
     required this.userRole,
     this.avatarUrl,
-    this.onDashboardTap,
     this.onInventoryTap,
     this.onTransactionsTap,
     this.onHistoryTap,
@@ -51,19 +49,27 @@ class AppDrawer extends StatelessWidget {
                 Container(
                   width: 72,
                   height: 72,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF22262D),
+                    color: Color(0xFF22262D),
+                  ),
+                  foregroundDecoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     border: Border.all(color: greenColor, width: 2.5),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? Image.network(
-                          ApiConstants.fullUrl(avatarUrl!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, color: Color(0xFF4ADE80), size: 40),
-                        )
-                      : const Icon(Icons.person_rounded, color: Color(0xFF4ADE80), size: 40),
+                  child: ClipOval(
+                    child: SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: avatarUrl != null && avatarUrl!.isNotEmpty
+                          ? Image.network(
+                              ApiConstants.fullUrl(avatarUrl!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const Icon(Icons.person_rounded, color: Color(0xFF4ADE80), size: 40),
+                            )
+                          : const Icon(Icons.person_rounded, color: Color(0xFF4ADE80), size: 40),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -85,9 +91,7 @@ class AppDrawer extends StatelessWidget {
               ],
             ),
           ),
-          _buildItem(context, Icons.dashboard, 'داشبورد', onDashboardTap),
-          if (onInventoryTap != null)
-            _buildItem(context, Icons.inventory, 'موجودی', onInventoryTap),
+          _buildItem(context, Icons.inventory, 'موجودی', onInventoryTap),
           if (onTransactionsTap != null)
             _buildItem(context, Icons.history, 'تراکنش‌ها', onTransactionsTap),
           if (onHistoryTap != null)
