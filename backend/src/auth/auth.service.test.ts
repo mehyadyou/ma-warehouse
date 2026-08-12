@@ -19,6 +19,9 @@ vi.mock('../utils/prisma', () => ({
             delete: vi.fn(),
             deleteMany: vi.fn(),
         },
+        warehouse: {
+            findUnique: vi.fn(),
+        },
     },
 }));
 
@@ -83,6 +86,38 @@ describe('authService.login', () => {
         expect(result.refreshToken).toBeTruthy();
         expect(result.user).not.toHaveProperty('password');
         expect(result.user.mustChangePassword).toBe(false);
+    });
+
+    it('انباردارِ انبار بایگانیشده → 403 فریز (حتی با رمز درست)', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(
+            baseUser({ role: 'WAREHOUSE_KEEPER', warehouseId: 'wh1' })
+        );
+        (bcrypt.compare as any).mockResolvedValue(true);
+        (prisma.warehouse.findUnique as any).mockResolvedValue({ deletedAt: new Date() });
+
+        await expect(authService.login('09307406877', 'password1')).rejects.toMatchObject({
+            statusCode: 403,
+            message: expect.stringContaining('بایگانیشده'),
+        });
+        // هیچ توکنی صادر نشود
+        expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('انباردارِ انبار فعال → ورود موفق; وضعیت انبار از DB چک میشود', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(
+            baseUser({ role: 'WAREHOUSE_KEEPER', warehouseId: 'wh1' })
+        );
+        (bcrypt.compare as any).mockResolvedValue(true);
+        (prisma.warehouse.findUnique as any).mockResolvedValue({ deletedAt: null });
+        (prisma.refreshToken.create as any).mockResolvedValue({});
+
+        const result = await authService.login('09307406877', 'password1');
+
+        expect(prisma.warehouse.findUnique).toHaveBeenCalledWith({
+            where: { id: 'wh1' },
+            select: { deletedAt: true },
+        });
+        expect(result.token).toBe('access-token');
     });
 
     it('رمز اشتباه: افزایش شمارش تلاش‌های ناموفق', async () => {
@@ -199,6 +234,43 @@ describe('authService.refresh', () => {
     it('توکن ناشناخته → 401', async () => {
         (prisma.refreshToken.findUnique as any).mockResolvedValue(null);
         await expect(authService.refresh('unknown-token')).rejects.toThrow('نامعتبر');
+    });
+
+    it('انباردارِ انبار بایگانیشده → 403 فریز (نشست تازهسازی نمیشود)', async () => {
+        (prisma.refreshToken.findUnique as any).mockResolvedValue(storedToken());
+        (prisma.user.findUnique as any).mockResolvedValue(
+            baseUser({ role: 'WAREHOUSE_KEEPER', warehouseId: 'wh1' })
+        );
+        (prisma.warehouse.findUnique as any).mockResolvedValue({ deletedAt: new Date() });
+
+        await expect(authService.refresh('keeper-refresh-token')).rejects.toMatchObject({
+            statusCode: 403,
+            message: expect.stringContaining('بایگانیشده'),
+        });
+        // چرخش توکن نباید اتفاق بیفتد
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('انباردارِ انبار فعال → رفرش موفق', async () => {
+        (prisma.refreshToken.findUnique as any).mockResolvedValue(storedToken());
+        (prisma.user.findUnique as any).mockResolvedValue(
+            baseUser({ role: 'WAREHOUSE_KEEPER', warehouseId: 'wh1' })
+        );
+        (prisma.warehouse.findUnique as any).mockResolvedValue({ deletedAt: null });
+        (prisma.$transaction as any).mockImplementation(async (cb: any) => {
+            const tx = {
+                refreshToken: {
+                    update: vi.fn().mockResolvedValue({}),
+                    create: vi.fn().mockResolvedValue({}),
+                },
+            };
+            return await cb(tx);
+        });
+
+        const result = await authService.refresh('keeper-refresh-token');
+
+        expect(result.token).toBe('access-token');
+        expect(result.refreshToken).toBeTruthy();
     });
 });
 

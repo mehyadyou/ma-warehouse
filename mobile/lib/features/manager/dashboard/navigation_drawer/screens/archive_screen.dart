@@ -23,7 +23,10 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   List<ArchivedProductModel> _products = [];
   List<ArchivedWarehouseModel> _warehouses = [];
   bool _loading = true;
-  bool _error = false;
+  String? _productsError;
+  String? _warehousesError;
+  String? _restoringProductId;
+  String? _restoringWarehouseId;
 
   @override
   void initState() {
@@ -34,34 +37,55 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _error = false;
+      _productsError = null;
+      _warehousesError = null;
     });
+    //دو درخواست به‌صورت موازی — هر کدام خطای خودش را به‌طور مستقل ثبت می‌کند
+    await Future.wait([_fetchProducts(), _fetchWarehouses()]);
+    if (!mounted) return;
+    setState(() => _loading = false);
+  }
+
+  Future<void> _fetchProducts() async {
     try {
-      final archivedProducts = await _api.getArchivedProducts();
-      final archivedWarehouses = await _api.getArchivedWarehouses();
+      final list = await _api.getArchivedProducts();
       if (!mounted) return;
       setState(() {
-        _products = archivedProducts;
-        _warehouses = archivedWarehouses;
-        _loading = false;
+        _products = list;
+        _productsError = null;
       });
     } catch (_) {
       if (!mounted) return;
+      setState(() => _productsError = 'خطا در بارگذاری محصولات بایگانی‌شده');
+    }
+  }
+
+  Future<void> _fetchWarehouses() async {
+    try {
+      final list = await _api.getArchivedWarehouses();
+      if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = true;
+        _warehouses = list;
+        _warehousesError = null;
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _warehousesError = 'خطا در بارگذاری انبارهای بایگانی‌شده');
     }
   }
 
   Future<void> _restoreProduct(ArchivedProductModel product) async {
     final id = product.id;
     final name = product.name ?? 'محصول';
-    if (id.isEmpty) return;
+    if (id.isEmpty || _restoringProductId != null) return;
+    setState(() => _restoringProductId = id);
     try {
       await _api.restoreProduct(id);
       if (!mounted) return;
-      setState(() => _products.removeWhere((p) => p.id == id));
+      setState(() {
+        _products.removeWhere((p) => p.id == id);
+        _restoringProductId = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -73,6 +97,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _restoringProductId = null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('بازیابی ناموفق بود: ${friendlyError(e)}'), backgroundColor: Colors.red),
       );
@@ -82,11 +107,15 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   Future<void> _restoreWarehouse(ArchivedWarehouseModel warehouse) async {
     final id = warehouse.id;
     final name = warehouse.name ?? 'انبار';
-    if (id.isEmpty) return;
+    if (id.isEmpty || _restoringWarehouseId != null) return;
+    setState(() => _restoringWarehouseId = id);
     try {
       await _api.restoreWarehouse(id);
       if (!mounted) return;
-      setState(() => _warehouses.removeWhere((w) => w.id == id));
+      setState(() {
+        _warehouses.removeWhere((w) => w.id == id);
+        _restoringWarehouseId = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -98,6 +127,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _restoringWarehouseId = null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('بازیابی ناموفق بود: ${friendlyError(e)}'), backgroundColor: Colors.red),
       );
@@ -130,21 +160,22 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
             ],
           ),
         ),
-        body: _loading
+        body: _loading && _products.isEmpty && _warehouses.isEmpty
             ? const Center(child: CircularProgressIndicator(color: _green))
-            : _error
-                ? _buildError()
-                : TabBarView(
-                    children: [
-                      _buildProductsTab(),
-                      _buildWarehousesTab(),
-                    ],
-                  ),
+            : TabBarView(
+                children: [
+                  _buildProductsTab(),
+                  _buildWarehousesTab(),
+                ],
+              ),
       ),
     );
   }
 
   Widget _buildProductsTab() {
+    if (_productsError != null && _products.isEmpty) {
+      return _ErrorState(title: _productsError!, onRetry: _fetchProducts);
+    }
     if (_products.isEmpty) {
       return const _EmptyState(
         icon: Icons.inventory_2_outlined,
@@ -162,6 +193,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
         itemCount: _products.length,
         itemBuilder: (_, i) => _ProductArchiveCard(
           product: _products[i],
+          restoring: _restoringProductId == _products[i].id,
           onRestore: () => _restoreProduct(_products[i]),
         ),
       ),
@@ -169,6 +201,9 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   }
 
   Widget _buildWarehousesTab() {
+    if (_warehousesError != null && _warehouses.isEmpty) {
+      return _ErrorState(title: _warehousesError!, onRetry: _fetchWarehouses);
+    }
     if (_warehouses.isEmpty) {
       return const _EmptyState(
         icon: Icons.warehouse_outlined,
@@ -186,23 +221,31 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
         itemCount: _warehouses.length,
         itemBuilder: (_, i) => _WarehouseArchiveCard(
           warehouse: _warehouses[i],
+          restoring: _restoringWarehouseId == _warehouses[i].id,
           onRestore: () => _restoreWarehouse(_warehouses[i]),
         ),
       ),
     );
   }
+}
 
-  Widget _buildError() {
+class _ErrorState extends StatelessWidget {
+  final String title;
+  final Future<void> Function() onRetry;
+  const _ErrorState({required this.title, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 44),
           const SizedBox(height: 12),
-          Text('خطا در بارگذاری بایگانی', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
+          Text(title, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
           const SizedBox(height: 14),
           ElevatedButton(
-            onPressed: _load,
+            onPressed: onRetry,
             style: ElevatedButton.styleFrom(backgroundColor: _green),
             child: const Text('تلاش دوباره', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w700)),
           ),
@@ -248,9 +291,10 @@ class _EmptyState extends StatelessWidget {
 
 class _ProductArchiveCard extends StatelessWidget {
   final ArchivedProductModel product;
+  final bool restoring;
   final VoidCallback onRestore;
 
-  const _ProductArchiveCard({required this.product, required this.onRestore});
+  const _ProductArchiveCard({required this.product, required this.restoring, required this.onRestore});
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +330,7 @@ class _ProductArchiveCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${product.name ?? ''}',
+                      product.name ?? '',
                       style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 3),
@@ -312,13 +356,23 @@ class _ProductArchiveCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: onRestore,
-              icon: const Icon(Icons.restore_rounded, color: _green, size: 18),
-              label: const Text('بازگردانی محصول', style: TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w600)),
+              onPressed: restoring ? null : onRestore,
+              icon: restoring
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+                    )
+                  : const Icon(Icons.restore_rounded, color: _green, size: 18),
+              label: Text(
+                restoring ? 'در حال بازگردانی...' : 'بازگردانی محصول',
+                style: const TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _green,
                 side: BorderSide(color: _green.withValues(alpha: 0.4)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                disabledForegroundColor: _green.withValues(alpha: 0.6)
               ),
             ),
           ),
@@ -330,9 +384,10 @@ class _ProductArchiveCard extends StatelessWidget {
 
 class _WarehouseArchiveCard extends StatelessWidget {
   final ArchivedWarehouseModel warehouse;
+  final bool restoring;
   final VoidCallback onRestore;
 
-  const _WarehouseArchiveCard({required this.warehouse, required this.onRestore});
+  const _WarehouseArchiveCard({required this.warehouse, required this.restoring, required this.onRestore});
 
   @override
   Widget build(BuildContext context) {
@@ -385,13 +440,23 @@ class _WarehouseArchiveCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: onRestore,
-              icon: const Icon(Icons.restore_rounded, color: _green, size: 18),
-              label: const Text('بازگردانی انبار', style: TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w600)),
+              onPressed: restoring ? null : onRestore,
+              icon: restoring
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+                    )
+                  : const Icon(Icons.restore_rounded, color: _green, size: 18),
+              label: Text(
+                restoring ? 'در حال بازگردانی...' : 'بازگردانی انبار',
+                style: const TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _green,
                 side: BorderSide(color: _green.withValues(alpha: 0.4)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                disabledForegroundColor: _green.withValues(alpha: 0.6)
               ),
             ),
           ),
