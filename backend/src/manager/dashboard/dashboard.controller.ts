@@ -23,8 +23,13 @@ export const dashboardController = {
   }),
 
   getHistory: asyncHandler(async (req: Request, res: Response) => {
-    const entries = await dashboardService.getHistory();
-    res.json({ entries });
-
+    const { page, pageSize, category, q } = req.query;
+    const result = await dashboardService.getHistory({
+      page: typeof page === 'string' && page !== '' ? Number(page) : undefined,
+      pageSize: typeof pageSize === 'string' && pageSize !== '' ? Number(pageSize) : undefined,
+      category: typeof category === 'string' ? category : undefined,
+      q: typeof q === 'string' ? q : undefined,
+    });
+    res.json(result);
   }),
 };

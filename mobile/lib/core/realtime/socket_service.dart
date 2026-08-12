@@ -53,6 +53,11 @@ class SocketService {
     _socket?.on(event, callback);
   }
 
+  /// حذف فقط همین listener (بقیهٔ listenerهای همان رویداد — مثل داشبورد — دست‌نخورده می‌مانند)
+  void offEvent(String event, Function(dynamic) callback) {
+    _socket?.off(event, callback);
+  }
+
   void off(String event) {
     _socket?.off(event);
   }

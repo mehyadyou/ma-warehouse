@@ -109,6 +109,7 @@ model Warehouse {
   // نمایش داده می‌شوند — محدودیت شناخته‌شده Prisma با raw()؛ با مهاجرت واقعی هیچ تداخلی ندارند.
   // در migrate dev حاصل را نسازید؛ فقط migrate deploy کنید.
   @@index([name(ops: raw("extensions.gin_trgm_ops"))], type: Gin, map: "Warehouse_name_trgm_idx")
+  @@index([name], where: raw("deletedAt IS NULL"), map: "Warehouse_name_active_key")
 }
 
 model Transaction {
@@ -144,6 +145,7 @@ model Product {
   updatedAt  DateTime       @updatedAt
 
   @@index([name(ops: raw("extensions.gin_trgm_ops"))], type: Gin, where: raw("deletedAt IS NULL"), map: "Product_name_trgm_idx")
+  @@index([name], where: raw("deletedAt IS NULL"), map: "Product_name_active_key")
 }
 
 model ProductModel {

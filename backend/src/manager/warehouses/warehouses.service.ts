@@ -3,6 +3,41 @@ import bcrypt from 'bcryptjs';
 import { buildWarehouseInventory } from '../shared';
 import { AppError } from '../../common/exceptions/AppError';
 
+// محاسبهٔ نام پیشنهادی با پسوند فارسی برای انبار — چک علیه نام‌های فعال و بایگانیشده
+async function nextAvailableWarehouseName(base: string): Promise<string> {
+    const faDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const toFa = (n: number) => String(n).split('').map(d => faDigits[+d]).join('');
+    for (let i = 2; i <= 1000; i++) {
+        const candidate = `${base} (${toFa(i)})`;
+        const [active, archived] = await Promise.all([
+            prisma.warehouse.findFirst({ where: { name: candidate, deletedAt: null }, select: { id: true } }),
+            prisma.warehouse.findFirst({ where: { name: candidate, deletedAt: { not: null } }, select: { id: true } }),
+        ]);
+        if (!active && !archived) return candidate;
+    }
+    return `${base} (${toFa(Date.now() % 10000)})`;
+}
+
+// نام همنام با انبار بایگانیشده → خطای 409 مخصوص دیالوگ سمت اپ
+async function archivedWarehouseConflict(warehouseName: string): Promise<AppError | null> {
+    const archived = await prisma.warehouse.findFirst({
+        where: { name: warehouseName, deletedAt: { not: null } },
+        select: { id: true, name: true, deletedAt: true },
+    });
+    if (!archived) return null;
+    return new AppError(
+        `انبار «${warehouseName}» در بایگانی است`,
+        409,
+        'ARCHIVED_CONFLICT',
+        {
+            id: archived.id,
+            name: archived.name,
+            archivedAt: archived.deletedAt,
+            suggestedName: await nextAvailableWarehouseName(warehouseName),
+        },
+    );
+}
+
 export const warehousesService = {
     //لیست انبارها (با نام انباردار) — فقط انبارهای فعال
     getAllWarehouses: async () => {
@@ -20,12 +55,28 @@ export const warehousesService = {
         });
     },
 
-    //ساخت انبار جدید
+    //ساخت انبار جدید — نام همنام با بایگانیشده → 409 ARCHIVED_CONFLICT
     createWarehouse: async (name: string, address?: string) => {
-        const warehouse = await prisma.warehouse.create({
-            data: { name, address },
-        });
-        return warehouse;
+        const trimmed = (name || '').trim();
+        if (!trimmed) throw new AppError('نام انبار الزامی است', 400);
+
+        const activeDup = await prisma.warehouse.findFirst({ where: { name: trimmed, deletedAt: null }, select: { id: true } });
+        if (activeDup) throw new AppError('انباری با این نام قبلاً ثبت شده است', 409);
+
+        const conflict = await archivedWarehouseConflict(trimmed);
+        if (conflict) throw conflict;
+
+        try {
+            return await prisma.warehouse.create({
+                data: { name: trimmed, address },
+            });
+        } catch (e: any) {
+            // race: نام بین چک و ساخت ثبت شد (partial unique index)
+            if (e?.code === 'P2002') {
+                throw new AppError('انباری با این نام در حال حاضر ثبت شده است؛ صفحه را تازه کنید', 409);
+            }
+            throw e;
+        }
     },
 
     //ویرایش انبار (نام + آدرس + انباردار)
@@ -39,7 +90,14 @@ export const warehousesService = {
         }
 
         const updateData: any = {};
-        if (data.name) updateData.name = data.name;
+        if (data.name) {
+            const trimmed = data.name.trim();
+            const activeDup = await prisma.warehouse.findFirst({ where: { name: trimmed, deletedAt: null, NOT: { id } }, select: { id: true } });
+            if (activeDup) throw new AppError('انباری با این نام قبلاً ثبت شده است', 409);
+            const archivedDup = await prisma.warehouse.findFirst({ where: { name: trimmed, deletedAt: { not: null }, NOT: { id } }, select: { id: true } });
+            if (archivedDup) throw new AppError('انباری با این نام در بایگانی است؛ ابتدا آن را بازگردانی کنید یا نام دیگری انتخاب کنید', 409);
+            updateData.name = trimmed;
+        }
         if (data.address !== undefined) updateData.address = data.address || null;
 
         // مدیریت انباردار
@@ -183,33 +241,48 @@ export const warehousesService = {
             throw new AppError('این شماره موبایل قبلاً ثبت شده است', 409);
         }
 
+        // نام همنام با انبار بایگانیشده → 409 (دیالوگ سمت اپ)
+        const wsName = (warehouseName || '').trim();
+        if (!wsName) throw new AppError('نام انبار الزامی است', 400);
+        const activeDup = await prisma.warehouse.findFirst({ where: { name: wsName, deletedAt: null }, select: { id: true } });
+        if (activeDup) throw new AppError('انباری با این نام قبلاً ثبت شده است', 409);
+        const conflict = await archivedWarehouseConflict(wsName);
+        if (conflict) throw conflict;
+
         const hashedPassword = await bcrypt.hash(keeperPassword, 12);
 
-        const result = await prisma.$transaction(async (tx) => {
-            const warehouse = await tx.warehouse.create({
-                data: { name: warehouseName },
+        try {
+            const result = await prisma.$transaction(async (tx) => {
+                const warehouse = await tx.warehouse.create({
+                    data: { name: wsName },
+                });
+
+                const keeper = await tx.user.create({
+                    data: {
+                        name: keeperName,
+                        phone: keeperPhone,
+                        password: hashedPassword,
+                        role: 'WAREHOUSE_KEEPER',
+                        warehouseId: warehouse.id,
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        role: true,
+                    },
+                });
+
+                return { warehouse, keeper };
             });
 
-            const keeper = await tx.user.create({
-                data: {
-                    name: keeperName,
-                    phone: keeperPhone,
-                    password: hashedPassword,
-                    role: 'WAREHOUSE_KEEPER',
-                    warehouseId: warehouse.id,
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    phone: true,
-                    role: true,
-                },
-            });
-
-            return { warehouse, keeper };
-        });
-
-        return result;
+            return result;
+        } catch (e: any) {
+            if (e?.code === 'P2002') {
+                throw new AppError('انباری با این نام در حال حاضر ثبت شده است؛ صفحه را تازه کنید', 409);
+            }
+            throw e;
+        }
     },
 
     //تراکنش‌های یک انبار در یک روز

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth';
+import { requireActiveWarehouse } from '../middleware/requireActiveWarehouse';
 import { userRateLimit } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { submitCheckinSchema } from './checkin/checkin.schema';
@@ -10,9 +11,9 @@ import { scanOutController } from './scanout/scanout.controller';
 import { loadingPlanController } from './loadingplan/loadingplan.controller';
 import { qrcodeController } from './qrcode/qrcode.controller';
 import { labelsController } from './labels/labels.controller';
-
 const router = Router();
-router.use(authenticate, authorize('WAREHOUSE_KEEPER'));
+
+router.use(authenticate, authorize('WAREHOUSE_KEEPER'), requireActiveWarehouse);
 
 // ── Warehouse ──
 router.get('/my-warehouse',           warehouseController.getMyWarehouse);

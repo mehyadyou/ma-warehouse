@@ -176,11 +176,25 @@ class ManagerApiService {
     return RecentActivityData.fromJson(response.data);
   }
 
-  Future<List<HistoryEntryModel>> getHistory() async {
-    final response = await _dio.get('/manager/history');
-    return (response.data['entries'] as List? ?? [])
-        .map((e) => HistoryEntryModel.fromJson(e))
-        .toList();
+  Future<HistoryPageResult> getHistoryPage({
+    int page = 1,
+    int pageSize = 50,
+    String? category,
+    String? q,
+  }) async {
+    final response = await _dio.get('/manager/history', queryParameters: {
+      'page': page,
+      'pageSize': pageSize,
+      if (category != null && category != 'all') 'category': category,
+      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+    });
+    final data = response.data as Map<String, dynamic>;
+    return HistoryPageResult(
+      entries: ((data['entries'] as List?) ?? [])
+          .map((e) => HistoryEntryModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      total: ((data['total'] as num?) ?? 0).toInt(),
+    );
   }
 
   /// جستجوی کارتن با سریال — مکان فعلی و مرحله
@@ -294,4 +308,10 @@ class ManagerApiService {
     final response = await _dio.get('/manager/users/$userId/report');
     return UserReportModel.fromJson(response.data);
   }
+}
+
+class HistoryPageResult {
+  final List<HistoryEntryModel> entries;
+  final int total;
+  const HistoryPageResult({required this.entries, required this.total});
 }

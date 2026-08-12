@@ -24,6 +24,18 @@ const REFRESH_TTL_MS = parseTtl(process.env.REFRESH_TOKEN_TTL || '90d');
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 const generateRefreshToken = () => crypto.randomBytes(48).toString('hex');
 
+//انباردارِ انبار بایگانیشده → ورود/رفرش مسدود (فریز کامل)
+const assertWarehouseActive = async (user: { role: string; warehouseId: string | null }) => {
+    if (user.role !== 'WAREHOUSE_KEEPER' || !user.warehouseId) return;
+    const warehouse = await prisma.warehouse.findUnique({
+        where: { id: user.warehouseId },
+        select: { deletedAt: true },
+    });
+    if (!warehouse || warehouse.deletedAt) {
+        throw new AppError('انبار شما بایگانیشده شده است؛ با مدیر سیستم هماهنگ کنید', 403);
+    }
+};
+
 const userProfileSelect = {
     id: true,
     name: true,
@@ -67,6 +79,9 @@ export const authService = {
             where: { id: user.id },
             data: { failedLoginAttempts: 0, lockUntil: null },
         });
+
+        // فریز: انباردارِ انبار بایگانیشده نمی‌تواند وارد شود
+        await assertWarehouseActive(user);
 
         const token = signToken({
             id: user.id,
@@ -121,6 +136,9 @@ export const authService = {
         if (!user || !user.isActive || user.deletedAt) {
             throw new AppError('حساب کاربری نامعتبر است', 401);
         }
+
+        // فریز: نشست انباردارِ انبار بایگانیشده تازه‌سازی نمی‌شود
+        await assertWarehouseActive(user);
 
         const newRefreshToken = generateRefreshToken();
         await prisma.$transaction(async (tx) => {
