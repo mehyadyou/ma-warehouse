@@ -1,6 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shamsi_date/shamsi_date.dart';
+import '../../../../../core/network/api_error.dart';
+import '../../../../../shared/utils/numbers.dart';
 import '../../../data/manager_api_service.dart';
 import '../../../providers/manager_api_provider.dart';
 import '../../../models/user_report_model.dart';
@@ -37,6 +40,10 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final report = await _api.getUserReport(widget.userId);
       if (!mounted) return;
@@ -47,7 +54,7 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'خطا در دریافت گزارش';
+        _error = friendlyError(e);
         _loading = false;
       });
     }
@@ -68,7 +75,29 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _green))
           : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: _textGrey)))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off_rounded, color: _textGrey, size: 40),
+                        const SizedBox(height: 12),
+                        Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: _textGrey, fontSize: 14)),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded, color: _green, size: 18),
+                          label: const Text('تلاش مجدد', style: TextStyle(color: _green)),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: _green.withValues(alpha: 0.4)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
               : _buildBody(_report!),
     );
   }
@@ -204,15 +233,15 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
     final isManager = _report?.user.role == 'MANAGER';
 
     final items = <(String, String, Color)>[
-      ('ورود کالا', '${stats.totalCheckins.toInt()}', _green),
-      ('تعداد واحد', '${stats.totalUnits.toInt()}', _blue),
-      ('مرجوعی', '${stats.totalReturns.toInt()}', _amber),
+      ('ورود کالا', formatNumber(stats.totalCheckins.toInt()), _green),
+      ('تعداد واحد', formatNumber(stats.totalUnits.toInt()), _blue),
+      ('مرجوعی', formatNumber(stats.totalReturns.toInt()), _amber),
     ];
     if (isManager || isDriver) {
-      items.add(('سفارش‌ها', '${stats.totalOrders.toInt()}', _purple));
-      items.add(('تحویل‌ها', '${stats.totalDeliveries.toInt()}', _green));
+      items.add(('سفارش‌ها', formatNumber(stats.totalOrders.toInt()), _purple));
+      items.add(('تحویل‌ها', formatNumber(stats.totalDeliveries.toInt()), _green));
     } else if (isKeeper) {
-      items.add(('سفارش‌ها', '${stats.totalOrders.toInt()}', _purple));
+      items.add(('سفارش‌ها', formatNumber(stats.totalOrders.toInt()), _purple));
     }
 
     return GridView.count(
@@ -271,7 +300,7 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                Text(faDigits(label), style: const TextStyle(color: Colors.white, fontSize: 13)),
                 const SizedBox(height: 3),
                 Text(_formatDate(createdAt), style: TextStyle(color: _textGrey.withValues(alpha: 0.7), fontSize: 11)),
               ],
@@ -310,7 +339,10 @@ class _UserReportScreenState extends ConsumerState<UserReportScreen> {
   String _formatDate(dynamic value) {
     if (value == null) return '—';
     final date = DateTime.parse(value.toString()).toLocal();
+    final j = Jalali.fromDateTime(date);
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${date.year}/${two(date.month)}/${two(date.day)} - ${two(date.hour)}:${two(date.minute)}';
+    final d = faDigits('${j.year}/${two(j.month)}/${two(j.day)}');
+    final t = faDigits('${two(date.hour)}:${two(date.minute)}');
+    return '$d - $t';
   }
 }

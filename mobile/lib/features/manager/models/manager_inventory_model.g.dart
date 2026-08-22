@@ -23,6 +23,10 @@ _ManagerInventoryModel _$ManagerInventoryModelFromJson(
           )
           .toList() ??
       const <WarehouseStockRowModel>[],
+  total: (json['total'] as num?)?.toInt() ?? 0,
+  page: (json['page'] as num?)?.toInt() ?? 0,
+  pageSize: (json['pageSize'] as num?)?.toInt() ?? 0,
+  hasMore: json['hasMore'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$ManagerInventoryModelToJson(
@@ -30,6 +34,10 @@ Map<String, dynamic> _$ManagerInventoryModelToJson(
 ) => <String, dynamic>{
   'products': instance.products,
   'warehouses': instance.warehouses,
+  'total': instance.total,
+  'page': instance.page,
+  'pageSize': instance.pageSize,
+  'hasMore': instance.hasMore,
 };
 
 _ManagerProductRowModel _$ManagerProductRowModelFromJson(
@@ -39,6 +47,12 @@ _ManagerProductRowModel _$ManagerProductRowModelFromJson(
   name: json['name'] as String?,
   unit: json['unit'] as String?,
   totalCount: json['totalCount'] as num? ?? 0,
+  modelCount: (json['modelCount'] as num?)?.toInt() ?? 0,
+  modelNames:
+      (json['modelNames'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const <String>[],
 );
 
 Map<String, dynamic> _$ManagerProductRowModelToJson(
@@ -48,13 +62,17 @@ Map<String, dynamic> _$ManagerProductRowModelToJson(
   'name': instance.name,
   'unit': instance.unit,
   'totalCount': instance.totalCount,
+  'modelCount': instance.modelCount,
+  'modelNames': instance.modelNames,
 };
 
 _WarehouseStockRowModel _$WarehouseStockRowModelFromJson(
   Map<String, dynamic> json,
 ) => _WarehouseStockRowModel(
+  warehouseId: json['warehouseId'] as String?,
   warehouseName: json['warehouseName'] as String?,
   totalCount: json['totalCount'] as num? ?? 0,
+  totalItems: (json['totalItems'] as num?)?.toInt() ?? 0,
   items:
       (json['items'] as List<dynamic>?)
           ?.map((e) => StockItemRowModel.fromJson(e as Map<String, dynamic>))
@@ -65,8 +83,10 @@ _WarehouseStockRowModel _$WarehouseStockRowModelFromJson(
 Map<String, dynamic> _$WarehouseStockRowModelToJson(
   _WarehouseStockRowModel instance,
 ) => <String, dynamic>{
+  'warehouseId': instance.warehouseId,
   'warehouseName': instance.warehouseName,
   'totalCount': instance.totalCount,
+  'totalItems': instance.totalItems,
   'items': instance.items,
 };
 

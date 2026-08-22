@@ -16,4 +16,10 @@ export const env = {
     QR_SECRET:  process.env.QR_SECRET as string,
     REDIS_URL:  process.env.REDIS_URL || 'redis://localhost:6379',
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGINS || '',
+
+    // ── دستیار هوش مصنوعی (اختیاری — بدون کلید، دستیار خطای روشن می‌دهد) ──
+    // getter برای خواندن زندهٔ env در تست‌ها (vi.stubEnv)
+    get OPENROUTER_API_KEY() { return process.env.OPENROUTER_API_KEY || ''; },
+    get OPENROUTER_MODEL() { return process.env.OPENROUTER_MODEL || '~deepseek/deepseek-v4-flash-latest'; },
+    get ASSISTANT_MAX_TOKENS() { return Number(process.env.ASSISTANT_MAX_TOKENS) || 8000; },
 };

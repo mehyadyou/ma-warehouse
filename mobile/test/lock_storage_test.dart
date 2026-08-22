@@ -56,70 +56,38 @@ void main() {
     test('روش قفل: ذخیره و بازیابی', () async {
       expect(await LockStorage.getMethod(), LockMethod.none);
 
-      await LockStorage.saveMethod(LockMethod.pin);
-      expect(await LockStorage.getMethod(), LockMethod.pin);
-
       await LockStorage.saveMethod(LockMethod.fingerprint);
       expect(await LockStorage.getMethod(), LockMethod.fingerprint);
-    });
 
-    test('پین: تعیین، تأیید درست و غلط', () async {
-      expect(await LockStorage.hasPin(), isFalse);
-
-      await LockStorage.setPin('1234');
-
-      expect(await LockStorage.hasPin(), isTrue);
-      expect(await LockStorage.verifyPin('1234'), isTrue);
-      expect(await LockStorage.verifyPin('0000'), isFalse);
-      expect(await LockStorage.verifyPin('123'), isFalse);
-    });
-
-    test('پین: هش و salt جداگانه ذخیره می‌شوند (نه پین خام)', () async {
-      await LockStorage.setPin('9876');
-
-      expect(store['lock_pin_hash'], isNotNull);
-      expect(store['lock_pin_salt'], isNotNull);
-      expect(store['lock_pin_hash'], isNot('9876'));
-      expect(store.values.contains('9876'), isFalse);
-    });
-
-    test('دو پین یکسان → هش متفاوت (salt تصادفی)', () async {
-      await LockStorage.setPin('1111');
-      final firstHash = store['lock_pin_hash'];
-      final firstSalt = store['lock_pin_salt'];
-
-      await LockStorage.setPin('1111');
-      final secondHash = store['lock_pin_hash'];
-      final secondSalt = store['lock_pin_salt'];
-
-      expect(firstHash, isNot(secondHash));
-      expect(firstSalt, isNot(secondSalt));
-      expect(await LockStorage.verifyPin('1111'), isTrue);
-    });
-
-    test('clearPin: پین پاک می‌شود و تأیید ناموفق می‌شود', () async {
-      await LockStorage.setPin('1234');
-      await LockStorage.clearPin();
-
-      expect(await LockStorage.hasPin(), isFalse);
-      expect(await LockStorage.verifyPin('1234'), isFalse);
-    });
-
-    test('clearAll (خروج از حساب): پین و روش قفل پاک می‌شوند', () async {
       await LockStorage.saveMethod(LockMethod.face);
-      await LockStorage.setPin('1234');
+      expect(await LockStorage.getMethod(), LockMethod.face);
+
+      await LockStorage.saveMethod(LockMethod.none);
+      expect(await LockStorage.getMethod(), LockMethod.none);
+    });
+
+    test('clearAll (خروج از حساب): روش قفل پاک و پین قدیمی از دستگاه حذف می‌شود', () async {
+      // پین قدیمی از نسخه‌های قبل — باید هنگام خروج پاک شود
+      store['lock_pin_salt'] = 'salt';
+      store['lock_pin_hash'] = 'hash';
+      await LocalStorage.saveLockMethod('fingerprint');
 
       await LockStorage.clearAll();
 
       expect(await LockStorage.getMethod(), LockMethod.none);
-      expect(await LockStorage.hasPin(), isFalse);
+      expect(store.containsKey('lock_pin_salt'), isFalse);
+      expect(store.containsKey('lock_pin_hash'), isFalse);
     });
 
-    test('تغییر روش قفل پین را پاک نمی‌کند (مصوب)', () async {
-      await LockStorage.setPin('1234');
-      await LockStorage.saveMethod(LockMethod.none);
+    test('زمان قفل خودکار: پیش‌فرض فوراً (۰) و ذخیره/بازیابی', () async {
+      expect(LockStorage.getAutoLockMinutes(), LockStorage.defaultAutoLockMinutes);
+      expect(LockStorage.getAutoLockMinutes(), 0);
 
-      expect(await LockStorage.hasPin(), isTrue);
+      await LockStorage.saveAutoLockMinutes(5);
+      expect(LockStorage.getAutoLockMinutes(), 5);
+
+      await LockStorage.saveAutoLockMinutes(0);
+      expect(LockStorage.getAutoLockMinutes(), 0);
     });
   });
 }

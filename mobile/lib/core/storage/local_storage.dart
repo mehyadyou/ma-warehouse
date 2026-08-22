@@ -39,12 +39,20 @@ class LocalStorage {
   static const _lockMethodKey = 'lock_method';
   static const _pinSaltKey = 'lock_pin_salt';
   static const _pinHashKey = 'lock_pin_hash';
+  static const _autoLockKey = 'lock_auto_lock_minutes';
 
   static Future<void> saveLockMethod(String method) async {
     await _prefs.setString(_lockMethodKey, method);
   }
 
   static String? getLockMethod() => _prefs.getString(_lockMethodKey);
+
+  /// زمان قفل خودکار (دقیقه) — مدت حضور در پس‌زمینه که پس از آن برنامه قفل می‌شود
+  static Future<void> saveAutoLockMinutes(int minutes) async {
+    await _prefs.setInt(_autoLockKey, minutes);
+  }
+
+  static int? getAutoLockMinutes() => _prefs.getInt(_autoLockKey);
 
   static Future<void> savePinData({
     required String salt,

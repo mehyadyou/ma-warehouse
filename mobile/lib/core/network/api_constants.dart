@@ -11,6 +11,7 @@
   static const String login = '/auth/login';
   static const String logout = '/auth/logout';
   static const String createFirstManager = '/auth/create-first-manager';
+  static const String verifyPassword = '/auth/verify-password';
 
   // Manager
   static const String managerDashboard = '/manager/dashboard';

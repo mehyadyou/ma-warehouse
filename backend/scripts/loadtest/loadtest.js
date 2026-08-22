@@ -45,7 +45,7 @@ export const options = {
 };
 
 const BASE = __ENV.BASE_URL ?? 'http://localhost:3000';
-const PASSWORD = __ENV.PASSWORD ?? 'Loadtest@1405';
+const PASSWORD = __ENV.PASSWORD ?? '123456';
 const TOKEN_COUNT = parseInt(__ENV.TOKENS ?? '50', 10);
 
 const socketConnections = new Counter('socket_connections');

@@ -286,22 +286,27 @@ describe('authService.logout', () => {
 });
 
 describe('authService.updateProfile', () => {
-    it('تغییر رمز با پالیسی ضعیف رد می‌شود', async () => {
+    it('تغییر رمز: فقط دقیقاً ۶ رقم عددی پذیرفته می‌شود', async () => {
         (prisma.user.findUnique as any).mockResolvedValue(baseUser());
+        // کوتاه‌تر از ۶ رقم → رد
         await expect(
             authService.updateProfile('u1', { password: 'short' })
-        ).rejects.toThrow('حداقل 10 کاراکتر');
-        // بدون عدد → خطای «یک عدد» (طولش از حداقل رد شده)
+        ).rejects.toThrow('دقیقاً ۶ رقم');
+        // حرف + عدد ولی نه ۶ رقم → رد
         await expect(
             authService.updateProfile('u1', { password: 'abcdefghijk' })
-        ).rejects.toThrow('یک عدد');
-        // بدون حرف (فقط عدد) → خطای «یک حرف»
+        ).rejects.toThrow('دقیقاً ۶ رقم');
+        // بیشتر از ۶ رقم → رد
         await expect(
-            authService.updateProfile('u1', { password: '12345678901' })
-        ).rejects.toThrow('یک حرف');
-        // رمز فارسی (حروف فارسی + عدد) → باید پذیرفته شود
+            authService.updateProfile('u1', { password: '1234567' })
+        ).rejects.toThrow('دقیقاً ۶ رقم');
+        // حروف فارسی + عدد → رد
+        await expect(
+            authService.updateProfile('u1', { password: 'پارسکالا1234' })
+        ).rejects.toThrow('دقیقاً ۶ رقم');
+        // دقیقاً ۶ رقم → پذیرفته
         (prisma.user.update as any).mockResolvedValue(baseUser());
-        await authService.updateProfile('u1', { password: 'پارسکالا1234' });
+        await authService.updateProfile('u1', { password: '123456' });
         expect(prisma.user.update).toHaveBeenCalled();
     });
 
@@ -309,11 +314,42 @@ describe('authService.updateProfile', () => {
         (prisma.user.findUnique as any).mockResolvedValue(baseUser());
         (prisma.user.update as any).mockResolvedValue(baseUser());
 
-        await authService.updateProfile('u1', { password: 'newpass1234' });
+        await authService.updateProfile('u1', { password: '123456' });
 
         const data = (prisma.user.update as any).mock.calls[0][0].data;
         expect(data.password).toBe('hashed');
         expect(data.mustChangePassword).toBe(false);
         expect(data.failedLoginAttempts).toBe(0);
+    });
+});
+
+describe('authService.verifyPassword', () => {
+    it('رمز درست → ok:true', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(baseUser());
+        (bcrypt.compare as any).mockResolvedValue(true);
+
+        const result = await authService.verifyPassword('u1', '123456');
+        expect(result).toEqual({ ok: true });
+        expect(bcrypt.compare).toHaveBeenCalledWith('123456', 'hashed-password');
+    });
+
+    it('رمز غلط → 401 «رمز عبور اشتباه است»', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(baseUser());
+        (bcrypt.compare as any).mockResolvedValue(false);
+
+        await expect(
+            authService.verifyPassword('u1', '111111')
+        ).rejects.toThrow('رمز عبور اشتباه است');
+    });
+
+    it('کاربر غیرفعال/حذف‌شده → 401 «کاربر نامعتبر است»', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(
+            baseUser({ isActive: false, deletedAt: new Date() }),
+        );
+
+        await expect(
+            authService.verifyPassword('u1', '123456')
+        ).rejects.toThrow('کاربر نامعتبر است');
+        expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 });

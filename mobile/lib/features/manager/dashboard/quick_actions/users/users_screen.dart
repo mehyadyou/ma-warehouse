@@ -1,7 +1,9 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../../shared/utils/validators.dart';
 import '../../../models/user_model.dart';
 import '../../../models/warehouse_model.dart';
 import '../../../data/manager_api_service.dart';
@@ -29,6 +31,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   List<UserModel> _users = [];
   List<WarehouseModel> _warehouses = [];
   bool _loading = true;
+  String? _loadError;
   String? _roleFilter;
 
   @override
@@ -38,15 +41,25 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
-      final users = await _api.getUsers();
-      final warehouses = await _api.getWarehouses();
+      final results = await Future.wait([
+        _api.getUsers(),
+        _api.getWarehouses(),
+      ]);
+      if (!mounted) return;
       setState(() {
-        _users = users;
-        _warehouses = warehouses;
+        _users = results[0] as List<UserModel>;
+        _warehouses = results[1] as List<WarehouseModel>;
       });
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadError = 'خطا در دریافت اطلاعات');
+    }
+    if (!mounted) return;
     setState(() => _loading = false);
   }
 
@@ -116,7 +129,22 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: _green))
-              : _filteredUsers.isEmpty
+              : _loadError != null
+                  ? Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.cloud_off_rounded, color: Colors.white.withOpacity(0.3), size: 40),
+                        const SizedBox(height: 12),
+                        Text(_loadError!, style: TextStyle(color: Colors.white.withOpacity(0.5))),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _loadData,
+                          style: OutlinedButton.styleFrom(foregroundColor: _green, side: BorderSide(color: _green.withValues(alpha: 0.4))),
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('تلاش دوباره'),
+                        ),
+                      ]),
+                    )
+                  : _filteredUsers.isEmpty
                   ? Center(child: Text('کاربری یافت نشد', style: TextStyle(color: Colors.white.withOpacity(0.4))))
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -138,16 +166,17 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                             ])),
                             Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)), child: Text(_roleLabel(u.role ?? ''), style: TextStyle(color: color, fontSize: 11.5, fontWeight: FontWeight.w600))),
                             const SizedBox(width: 8),
-                            // Edit button
-                            GestureDetector(
-                              onTap: () => _showUserDialog(user: u),
-                              child: Container(
-                                width: 36, height: 36,
-                                decoration: BoxDecoration(color: _blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: const Icon(Icons.edit_rounded, color: _blue, size: 18),
+                            // Edit button (hidden for MANAGER)
+                            if (u.role != 'MANAGER')
+                              GestureDetector(
+                                onTap: () => _showUserDialog(user: u),
+                                child: Container(
+                                  width: 36, height: 36,
+                                  decoration: BoxDecoration(color: _blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: const Icon(Icons.edit_rounded, color: _blue, size: 18),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
+                            if (u.role != 'MANAGER') const SizedBox(width: 6),
                             // Delete button (hidden for MANAGER)
                             if (u.role != 'MANAGER')
                               GestureDetector(
@@ -213,179 +242,276 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
 
   // ═══════════ ADD / EDIT USER DIALOG ═══════════
   void _showUserDialog({UserModel? user}) {
-    final isEdit = user != null;
-    final nameCtrl = TextEditingController(text: isEdit ? user.name ?? '' : '');
-    final phoneCtrl = TextEditingController(text: isEdit ? user.phone ?? '' : '');
-    final passCtrl = TextEditingController();
-    String role = isEdit ? (user.role ?? 'WAREHOUSE_KEEPER') : 'WAREHOUSE_KEEPER';
-    String? warehouseId = isEdit ? user.warehouseId : null;
-
     showDialog(
       context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: _surface,
-          title: Text(isEdit ? 'ویرایش کاربر' : 'کاربر جدید', style: const TextStyle(color: Colors.white)),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // نام
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'نام',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: _surfaceAlt,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // شماره موبایل
-              TextField(
-                controller: phoneCtrl,
-                keyboardType: TextInputType.phone,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'شماره موبایل',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: _surfaceAlt,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // رمز عبور
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: isEdit ? 'رمز عبور جدید (اختیاری)' : 'رمز عبور',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: _surfaceAlt,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // نقش
-              DropdownButtonFormField<String>(
-                value: role,
-                dropdownColor: _surfaceAlt,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'نقش',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: _surfaceAlt,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'MANAGER', child: Text('مدیر')),
-                  DropdownMenuItem(value: 'WAREHOUSE_KEEPER', child: Text('انباردار')),
-                  DropdownMenuItem(value: 'DRIVER', child: Text('راننده')),
-                ],
-                onChanged: (v) => setDialogState(() {
-                  role = v!;
-                  if (role != 'WAREHOUSE_KEEPER' && role != 'DRIVER') {
-                    warehouseId = null;
-                  }
-                }),
-              ),
-              // انتخاب انبار
-              if (role == 'WAREHOUSE_KEEPER' || role == 'DRIVER') ...[
-                const SizedBox(height: 12),
-                if (_warehouses.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: _danger.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: const Row(children: [
-                      Icon(Icons.warning_rounded, color: _danger, size: 18),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('هیچ انباری وجود ندارد! ابتدا یک انبار بسازید.', style: TextStyle(color: _danger, fontSize: 12))),
-                    ]),
-                  )
-                else
-                  DropdownButtonFormField<String>(
-                    value: warehouseId,
-                    dropdownColor: _surfaceAlt,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'انتخاب انبار (الزامی)',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: _surfaceAlt,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                    ),
-                    items: _warehouses.map<DropdownMenuItem<String>>((w) => DropdownMenuItem(value: w.id, child: Text(w.name))).toList(),
-                    onChanged: (v) => setDialogState(() => warehouseId = v),
-                  ),
-              ],
-            ]),
+      builder: (_) => _UserDialog(
+        user: user,
+        warehouses: _warehouses,
+        apiService: _api,
+        onSaved: _loadData,
+      ),
+    );
+  }
+}
+
+/// دیالوگ ساخت/ویرایش کاربر — اعتبارسنجی کامل + نمایش خطای سرور داخل دیالوگ
+class _UserDialog extends StatefulWidget {
+  final UserModel? user;
+  final List<WarehouseModel> warehouses;
+  final ManagerApiService apiService;
+  final VoidCallback onSaved;
+
+  const _UserDialog({
+    required this.user,
+    required this.warehouses,
+    required this.apiService,
+    required this.onSaved,
+  });
+
+  @override
+  State<_UserDialog> createState() => _UserDialogState();
+}
+
+class _UserDialogState extends State<_UserDialog> {
+  bool get _isEdit => widget.user != null;
+
+  late final TextEditingController _nameCtrl =
+      TextEditingController(text: _isEdit ? widget.user!.name ?? '' : '');
+  late final TextEditingController _phoneCtrl =
+      TextEditingController(text: _isEdit ? widget.user!.phone ?? '' : '');
+  final _passCtrl = TextEditingController();
+
+  late String _role = _isEdit
+      ? (widget.user!.role ?? 'WAREHOUSE_KEEPER')
+      : 'WAREHOUSE_KEEPER';
+  late String? _warehouseId = _isEdit ? widget.user!.warehouseId : null;
+
+  String? _saveError;
+  bool _saving = false;
+
+  bool get _needsWarehouse => _role == 'WAREHOUSE_KEEPER';
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    final password = _passCtrl.text.trim();
+
+    String? error;
+    if (name.isEmpty) {
+      error = 'نام الزامی است';
+    } else if (validatePhone(phone) != null) {
+      error = validatePhone(phone);
+    } else if (_needsWarehouse && _warehouseId == null) {
+      error = 'برای نقش انباردار، انتخاب انبار الزامی است';
+    } else if (!_isEdit && validatePassword(password) != null) {
+      error = validatePassword(password);
+    } else if (_isEdit && password.isNotEmpty && validatePassword(password) != null) {
+      error = validatePassword(password);
+    }
+    if (error != null) {
+      setState(() => _saveError = error);
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      final data = <String, dynamic>{
+        'name': name,
+        'phone': phone,
+        'role': _role,
+        'warehouseId': _needsWarehouse ? _warehouseId : null,
+      };
+      if (password.isNotEmpty) data['password'] = password;
+
+      if (_isEdit) {
+        await widget.apiService.updateUser(widget.user!.id, data);
+      } else {
+        await widget.apiService.createUser(data);
+      }
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      widget.onSaved();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(_isEdit ? 'کاربر ویرایش شد' : 'کاربر جدید ثبت شد'),
+          backgroundColor: _green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      String msg = 'خطا در ثبت';
+      if (e is DioException &&
+          e.response?.data != null &&
+          e.response?.data['error'] != null) {
+        msg = '${e.response?.data['error']}';
+      }
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = msg;
+      });
+    }
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.grey),
+      filled: true,
+      fillColor: _surfaceAlt,
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _green)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // انبار فعلیِ کاربر که بایگانی شده — باید همچنان در لیست بماند تا dropdown نشکند
+    final archivedWarehouse = widget.user?.warehouseId != null &&
+            !widget.warehouses.any((w) => w.id == widget.user!.warehouseId)
+        ? widget.user!.warehouseId
+        : null;
+
+    final warehouseItems = <DropdownMenuItem<String>>[
+      if (archivedWarehouse != null)
+        DropdownMenuItem(
+          value: archivedWarehouse,
+          child: Text(
+            widget.user!.warehouseName ?? 'انبار فعلی (بایگانی شده)',
+            style: const TextStyle(color: Colors.white54),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.white38))),
-            ElevatedButton(
-              onPressed: () async {
-                if ((role == 'WAREHOUSE_KEEPER' || role == 'DRIVER') && warehouseId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لطفا انبار را انتخاب کنید'), backgroundColor: _danger));
-                  return;
-                }
-                try {
-                  final data = {
-                    'name': nameCtrl.text,
-                    'phone': phoneCtrl.text,
-                    'role': role,
-                    'warehouseId': warehouseId,
-                  };
-                  if (passCtrl.text.isNotEmpty) {
-                    data['password'] = passCtrl.text;
-                  }
-
-                  if (isEdit) {
-                    await _api.updateUser(user.id, data);
-                  } else {
-                    if (passCtrl.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لطفا رمز عبور را وارد کنید'), backgroundColor: _danger));
-                      return;
-                    }
-                    await _api.createUser(data);
-                  }
-
-                  Navigator.pop(context);
-                  _loadData();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(isEdit ? 'کاربر ویرایش شد' : 'کاربر جدید ثبت شد'), backgroundColor: _green, behavior: SnackBarBehavior.floating),
-                    );
-                  }
-                } catch (e) {
-                  String msg = '$e';
-                  try {
-                    if (e is DioException && e.response?.data != null && e.response?.data['error'] != null) {
-                      msg = '${e.response?.data['error']}';
-                    }
-                  } catch (_) {}
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: _danger));
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: _green),
-              child: Text(isEdit ? 'ذخیره تغییرات' : 'ثبت', style: const TextStyle(color: Colors.white)),
-            ),
-          ],
+        ),
+      ...widget.warehouses.map(
+        (w) => DropdownMenuItem(
+          value: w.id,
+          child: Text(w.name, style: const TextStyle(color: Colors.white)),
         ),
       ),
+    ];
+
+    return AlertDialog(
+      backgroundColor: _surface,
+      title: Text(_isEdit ? 'ویرایش کاربر' : 'کاربر جدید', style: const TextStyle(color: Colors.white)),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration('نام'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _phoneCtrl,
+            keyboardType: TextInputType.phone,
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration('شماره موبایل'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _passCtrl,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration(
+              _isEdit ? 'رمز عبور جدید (۶ رقم — اختیاری)' : 'رمز عبور (۶ رقم)',
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _role,
+            dropdownColor: _surfaceAlt,
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration('نقش'),
+            items: const [
+              DropdownMenuItem(value: 'MANAGER', child: Text('مدیر')),
+              DropdownMenuItem(value: 'WAREHOUSE_KEEPER', child: Text('انباردار')),
+              DropdownMenuItem(value: 'DRIVER', child: Text('راننده')),
+            ],
+            onChanged: (v) => setState(() {
+              _role = v!;
+              if (!_needsWarehouse) _warehouseId = null;
+            }),
+          ),
+          if (_needsWarehouse) ...[
+            const SizedBox(height: 12),
+            if (warehouseItems.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: _danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                child: const Row(children: [
+                  Icon(Icons.warning_rounded, color: _danger, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('هیچ انباری وجود ندارد! ابتدا یک انبار بسازید.', style: TextStyle(color: _danger, fontSize: 12))),
+                ]),
+              )
+            else
+              DropdownButtonFormField<String>(
+                value: _warehouseId,
+                isExpanded: true,
+                dropdownColor: _surfaceAlt,
+                style: const TextStyle(color: Colors.white),
+                decoration: _decoration('انتخاب انبار (الزامی)'),
+                items: warehouseItems,
+                onChanged: (v) => setState(() => _warehouseId = v),
+              ),
+          ],
+          if (_saveError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _danger.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                _saveError!,
+                style: const TextStyle(color: _danger, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ]),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('انصراف', style: TextStyle(color: Colors.white38)),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          style: ElevatedButton.styleFrom(backgroundColor: _green),
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : Text(_isEdit ? 'ذخیره تغییرات' : 'ثبت', style: const TextStyle(color: Colors.white)),
+        ),
+      ],
     );
   }
 }

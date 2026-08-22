@@ -24,6 +24,14 @@ class RefreshResult {
 class AuthSession {
   static Future<RefreshResult>? _refreshFuture;
 
+  /// برای بی‌اثر کردن رفرش‌های در جریان هنگام خروج/ریست نشست:
+  /// هر تغییر این شمارنده باعث می‌شود رفرشِ شروع‌شده قبل از آن،
+  /// توکن جدیدی در حافظه ننویسد (جلوگیری از احیای نشستِ لوگ‌اوت‌شده).
+  static int _generation = 0;
+
+  /// وقتی نشست بسته می‌شود صدا زده می‌شود تا رفرش‌های در جریان باطل شوند
+  static void invalidatePendingRefresh() => _generation++;
+
   /// وقتی رفرش ممکن نیست (توکن رفرش منقضی/باطل) فراخوانی می‌شود تا نشست بسته شود
   static void Function()? onSessionExpired;
 
@@ -45,6 +53,7 @@ class AuthSession {
   }
 
   static Future<RefreshResult> _doRefresh() async {
+    final generation = _generation;
     final refreshToken = await SecureStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
       await SecureStorage.clearTokens();
@@ -68,6 +77,11 @@ class AuthSession {
       final newRefresh = data?['refreshToken'] as String?;
       if (newAccess == null || newAccess.isEmpty) {
         await SecureStorage.clearTokens();
+        return const RefreshResult.failed(RefreshFailure.invalidSession);
+      }
+
+      // خروج/ریست نشست در فاصلهٔ ارسال رفرش → نتیجهٔ این رفرش دور ریخته می‌شود
+      if (generation != _generation) {
         return const RefreshResult.failed(RefreshFailure.invalidSession);
       }
 

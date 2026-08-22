@@ -53,6 +53,11 @@ class SocketService {
     _socket?.on(event, callback);
   }
 
+  /// ارسال رویداد به سرور (مثل درخواست دستیار هوش مصنوعی)
+  void emit(String event, [dynamic data]) {
+    _socket?.emit(event, data);
+  }
+
   /// حذف فقط همین listener (بقیهٔ listenerهای همان رویداد — مثل داشبورد — دست‌نخورده می‌مانند)
   void offEvent(String event, Function(dynamic) callback) {
     _socket?.off(event, callback);

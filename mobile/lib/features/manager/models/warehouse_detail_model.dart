@@ -32,11 +32,17 @@ abstract class WarehouseDetailModel with _$WarehouseDetailModel {
 @freezed
 abstract class WarehouseStatsModel with _$WarehouseStatsModel {
   const factory WarehouseStatsModel({
+    @Default(0) num transactionCount,
     @Default(0) num productCount,
     @Default(0) num inCount,
     @Default(0) num outCount,
+    @Default(0) num inUnits,
+    @Default(0) num outUnits,
+    @Default(0) num returnedUnits,
     @Default(0) num totalUnits,
     @Default(0) num totalCartons,
+    @Default(0) num orderCount,
+    @Default(0) num activeOrderCount,
   }) = _WarehouseStatsModel;
 
   factory WarehouseStatsModel.fromJson(Map<String, dynamic> json) =>

@@ -25,8 +25,21 @@ abstract class ScanOutCartonModel with _$ScanOutCartonModel {
     int? capacityPerBox,
     String? unit,
     String? packageType,
+    ScanOutTransferModel? transfer,
   }) = _ScanOutCartonModel;
 
   factory ScanOutCartonModel.fromJson(Map<String, dynamic> json) =>
       _$ScanOutCartonModelFromJson(json);
+}
+
+@freezed
+abstract class ScanOutTransferModel with _$ScanOutTransferModel {
+  const factory ScanOutTransferModel({
+    required String id,
+    String? toWarehouseId,
+    String? toWarehouseName,
+  }) = _ScanOutTransferModel;
+
+  factory ScanOutTransferModel.fromJson(Map<String, dynamic> json) =>
+      _$ScanOutTransferModelFromJson(json);
 }

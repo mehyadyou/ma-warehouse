@@ -32,3 +32,6 @@ backups/
 Thumbs.db
 .DS_Store
 *.log
+
+# Freebuff client state
+.freebuff/

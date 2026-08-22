@@ -62,6 +62,7 @@ class HistoryTab extends ConsumerWidget {
 
   Widget _buildHistoryCard(Map<String, dynamic> delivery) {
     final id = delivery['id'] ?? '';
+    final orderNumber = delivery['orderNumber'];
     final carrier = delivery['carrier'] ?? (delivery['order']?['carrier'] ?? 'نامشخص');
     final city = delivery['city'] ?? (delivery['order']?['city'] ?? '');
     final updatedAt = delivery['updatedAt'] ?? delivery['deliveredAt'] ?? '';
@@ -91,7 +92,9 @@ class HistoryTab extends ConsumerWidget {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Text('سفارش #${id.toString().substring(0, 8).toUpperCase()}',
+                Text(orderNumber != null && orderNumber.toString().isNotEmpty
+                    ? 'سفارش شماره $orderNumber'
+                    : 'سفارش #${id.toString().substring(0, 8).toUpperCase()}',
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
                 const Spacer(),
                 if (updatedAt.toString().isNotEmpty)

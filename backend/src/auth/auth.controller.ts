@@ -87,6 +87,14 @@ export const authController = {
 
     }),
 
+    // تأیید رمز اصلی برای قفل‌گشایی برنامه (نیازمند توکن)
+    verifyPassword: asyncHandler(async (req: Request, res: Response) => {
+        const { password } = req.body;
+        const result = await authService.verifyPassword(req.user!.id, password);
+        res.json(result);
+
+    }),
+
     // ویرایش پروفایل
     updateProfile: asyncHandler(async (req: Request, res: Response) => {
         const { name, phone, password } = req.body;

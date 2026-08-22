@@ -117,8 +117,55 @@ describe('productsService.createProduct', () => {
         );
     });
 
-    it('ادغام با محصول فعال: بازیابی مدل بایگانیشده + ساخت مدل جدید — همه داخل $transaction', async () => {
-        mockNameLookup({ X: { id: 'p1', unit: 'عدد' } }, {});
+    it('ارقام فارسی/عربی + جداکننده هزارگان در قیمت و ظرفیت → نرمال و ذخیره میشود', async () => {
+        mockNameLookup({}, {});
+        (prisma.product.create as any).mockResolvedValue({ id: 'p1', name: 'X' });
+
+        await productsService.createProduct('X', [
+            { name: 'مدل A', price: '۱۲۳٬۴۵۶', unitsPerBox: '۵' },
+            { name: 'مدل B', price: '٣٠٠٠٠', unitsPerBox: '١٥' },
+        ]);
+
+        expect(prisma.product.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    models: {
+                        create: expect.arrayContaining([
+                            expect.objectContaining({ name: 'مدل A', price: 123456, unitsPerBox: 5 }),
+                            expect.objectContaining({ name: 'مدل B', price: 30000, unitsPerBox: 15 }),
+                        ]),
+                    },
+                }),
+            })
+        );
+    });
+
+    it('قیمت غیرعددی → AppError 400', async () => {
+        mockNameLookup({}, {});
+        await expect(
+            productsService.createProduct('X', [{ name: 'مدل A', price: 'abc' }])
+        ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('قیمت باید عدد باشد') });
+        expect(prisma.product.create).not.toHaveBeenCalled();
+    });
+
+    it('قیمت منفی → AppError 400', async () => {
+        mockNameLookup({}, {});
+        await expect(
+            productsService.createProduct('X', [{ name: 'مدل A', price: '-5' }])
+        ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('منفی') });
+    });
+
+    it('ظرفیت بستهٔ نامعتبر/غیرصفر → AppError 400', async () => {
+        mockNameLookup({}, {});
+        await expect(
+            productsService.createProduct('X', [{ name: 'مدل A', unitsPerBox: '0' }])
+        ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('ظرفیت بسته') });
+        await expect(
+            productsService.createProduct('X', [{ name: 'مدل A', unitsPerBox: '۵عدد' }])
+        ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('ادغام با محصول فعال: بازیابی مدل بایگانیشده + ساخت مدل جدید — همه داخل $transaction', async () => {        mockNameLookup({ X: { id: 'p1', unit: 'عدد' } }, {});
         const tx = {
             productModel: {
                 findUnique: vi.fn((args: any) => {
@@ -265,6 +312,56 @@ describe('productsService.restoreProductModel', () => {
     });
 });
 
+describe('productsService.addProductModels', () => {
+    const addModels = [{ name: 'مدل جدید', price: '2000' }];
+
+    it('محصول ناموجود → 404', async () => {
+        (prisma.product.findUnique as any).mockResolvedValue(null);
+        await expect(productsService.addProductModels('nope', addModels)).rejects.toThrow('محصول یافت نشد');
+    });
+
+    it('محصول بایگانیشده → 400', async () => {
+        (prisma.product.findUnique as any).mockResolvedValue({ id: 'p1', name: 'X', deletedAt: archivedDate });
+        await expect(productsService.addProductModels('p1', addModels)).rejects.toThrow('بایگانیشده');
+    });
+
+    it('بدون مدل → 400', async () => {
+        (prisma.product.findUnique as any).mockResolvedValue({ id: 'p1', name: 'X', deletedAt: null });
+        await expect(productsService.addProductModels('p1', [])).rejects.toThrow('حداقل یک مدل');
+    });
+
+    it('نام تکراری در یک درخواست → 400', async () => {
+        (prisma.product.findUnique as any).mockResolvedValue({ id: 'p1', name: 'X', deletedAt: null });
+        await expect(
+            productsService.addProductModels('p1', [{ name: 'مدل A' }, { name: 'مدل A' }])
+        ).rejects.toThrow('تکراری');
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('افزودن موفق: ساخت مدل داخل تراکنش + لاگ + برگرداندن محصول با مدلها', async () => {
+        (prisma.product.findUnique as any).mockResolvedValueOnce({ id: 'p1', name: 'X', unit: 'عدد', deletedAt: null })
+            .mockResolvedValueOnce({ id: 'p1', name: 'X', unit: 'عدد', models: [{ id: 'm1', name: 'مدل جدید' }] });
+        const tx = {
+            productModel: {
+                findUnique: vi.fn().mockResolvedValue(null),
+                create: vi.fn().mockResolvedValue({}),
+            },
+            activityLog: { create: vi.fn().mockResolvedValue({}) },
+        };
+        (prisma.$transaction as any).mockImplementation(async (cb: any) => cb(tx));
+
+        const result = await productsService.addProductModels('p1', addModels, 'mgr1');
+
+        expect(tx.productModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ productId: 'p1', name: 'مدل جدید', price: 2000 }) })
+        );
+        expect(tx.activityLog.create).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ type: 'product_updated', userId: 'mgr1' }) })
+        );
+        expect(result).toEqual({ id: 'p1', name: 'X', unit: 'عدد', models: [{ id: 'm1', name: 'مدل جدید' }] });
+    });
+});
+
 describe('productsService.updateProduct', () => {
     it('تغییر نام به نامِ محصول بایگانیشده → 409 متنی ساده', async () => {
         (prisma.product.findFirst as any).mockImplementation((args: any) => {
@@ -290,5 +387,52 @@ describe('productsService.updateProduct', () => {
             data: { name: 'جدید', unit: 'عدد' },
         });
         expect(result).toEqual({ id: 'p1', name: 'جدید' });
+    });
+});
+
+describe('productsService.updateProductModel', () => {
+    it('تغییر نام به نامِ مدلِ بایگانیشدهٔ همنام در همین محصول → 409 دوستانه (بهجای P2002)', async () => {
+        (prisma.productModel.findUnique as any).mockResolvedValue({ id: 'm1', productId: 'p1', name: 'قدیم' });
+        // اولین findFirst (مدل فعال) → null؛ دومی (مدل بایگانیشده) → پیدا شد
+        (prisma.productModel.findFirst as any)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ id: 'm2' });
+
+        const err = await productsService.updateProductModel('m1', { name: 'بایگانیشده' }).catch(e => e);
+
+        expect(err.statusCode).toBe(409);
+        expect(err.message).toContain('در بایگانی');
+        expect(prisma.productModel.update).not.toHaveBeenCalled();
+    });
+
+    it('ویرایش موفق قیمت/ظرفیت — دادهٔ نرمالشده از کنترلر دریافت و ذخیره میشود', async () => {
+        (prisma.productModel.findUnique as any).mockResolvedValue({ id: 'm1', productId: 'p1', name: 'مدل A' });
+        (prisma.productModel.update as any).mockResolvedValue({ id: 'm1' });
+
+        await productsService.updateProductModel('m1', { price: 1500000, unitsPerBox: 24 });
+
+        expect(prisma.productModel.update).toHaveBeenCalledWith(
+            expect.objectContaining({ data: { price: 1500000, unitsPerBox: 24 } })
+        );
+    });
+});
+
+describe('productsService.getProductById', () => {
+    it('محصول را با مدلهای فعال میآورد — بدون واکشی کل لیست', async () => {
+        (prisma.product.findUnique as any).mockResolvedValue({
+            id: 'p1',
+            name: 'کالای X',
+            models: [{ id: 'm1', name: 'مدل A' }],
+        });
+
+        const product = await productsService.getProductById('p1');
+
+        expect(prisma.product.findUnique).toHaveBeenCalledWith({
+            where: { id: 'p1' },
+            include: expect.objectContaining({
+                models: expect.objectContaining({ where: { deletedAt: null } }),
+            }),
+        });
+        expect(product).toMatchObject({ id: 'p1', name: 'کالای X' });
     });
 });

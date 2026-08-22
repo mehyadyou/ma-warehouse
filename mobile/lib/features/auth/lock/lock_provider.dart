@@ -1,9 +1,10 @@
-import 'dart:async';
-
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../../../core/network/api_error.dart';
 import '../../../core/storage/local_storage.dart';
+import '../data/auth_api_service.dart';
 import 'lock_config.dart';
 import 'lock_storage.dart';
 
@@ -11,41 +12,50 @@ final lockProvider = NotifierProvider<LockNotifier, LockState>(
   LockNotifier.new,
 );
 
+/// سرویس تأیید رمز قفل — override در تست‌ها
+final lockVerifyApiProvider = Provider<AuthApiService>(
+  (ref) => AuthApiService(),
+);
+
 class LockState {
-  /// بارگذاری اولیه تنظیمات (روش قفل، پین، قابلیت‌های بیومتریک دستگاه)
+  /// بارگذاری اولیه تنظیمات (روش قفل، قابلیت‌های بیومتریک دستگاه)
   final bool checking;
 
   final LockMethod method;
-  final bool hasPin;
 
   /// آیا دستگاه از اثر انگشت پشتیبانی می‌کند (برای نمایش گزینه در تنظیمات)
   final bool fingerprintAvailable;
   final bool faceAvailable;
 
-  /// تعداد پین‌های اشتباه پیاپی در صفحه قفل
+  /// مدت حضور در پس‌زمینه (دقیقه) که پس از آن برنامه خودکار قفل می‌شود؛
+  /// ۰ = فوراً با رفتن به پس‌زمینه
+  final int autoLockMinutes;
+
+  /// تعداد رمزهای اشتباه پیاپی در صفحه قفل
   final int failedAttempts;
 
-  /// کولداون بعد از ۵ پین اشتباه — در این بازه پین پذیرفته نمی‌شود
+  /// کولداون بعد از ۵ رمز اشتباه — در این بازه رمز پذیرفته نمی‌شود
   final DateTime? cooldownUntil;
 
   const LockState({
     this.checking = true,
     this.method = LockMethod.none,
-    this.hasPin = false,
     this.fingerprintAvailable = false,
     this.faceAvailable = false,
+    this.autoLockMinutes = LockStorage.defaultAutoLockMinutes,
     this.failedAttempts = 0,
     this.cooldownUntil,
   });
 
-  bool get isBiometric => method == LockMethod.fingerprint || method == LockMethod.face;
+  bool get isBiometric =>
+      method == LockMethod.fingerprint || method == LockMethod.face;
 
   LockState copyWith({
     bool? checking,
     LockMethod? method,
-    bool? hasPin,
     bool? fingerprintAvailable,
     bool? faceAvailable,
+    int? autoLockMinutes,
     int? failedAttempts,
     DateTime? cooldownUntil,
     bool clearCooldown = false,
@@ -53,17 +63,18 @@ class LockState {
     return LockState(
       checking: checking ?? this.checking,
       method: method ?? this.method,
-      hasPin: hasPin ?? this.hasPin,
       fingerprintAvailable: fingerprintAvailable ?? this.fingerprintAvailable,
       faceAvailable: faceAvailable ?? this.faceAvailable,
+      autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
       failedAttempts: failedAttempts ?? this.failedAttempts,
       cooldownUntil: clearCooldown ? null : (cooldownUntil ?? this.cooldownUntil),
     );
   }
 }
 
-/// مدیریت تنظیمات قفل برنامه: روش قفل + پین (۴ رقمی، هش SHA-256 + salt)
-/// و محدودیت تلاش روی صفحه قفل (۵ اشتباه → کولداون ۳۰ ثانیه).
+/// مدیریت تنظیمات قفل برنامه: روش قفل (بیومتریک / بدون قفل) + محدودیت تلاش روی
+/// صفحه قفل (۵ رمز اشتباه → کولداون ۳۰ ثانیه).
+/// قفل با همان رمز اصلی ۶ رقمی حساب باز می‌شود (تأیید سمت سرور) — پین جداگانه وجود ندارد.
 class LockNotifier extends Notifier<LockState> {
   static const int maxFailedAttempts = 5;
   static const Duration cooldownDuration = Duration(seconds: 30);
@@ -76,7 +87,6 @@ class LockNotifier extends Notifier<LockState> {
 
   Future<void> _init() async {
     var method = await LockStorage.getMethod();
-    final hasPin = await LockStorage.hasPin();
 
     var fingerprint = false;
     var face = false;
@@ -107,51 +117,36 @@ class LockNotifier extends Notifier<LockState> {
     state = LockState(
       checking: false,
       method: method,
-      hasPin: hasPin,
       fingerprintAvailable: fingerprint,
       faceAvailable: face,
+      autoLockMinutes: LockStorage.getAutoLockMinutes(),
     );
   }
 
-  /// تغییر روش قفل — تغییر روش هرگز پین را پاک نمی‌کند (مصوب)
+  /// تغییر مدت قفل خودکار (دقیقه — ۰ یعنی فوراً)
+  Future<bool> changeAutoLockMinutes(int minutes) async {
+    if (minutes < 0) return false;
+    await LockStorage.saveAutoLockMinutes(minutes);
+    state = state.copyWith(autoLockMinutes: minutes);
+    return true;
+  }
+
+  /// تغییر روش قفل (بیومتریک) — غیرفعال‌کردن نیازمند تأیید در UI است
   Future<bool> changeMethod(LockMethod method) async {
-    if (method == LockMethod.pin && !state.hasPin) return false;
     await LockStorage.saveMethod(method);
     state = state.copyWith(method: method);
     return true;
   }
 
-  /// تعیین پین — فقط ۴ رقم
-  Future<bool> setupPin(String pin) async {
-    if (!_isValidPin(pin)) return false;
-    await LockStorage.setPin(pin);
-    state = state.copyWith(hasPin: true);
-    return true;
-  }
-
-  /// تغییر پین — نیازمند پین فعلی
-  Future<bool> changePin(String currentPin, String newPin) async {
-    if (!_isValidPin(newPin)) return false;
-    final ok = await LockStorage.verifyPin(currentPin);
-    if (!ok) return false;
-    await LockStorage.setPin(newPin);
-    return true;
-  }
-
-  /// حذف پین (فقط وقتی روش قفل پین نیست — روش قفل دست می‌خورد)
-  Future<void> clearPin() async {
-    await LockStorage.clearPin();
-    state = state.copyWith(hasPin: false);
-  }
-
-  /// بررسی پین روی صفحه قفل — مدیریت تلاش‌های اشتباه و کولداون
-  Future<bool> verifyPin(String pin) async {
+  /// بررسی رمز اصلی (۶ رقمی) روی صفحه قفل — تأیید سمت سرور با همان رمز ورود.
+  /// مدیریت تلاش‌های اشتباه و کولداون.
+  Future<bool> verifyPassword(String password) async {
     final now = DateTime.now();
     if (state.cooldownUntil != null && now.isBefore(state.cooldownUntil!)) {
       return false;
     }
 
-    final ok = await LockStorage.verifyPin(pin);
+    final ok = await _verify(password);
     if (!ok) {
       final attempts = state.failedAttempts + 1;
       if (attempts >= maxFailedAttempts) {
@@ -169,12 +164,22 @@ class LockNotifier extends Notifier<LockState> {
     return true;
   }
 
-  /// بعد از موفقیت در قفل‌گشایی (بیومتریک یا پین)
+  Future<bool> _verify(String password) async {
+    try {
+      return await ref.read(lockVerifyApiProvider).verifyPassword(password);
+    } catch (e) {
+      // خطای شبکه/سرور — به‌عنوان شکست تلاش حساب می‌شود تا کاربر دوباره تلاش کند
+      debugPrint('lock verify error: ${friendlyError(e)}');
+      return false;
+    }
+  }
+
+  /// بعد از موفقیت در قفل‌گشایی (بیومتریک یا رمز)
   void resetAttempts() {
     state = state.copyWith(failedAttempts: 0, clearCooldown: true);
   }
 
-  /// پاک‌سازی کامل قفل — «خروج کامل از حساب» (مصوب: پین و روش پاک می‌شوند)
+  /// پاک‌سازی کامل قفل — «خروج کامل از حساب» (مصوب: روش قفل پاک می‌شود)
   Future<void> clearAllForLogout() async {
     await LockStorage.clearAll();
     state = LockState(
@@ -182,10 +187,5 @@ class LockNotifier extends Notifier<LockState> {
       fingerprintAvailable: state.fingerprintAvailable,
       faceAvailable: state.faceAvailable,
     );
-  }
-
-  bool _isValidPin(String pin) {
-    return pin.length == LockStorage.maxPinLength &&
-        RegExp(r'^\d{4}$').hasMatch(pin);
   }
 }

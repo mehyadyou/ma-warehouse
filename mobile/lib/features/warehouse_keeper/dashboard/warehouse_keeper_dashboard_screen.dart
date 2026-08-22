@@ -6,7 +6,7 @@ import '../../../shared/widgets/app_drawer.dart';
 import '../../../shared/settings/settings_screen.dart';
 import '../providers/warehouse_keeper_provider.dart';
 import 'header/warehouse_header.dart';
-import 'search/search_bar.dart';
+import '../../../shared/widgets/search_bar_trigger.dart';
 import 'product_management/product_management_button.dart';
 import 'bottom_nav/keeper_nav_items.dart';
 import 'home/home_screen.dart';
@@ -15,7 +15,7 @@ import 'orders/orders_screen.dart';
 import 'reports/reports_screen.dart';
 import '../scan_out/scan_out_screen.dart';
 
-const _bg    = Color(0xFF0F1114);
+const _bg = Color(0xFF0F1114);
 
 class WarehouseKeeperDashboardScreen extends ConsumerStatefulWidget {
   const WarehouseKeeperDashboardScreen({super.key});
@@ -28,26 +28,37 @@ class _WarehouseKeeperDashboardScreenState
     extends ConsumerState<WarehouseKeeperDashboardScreen> {
   int _selectedIndex = 0;
 
-  final _screens = [  // ← const رو برداشتیم
+  final _screens = [
+    // ← const رو برداشتیم
     const HomeScreen(),
     const InventoryScreen(),
     const ReportsScreen(),
-    OrdersScreen(),  // ← const نداره
+    OrdersScreen(), // ← const نداره
   ];
+
+  /// تبهایی که تاکنون باز شدهاند — mount نازک (نخستین بازدید واقعی میسازد)
+  final List<bool> _visited = [true, false, false, false];
 
   @override
   void initState() {
     super.initState();
-    
+
     // Setup socket listeners for real-time updates
-    Future.microtask(() {
-      final socket = ref.read(socketServiceProvider);
-      
-      // Listen for new orders
-      socket.on('order:created', (data) {
+    Future.microtask(_registerSocketListeners);
+  }
+
+  /// لیست هندلرهای سوکت — برای حذف کامل در dispose نگه داشته می‌شود
+  final Map<String, Function(dynamic)> _socketHandlers = {};
+
+  void _registerSocketListeners() {
+    final socket = ref.read(socketServiceProvider);
+
+    final handlers = <String, Function(dynamic)>{
+      // سفارش جدید از سوی مدیر ثبت شد
+      'order:created': (data) {
         if (mounted) {
           ref.invalidate(ordersProvider);
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('سفارش جدید دریافت شد!'),
@@ -56,10 +67,9 @@ class _WarehouseKeeperDashboardScreenState
             ),
           );
         }
-      });
-
-      // Listen for order edit — مدیر سفارش را ویرایش کرد
-      socket.on('order:updated', (data) {
+      },
+      // مدیر سفارش را ویرایش کرد
+      'order:updated': (data) {
         if (mounted) {
           ref.invalidate(ordersProvider);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -70,10 +80,9 @@ class _WarehouseKeeperDashboardScreenState
             ),
           );
         }
-      });
-
-      // Listen for order deletion — مدیر سفارش را حذف کرد
-      socket.on('order:deleted', (data) {
+      },
+      // مدیر سفارش را حذف کرد
+      'order:deleted': (data) {
         if (mounted) {
           ref.invalidate(ordersProvider);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -84,15 +93,14 @@ class _WarehouseKeeperDashboardScreenState
             ),
           );
         }
-      });
-      
-      // Listen for check-in completed
-      socket.on('checkin:completed', (data) {
+      },
+      // ورود کالا به انبار ثبت شد
+      'checkin:completed': (data) {
         if (mounted) {
           ref.invalidate(inventorySummaryProvider);
           ref.invalidate(keeperInventoryListProvider);
           ref.invalidate(transactionsProvider);
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('ورود کالا ثبت شد - موجودی آپدیت شد'),
@@ -101,18 +109,31 @@ class _WarehouseKeeperDashboardScreenState
             ),
           );
         }
-      });
-      
-      // Listen for scan-out completed
-      socket.on('scanout:done', (data) {
+      },
+      // خروج کالا از انبار ثبت شد
+      'scanout:done': (data) {
         if (mounted) {
           ref.invalidate(inventorySummaryProvider);
           ref.invalidate(keeperInventoryListProvider);
           ref.invalidate(transactionsProvider);
           ref.invalidate(ordersProvider);
         }
-      });
+      },
+    };
+    handlers.forEach((event, handler) {
+      socket.on(event, handler);
+      _socketHandlers[event] = handler;
     });
+  }
+
+  @override
+  void dispose() {
+    final socket = ref.read(socketServiceProvider);
+    _socketHandlers.forEach(
+      (event, handler) => socket.offEvent(event, handler),
+    );
+    _socketHandlers.clear();
+    super.dispose();
   }
 
   @override
@@ -132,25 +153,45 @@ class _WarehouseKeeperDashboardScreenState
           );
         },
       ),
-      body: Column(children: [
-        WarehouseHeader(avatarUrl: auth.avatarUrl),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Row(children: [
-            const Expanded(child: WarehouseSearchBar()),
-            const SizedBox(width: 8),
-            const ProductManagementButton(),
-          ]),
+      body: SafeArea(
+        child: Column(
+          children: [
+            WarehouseHeader(avatarUrl: auth.avatarUrl),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Row(
+                children: [
+                  const Expanded(child: SearchBarTrigger()),
+                  const SizedBox(width: 8),
+                  const ProductManagementButton(),
+                ],
+              ),
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  for (var i = 0; i < _screens.length; i++)
+                    _visited[i] ? _screens[i] : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+          ],
         ),
-        Expanded(child: _screens[_selectedIndex]),
-      ]),
+      ),
       bottomNavigationBar: BottomNavBar(
         selectedIndex: _selectedIndex,
         items: keeperNavItems,
         fabIcon: Icons.output_rounded,
-        onTap: (i) => setState(() => _selectedIndex = i),
+        onTap: (i) => setState(() {
+          _selectedIndex = i;
+          _visited[i] = true;
+        }),
         onAddPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const ScanOutScreen()));
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ScanOutScreen()),
+          );
         },
       ),
     );

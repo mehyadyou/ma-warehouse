@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ma_app/features/warehouse_keeper/providers/warehouse_keeper_provider.dart';
 import 'package:ma_app/features/warehouse_keeper/models/keeper_inventory_model.dart';
+import 'package:ma_app/shared/utils/numbers.dart';
 
 const _surface = Color(0xFF1A1D22);
 const _card = Color(0xFF1E2128);
@@ -35,38 +37,134 @@ class InventoryListView extends ConsumerStatefulWidget {
 }
 
 class _InventoryListViewState extends ConsumerState<InventoryListView> {
+  static const _pageSize = 50;
+
   String _query = '';
   bool _onlyInStock = false;
+  Timer? _debounce;
+
+  final _scrollCtrl = ScrollController();
+
+  /// صفحههای بعدی — صفحهٔ اول از provider (با فیلترها) میآید
+  List<KeeperProductRowModel> _extraProducts = [];
+  List<KeeperStockItemRowModel> _extraWhItems = [];
+  String _extraWhName = '';
+  int _nextPage = 2;
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  String? _loadMoreError;
+
+  KeeperInventoryQuery get _q =>
+      KeeperInventoryQuery(query: _query, onlyInStock: _onlyInStock);
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 400) {
+      _loadMore();
+    }
+  }
+
+  void _resetPaging() {
+    _extraProducts = [];
+    _extraWhItems = [];
+    _nextPage = 2;
+    _hasMore = false;
+    _loadMoreError = null;
+  }
+
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    setState(() {
+      _query = v;
+      _resetPaging();
+    });
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreError = null;
+    });
+    try {
+      final res = await ref
+          .read(wkApiProvider)
+          .getInventoryProducts(
+            page: _nextPage,
+            pageSize: _pageSize,
+            q: _query.trim().isEmpty ? null : _query,
+            onlyInStock: _onlyInStock,
+          );
+      if (!mounted) return;
+      setState(() {
+        _extraProducts = [..._extraProducts, ...res.products];
+        if (res.warehouses.isNotEmpty) {
+          _extraWhItems = [..._extraWhItems, ...res.warehouses.first.items];
+          _extraWhName = res.warehouses.first.warehouseName ?? '';
+        }
+        _nextPage++;
+        _hasMore = res.hasMore;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadingMore = false;
+        _loadMoreError = 'خطا در بارگذاری بیشتر — لمس برای تلاش مجدد';
+      });
+    }
+  }
 
   Future<void> _refresh() async {
+    setState(_resetPaging);
     ref.invalidate(keeperInventoryListProvider);
-    await ref.read(keeperInventoryListProvider.future);
+    try {
+      await ref.read(keeperInventoryListProvider(_q).future);
+    } catch (_) {
+      // خطا در حالت AsyncError نمایش داده میشود
+    }
   }
 
-  List<KeeperProductRowModel> _visibleProducts(KeeperInventoryListModel data) {
-    final q = _query.trim();
-    return data.products.where((p) {
-      if (_onlyInStock && p.totalCount.toInt() <= 0) return false;
-      if (q.isEmpty) return true;
-      return (p.name ?? '').contains(q);
-    }).toList();
-  }
+  List<KeeperProductRowModel> _visibleProducts(KeeperInventoryListModel data) =>
+      [...data.products, ..._extraProducts];
 
   Map<String, List<_WhRow>> _breakdown(KeeperInventoryListModel data) {
     final map = <String, List<_WhRow>>{};
-    for (final w in data.warehouses) {
-      final wname = w.warehouseName ?? '';
-      for (final it in w.items) {
-        final pid = it.productId ?? '';
-        if (pid.isEmpty) continue;
-        map.putIfAbsent(pid, () => []).add(_WhRow(wname, it.count));
-      }
+    final firstWhName = data.warehouses.isEmpty
+        ? ''
+        : (data.warehouses.first.warehouseName ?? '');
+    for (final it
+        in data.warehouses.isEmpty ? const [] : data.warehouses.first.items) {
+      final pid = it.productId ?? '';
+      if (pid.isEmpty) continue;
+      map.putIfAbsent(pid, () => []).add(_WhRow(firstWhName, it.count));
+    }
+    for (final it in _extraWhItems) {
+      final pid = it.productId ?? '';
+      if (pid.isEmpty) continue;
+      map.putIfAbsent(pid, () => []).add(_WhRow(_extraWhName, it.count));
     }
     return map;
   }
 
-  int _totalUnits(KeeperInventoryListModel data) =>
-      data.products.fold(0, (sum, p) => sum + p.totalCount.toInt());
+  int _totalUnits(List<KeeperProductRowModel> products) =>
+      products.fold(0, (sum, p) => sum + p.totalCount.toInt());
 
   String _unitOf(KeeperProductRowModel p) {
     final unit = (p.unit ?? '').trim();
@@ -75,27 +173,71 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(keeperInventoryListProvider);
+    final async = ref.watch(keeperInventoryListProvider(_q));
 
     return async.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(color: _green),
-      ),
-      error: (_, __) => Center(
-        child: Text(
-          'خطا در دریافت موجودی',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(color: _green)),
+      error: (e, _) => Center(
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.cloud_off_rounded,
+                color: Colors.white38,
+                size: 32,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'خطا در دریافت موجودی — اتصال اینترنت را بررسی کنید',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () => ref.invalidate(keeperInventoryListProvider),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: _green,
+                  size: 18,
+                ),
+                label: const Text(
+                  'تلاش دوباره',
+                  style: TextStyle(color: _green),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _green),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       data: (data) {
         final visible = _visibleProducts(data);
         final breakdown = _breakdown(data);
+        final totalUnits = _totalUnits(visible);
 
         return RefreshIndicator(
           color: _green,
           backgroundColor: _surface,
           onRefresh: _refresh,
           child: ListView(
+            controller: _scrollCtrl,
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
@@ -104,13 +246,13 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
                 children: [
                   _SummaryChip(
                     label: 'محصول',
-                    value: '${data.products.length}',
+                    value: formatNumber(data.total),
                     color: _green,
                   ),
                   const SizedBox(width: 8),
                   _SummaryChip(
-                    label: 'واحد موجودی',
-                    value: '${_totalUnits(data)}',
+                    label: 'واحد نمایش',
+                    value: formatNumber(totalUnits),
                     color: _blue,
                   ),
                 ],
@@ -122,8 +264,11 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
                 children: [
                   Expanded(
                     child: TextField(
-                      onChanged: (v) => setState(() => _query = v),
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      onChanged: _onSearchChanged,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                      ),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: 'جستجوی محصول…',
@@ -144,8 +289,7 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
                                   size: 18,
                                   color: Colors.white.withValues(alpha: 0.4),
                                 ),
-                                onPressed: () =>
-                                    setState(() => _query = ''),
+                                onPressed: () => _onSearchChanged(''),
                               ),
                         filled: true,
                         fillColor: _surface,
@@ -164,8 +308,10 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
                   _FilterPill(
                     label: 'فقط موجودی',
                     active: _onlyInStock,
-                    onTap: () =>
-                        setState(() => _onlyInStock = !_onlyInStock),
+                    onTap: () => setState(() {
+                      _onlyInStock = !_onlyInStock;
+                      _resetPaging();
+                    }),
                   ),
                 ],
               ),
@@ -192,13 +338,47 @@ class _InventoryListViewState extends ConsumerState<InventoryListView> {
                 )
               else
                 ...visible.asMap().entries.map(
-                      (e) => _ProductCard(
-                        product: e.value,
-                        breakdown: breakdown[e.value.productId] ?? const [],
-                        unit: _unitOf(e.value),
-                        color: _palette[e.key % _palette.length],
-                      ),
-                    ),
+                  (e) => _ProductCard(
+                    product: e.value,
+                    breakdown: breakdown[e.value.productId] ?? const [],
+                    unit: _unitOf(e.value),
+                    color: _palette[e.key % _palette.length],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              if (_hasMore)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: _loadingMore
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: _green,
+                            ),
+                          )
+                        : _loadMoreError != null
+                        ? GestureDetector(
+                            onTap: _loadMore,
+                            child: Text(
+                              _loadMoreError!,
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            '${formatNumber(data.total - visible.length)} محصول دیگر — برای نمایش بیشتر به پایین بروید',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                            ),
+                          ),
+                  ),
+                ),
             ],
           ),
         );
@@ -273,11 +453,12 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
         child: Material(
           color: _surface,
           child: Theme(
-            data: Theme.of(context).copyWith(
-              dividerColor: Colors.transparent,
-            ),
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 2,
+              ),
               childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               iconColor: color,
               collapsedIconColor: color,
@@ -312,7 +493,7 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  '$count $_unit',
+                  '${formatNumber(count)} $_unit',
                   style: TextStyle(
                     color: hasStock
                         ? color
@@ -370,7 +551,10 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
             ),
             TextButton(
               onPressed: _load,
-              child: const Text('تلاش دوباره', style: TextStyle(color: _green, fontSize: 12)),
+              child: const Text(
+                'تلاش دوباره',
+                style: TextStyle(color: _green, fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -405,13 +589,17 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: Column(
-        children: models.asMap().entries.map(
-          (e) => _ModelRow(
-            model: e.value,
-            unit: _unit,
-            modelColor: _palette[(e.key + 1) % _palette.length],
-          ),
-        ).toList(),
+        children: models
+            .asMap()
+            .entries
+            .map(
+              (e) => _ModelRow(
+                model: e.value,
+                unit: _unit,
+                modelColor: _palette[(e.key + 1) % _palette.length],
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -441,9 +629,7 @@ class _ModelRow extends StatelessWidget {
     final subtitle = infoParts.isEmpty ? null : infoParts.join(' • ');
 
     return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.transparent,
-      ),
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         dense: true,
         tilePadding: EdgeInsets.zero,
@@ -490,11 +676,13 @@ class _ModelRow extends StatelessWidget {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
           decoration: BoxDecoration(
-            color: (hasStock ? modelColor : Colors.white).withValues(alpha: 0.12),
+            color: (hasStock ? modelColor : Colors.white).withValues(
+              alpha: 0.12,
+            ),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            '$count $unit',
+            '${formatNumber(count)} $unit',
             style: TextStyle(
               color: hasStock
                   ? modelColor
@@ -553,7 +741,7 @@ class _ModelRow extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '${w.count.toInt()} $unit',
+                              '${formatNumber(w.count.toInt())} $unit',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.85),
                                 fontSize: 12,
@@ -577,10 +765,7 @@ class _WarehouseRows extends StatelessWidget {
   final List<_WhRow> rows;
   final String unit;
 
-  const _WarehouseRows({
-    required this.rows,
-    required this.unit,
-  });
+  const _WarehouseRows({required this.rows, required this.unit});
 
   @override
   Widget build(BuildContext context) {
@@ -615,7 +800,7 @@ class _WarehouseRows extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${w.count.toInt()} $unit',
+                      '${formatNumber(w.count.toInt())} $unit',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 12.5,
@@ -697,9 +882,7 @@ class _FilterPill extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: active
-              ? _green.withValues(alpha: 0.15)
-              : _surface,
+          color: active ? _green.withValues(alpha: 0.15) : _surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: active

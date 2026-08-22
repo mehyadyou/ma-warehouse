@@ -8,6 +8,21 @@ import { assertPasswordPolicy } from '../../common/password';
 import { writeAuditStandalone } from '../../utils/audit';
 import type { Prisma, Role } from '@prisma/client';
 
+const VALID_ROLES: Role[] = ['MANAGER', 'WAREHOUSE_KEEPER', 'DRIVER'];
+const PHONE_REGEX = /^09\d{9}$/;
+
+function assertRole(role: string): asserts role is Role {
+    if (!VALID_ROLES.includes(role as Role)) {
+        throw new AppError('نقش نامعتبر است', 400);
+    }
+}
+
+function assertPhone(phone: string) {
+    if (!PHONE_REGEX.test(phone)) {
+        throw new AppError('شماره موبایل باید ۱۱ رقم و با 09 شروع شود', 400);
+    }
+}
+
 export const usersService = {
     //لیست کاربران فعال
     getAllUsers: async () => {
@@ -68,10 +83,13 @@ export const usersService = {
             take: 10,
         });
 
-        // آمار
-        const [checkins, checkinAgg, returns, ordersCount, deliveriesCount] = await Promise.all([
-            prisma.transaction.count({ where: { userId } }),
-            prisma.transaction.aggregate({ where: { userId }, _sum: { quantity: true } }),
+        // آمار — ورود کالا فقط تراکنش‌های IN؛ واحدها فقط ورودی/مرجوعی (خروجی‌ها در موجودی منفی نمی‌شوند)
+        const [checkins, checkinUnits, returns, ordersCount, deliveriesCount] = await Promise.all([
+            prisma.transaction.count({ where: { userId, type: 'IN' } }),
+            prisma.transaction.aggregate({
+                where: { userId, type: { in: ['IN', 'RETURN'] } },
+                _sum: { quantity: true },
+            }),
             prisma.transaction.count({ where: { userId, type: 'RETURN' } }),
             prisma.order.count({ where: { createdById: userId } }),
             prisma.delivery.count({ where: { driverId: userId } }),
@@ -101,7 +119,7 @@ export const usersService = {
             user,
             stats: {
                 totalCheckins: checkins,
-                totalUnits: checkinAgg._sum.quantity ?? 0,
+                totalUnits: checkinUnits._sum.quantity ?? 0,
                 totalReturns: returns,
                 totalOrders: ordersCount,
                 totalDeliveries: deliveriesCount,
@@ -113,6 +131,8 @@ export const usersService = {
 
     //ساخت کاربر جدید (یا فعالسازی مجدد کاربر حذف شده)
     createUser: async (name: string, phone: string, password: string, role: string, warehouseId?: string, managerId?: string) => {
+        assertRole(role);
+        assertPhone(phone);
         if (role === 'WAREHOUSE_KEEPER' && !warehouseId) {
             throw new AppError('برای ساخت انباردار، انتخاب انبار الزامی است', 400);
         }
@@ -205,6 +225,22 @@ export const usersService = {
         const user = await prisma.user.findUnique({ where: { id } });
         if (!user) {
             throw new AppError('کاربر یافت نشد', 404);
+        }
+
+        //مدیر سیستم قابل ویرایش نیست
+        if (user.role === 'MANAGER') {
+            throw new AppError('نمی‌توان حساب مدیر سیستم را ویرایش کرد', 400);
+        }
+
+        if (data.role) {
+            assertRole(data.role);
+            //تغییر به انباردار بدون انبار مجاز نیست
+            if (data.role === 'WAREHOUSE_KEEPER' && !data.warehouseId && !user.warehouseId) {
+                throw new AppError('برای نقش انباردار، انتخاب انبار الزامی است', 400);
+            }
+        }
+        if (data.phone) {
+            assertPhone(data.phone);
         }
 
         const updateData: Prisma.UserUpdateInput = {};

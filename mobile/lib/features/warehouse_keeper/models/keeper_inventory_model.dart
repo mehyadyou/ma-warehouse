@@ -7,7 +7,12 @@ part 'keeper_inventory_model.g.dart';
 abstract class KeeperInventoryListModel with _$KeeperInventoryListModel {
   const factory KeeperInventoryListModel({
     @Default(<KeeperProductRowModel>[]) List<KeeperProductRowModel> products,
-    @Default(<KeeperWarehouseStockRowModel>[]) List<KeeperWarehouseStockRowModel> warehouses,
+    @Default(<KeeperWarehouseStockRowModel>[])
+    List<KeeperWarehouseStockRowModel> warehouses,
+    @Default(0) int total,
+    @Default(1) int page,
+    @Default(50) int pageSize,
+    @Default(false) bool hasMore,
   }) = _KeeperInventoryListModel;
 
   factory KeeperInventoryListModel.fromJson(Map<String, dynamic> json) =>
@@ -28,7 +33,8 @@ abstract class KeeperProductRowModel with _$KeeperProductRowModel {
 }
 
 @freezed
-abstract class KeeperWarehouseStockRowModel with _$KeeperWarehouseStockRowModel {
+abstract class KeeperWarehouseStockRowModel
+    with _$KeeperWarehouseStockRowModel {
   const factory KeeperWarehouseStockRowModel({
     String? warehouseId,
     String? warehouseName,
@@ -57,7 +63,8 @@ abstract class KeeperStockItemRowModel with _$KeeperStockItemRowModel {
 abstract class KeeperProductModelsData with _$KeeperProductModelsData {
   const factory KeeperProductModelsData({
     KeeperProductInfoModel? product,
-    @Default(<KeeperProductModelStockModel>[]) List<KeeperProductModelStockModel> models,
+    @Default(<KeeperProductModelStockModel>[])
+    List<KeeperProductModelStockModel> models,
   }) = _KeeperProductModelsData;
 
   factory KeeperProductModelsData.fromJson(Map<String, dynamic> json) =>
@@ -77,14 +84,16 @@ abstract class KeeperProductInfoModel with _$KeeperProductInfoModel {
 }
 
 @freezed
-abstract class KeeperProductModelStockModel with _$KeeperProductModelStockModel {
+abstract class KeeperProductModelStockModel
+    with _$KeeperProductModelStockModel {
   const factory KeeperProductModelStockModel({
     String? modelId,
     String? name,
     String? packageType,
     num? unitsPerBox,
     @Default(0) num count,
-    @Default(<KeeperModelWarehouseRowModel>[]) List<KeeperModelWarehouseRowModel> warehouses,
+    @Default(<KeeperModelWarehouseRowModel>[])
+    List<KeeperModelWarehouseRowModel> warehouses,
   }) = _KeeperProductModelStockModel;
 
   factory KeeperProductModelStockModel.fromJson(Map<String, dynamic> json) =>
@@ -92,7 +101,8 @@ abstract class KeeperProductModelStockModel with _$KeeperProductModelStockModel 
 }
 
 @freezed
-abstract class KeeperModelWarehouseRowModel with _$KeeperModelWarehouseRowModel {
+abstract class KeeperModelWarehouseRowModel
+    with _$KeeperModelWarehouseRowModel {
   const factory KeeperModelWarehouseRowModel({
     String? warehouseId,
     String? warehouseName,

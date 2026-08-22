@@ -104,14 +104,23 @@ export const inventoryService = {
         };
     }),
 
-    //موجودی هر انبار — فقط ترکیب‌هایی که کارتن دارند (بدون CROSS JOIN انفجاری)
+    //موجودی هر انبار — کارتن + لِگاسی + انبارهای بدون موجودی (گزارش وضعیت انبارها)
     getWarehouseInventory: async () => {
-        const result = await prisma.$queryRaw`
+        const warehouses = await prisma.warehouse.findMany({
+            where: { deletedAt: null },
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true },
+        });
+        const warehouseNames = new Map(warehouses.map(w => [w.id, w.name]));
+
+        // ── کارتن‌های در هر انبار (فقط ترکیب‌هایی که کارتن دارند) ──
+        const cartonInventory = await prisma.$queryRaw<{ warehouseId: string; warehouseName: string; productId: string; productName: string; unit: string | null; count: number }[]>`
             SELECT
                 w.id as "warehouseId",
                 w.name as "warehouseName",
                 p.id as "productId",
                 p.name as "productName",
+                p.unit,
                 COALESCE(SUM(
                     CASE
                         WHEN c.status = 'IN_STOCK' THEN
@@ -126,15 +135,257 @@ export const inventoryService = {
             JOIN "Warehouse" w ON w.id = c."warehouseId" AND w."deletedAt" IS NULL
             JOIN "Product" p ON p.id = c."productId" AND p."deletedAt" IS NULL
             LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
-            GROUP BY w.id, w.name, p.id, p.name
-            ORDER BY w.name, p.name
+            GROUP BY w.id, w.name, p.id, p.name, p.unit
         `;
-        return result;
+
+        // ── شناسایی محصولات دارای کارتن (سایر محصولات با تراکنش‌های لِگاسی محاسبه می‌شوند) ──
+        const cartonRows = await prisma.$queryRaw<{ productId: string; cartonRows: number }[]>`
+            SELECT c."productId" as "productId", COUNT(*)::int as "cartonRows"
+            FROM "Carton" c
+            JOIN "Warehouse" w ON c."warehouseId" = w.id AND w."deletedAt" IS NULL
+            GROUP BY c."productId"
+        `;
+        const cartonBaseProducts = new Set(
+            cartonRows.filter(r => Number(r.cartonRows || 0) > 0).map(r => r.productId),
+        );
+
+        // ── تراکنش‌های لِگاسی هر محصول در هر انبار (فقط محصولات بدون کارتن) ──
+        const legacyInventory = await prisma.$queryRaw<{ productId: string; productName: string; unit: string | null; warehouseId: string; legacyCount: number }[]>`
+            SELECT
+                p.id as "productId",
+                p.name as "productName",
+                p.unit,
+                t."warehouseId" as "warehouseId",
+                COALESCE(SUM(
+                    CASE
+                        WHEN t.type = 'IN' THEN t.quantity
+                        WHEN t.type = 'OUT' THEN -t.quantity
+                        ELSE 0
+                    END
+                ), 0)::int as "legacyCount"
+            FROM "Product" p
+            LEFT JOIN "Transaction" t
+                ON t."productId" = p.id
+                AND t."warehouseId" IN (SELECT "id" FROM "Warehouse" WHERE "deletedAt" IS NULL)
+            WHERE p."deletedAt" IS NULL
+            GROUP BY p.id, p.name, p.unit, t."warehouseId"
+        `;
+
+        // ── تجمیع به‌صورت ردیف‌های تخت ──
+        const rows: {
+            warehouseId: string;
+            warehouseName: string;
+            productId: string;
+            productName: string;
+            unit: string;
+            count: number;
+        }[] = [];
+        const seen = new Set<string>();
+
+        // کارتن‌ها: فقط محصولات دارای کارتن
+        for (const row of cartonInventory) {
+            if (!cartonBaseProducts.has(row.productId)) continue;
+            rows.push({
+                warehouseId: row.warehouseId,
+                warehouseName: row.warehouseName,
+                productId: row.productId,
+                productName: row.productName,
+                unit: row.unit?.trim() || 'عدد',
+                count: Number(row.count || 0),
+            });
+            seen.add(`${row.warehouseId}:${row.productId}`);
+        }
+
+        // لِگاسی: فقط محصولات بدون کارتن
+        for (const row of legacyInventory) {
+            if (cartonBaseProducts.has(row.productId)) continue;
+            if (!row.warehouseId) continue;
+            const key = `${row.warehouseId}:${row.productId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            rows.push({
+                warehouseId: row.warehouseId,
+                warehouseName: warehouseNames.get(row.warehouseId) ?? 'نامشخص',
+                productId: row.productId,
+                productName: row.productName,
+                unit: row.unit?.trim() || 'عدد',
+                count: Number(row.legacyCount || 0),
+            });
+        }
+
+        // انبارهای بدون هیچ موجودی — با ردیف صفر
+        for (const w of warehouses) {
+            if (!rows.some(r => r.warehouseId === w.id)) {
+                rows.push({
+                    warehouseId: w.id,
+                    warehouseName: w.name,
+                    productId: '',
+                    productName: '',
+                    unit: 'عدد',
+                    count: 0,
+                });
+            }
+        }
+
+        rows.sort((a, b) =>
+            a.warehouseName.localeCompare(b.warehouseName, 'fa') ||
+            a.productName.localeCompare(b.productName, 'fa'),
+        );
+        return rows;
     },
 
     //موجودی محصولات به تفکیک انبار — برای نمودارهای عمودی
     // خروجی: مجموع هر محصول در همهٔ انبارها + ریز موجودی هر انبار (با منطق یکسان کارتن/لِگاسی)
-    getProductInventory: async () => {
+    // page/pageSize: صفحه‌بندی محصولات (مرتب‌شده بر موجودی نزولی) — سقف ۵۰۰؛ بدون پارامتر = رفتار قدیمی (همه)
+    getProductInventory: async (opts: { page?: number; pageSize?: number; q?: string; onlyInStock?: boolean; warehouseId?: string } = {}) => {
+        // ── حالت تک‌انبار: فقط محصولات انبار انتخاب‌شده (کارتن + لِگاسی همان انبار) ──
+        if (opts.warehouseId) {
+            const warehouse = await prisma.warehouse.findFirst({
+                where: { id: opts.warehouseId, deletedAt: null },
+                select: { id: true, name: true },
+            });
+            if (!warehouse) return null;
+
+            const cartonInventory = await prisma.$queryRaw<{ productId: string; productName: string; unit: string | null; count: number }[]>`
+                SELECT 
+                    p.id as "productId",
+                    p.name as "productName",
+                    p.unit,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN c.status = 'IN_STOCK' THEN
+                                CASE
+                                    WHEN c."isIndividual" = true THEN 1
+                                    ELSE COALESCE(pm."unitsPerBox", 0)
+                                END
+                            ELSE 0
+                        END
+                    ), 0)::int as "count"
+                FROM "Product" p
+                LEFT JOIN "Carton" c 
+                    ON c."productId" = p.id 
+                    AND c."warehouseId" = ${opts.warehouseId}
+                LEFT JOIN "ProductModel" pm ON c."modelId" = pm.id
+                WHERE p."deletedAt" IS NULL
+                GROUP BY p.id, p.name, p.unit
+            `;
+
+            const cartonRows = await prisma.$queryRaw<{ productId: string; cartonRows: number }[]>`
+                SELECT c."productId" as "productId", COUNT(*)::int as "cartonRows"
+                FROM "Carton" c
+                WHERE c."warehouseId" = ${opts.warehouseId}
+                GROUP BY c."productId"
+            `;
+            const cartonBaseProducts = new Set(
+                cartonRows.filter(r => Number(r.cartonRows || 0) > 0).map(r => r.productId),
+            );
+
+            const legacyInventory = await prisma.$queryRaw<{ productId: string; legacyCount: number }[]>`
+                SELECT
+                    p.id as "productId",
+                    COALESCE(SUM(
+                        CASE
+                            WHEN t.type = 'IN' THEN t.quantity
+                            WHEN t.type = 'OUT' THEN -t.quantity
+                            ELSE 0
+                        END
+                    ), 0)::int as "legacyCount"
+                FROM "Product" p
+                LEFT JOIN "Transaction" t
+                    ON t."productId" = p.id
+                    AND t."warehouseId" = ${opts.warehouseId}
+                WHERE p."deletedAt" IS NULL
+                GROUP BY p.id
+            `;
+
+            const modelInfo = await prisma.$queryRaw<{ productId: string; modelCount: number; modelNames: string[] }[]>`
+                SELECT
+                    pm."productId" as "productId",
+                    COUNT(*)::int as "modelCount",
+                    COALESCE(array_agg(pm.name ORDER BY pm.name), '{}') as "modelNames"
+                FROM "ProductModel" pm
+                WHERE pm."deletedAt" IS NULL
+                GROUP BY pm."productId"
+            `;
+            const modelMap = new Map(
+                (modelInfo as { productId: string; modelCount: number; modelNames: string[] }[]).map(item => [
+                    item.productId,
+                    { modelCount: Number(item.modelCount || 0), modelNames: item.modelNames ?? [] },
+                ]),
+            );
+
+            const productTotals = new Map<string, { productId: string; name: string; unit: string; totalCount: number }>();
+            const ensureProduct = (productId: string, name: string, unit: string | null) => {
+                if (!productTotals.has(productId)) {
+                    productTotals.set(productId, {
+                        productId,
+                        name,
+                        unit: unit?.trim() || 'عدد',
+                        totalCount: 0,
+                    });
+                }
+            };
+
+            for (const row of cartonInventory) {
+                ensureProduct(row.productId, row.productName, row.unit);
+                const count = cartonBaseProducts.has(row.productId) ? Number(row.count || 0) : 0;
+                productTotals.get(row.productId)!.totalCount += count;
+            }
+
+            for (const row of legacyInventory) {
+                if (cartonBaseProducts.has(row.productId)) continue;
+                const name = productTotals.get(row.productId)?.name ?? row.productId;
+                const unit = productTotals.get(row.productId)?.unit ?? 'عدد';
+                ensureProduct(row.productId, name, unit);
+                productTotals.get(row.productId)!.totalCount += Number(row.legacyCount || 0);
+            }
+
+            let all = Array.from(productTotals.values())
+                .sort((a, b) => b.totalCount - a.totalCount)
+                .map(p => ({
+                    ...p,
+                    modelCount: modelMap.get(p.productId)?.modelCount ?? 0,
+                    modelNames: modelMap.get(p.productId)?.modelNames ?? [],
+                }));
+
+            const q = opts.q?.trim().toLowerCase();
+            if (q) all = all.filter(p => p.name.toLowerCase().includes(q));
+            if (opts.onlyInStock) all = all.filter(p => Number(p.totalCount || 0) !== 0);
+
+            const total = all.length;
+            const usePaging = opts.page !== undefined && opts.pageSize !== undefined;
+            const page = usePaging ? Math.max(1, Math.floor(opts.page as number)) : 1;
+            const pageSize = usePaging
+                ? Math.min(500, Math.max(1, Math.floor(opts.pageSize as number)))
+                : Math.max(1, total);
+            const start = (page - 1) * pageSize;
+            const products = all.slice(start, start + pageSize);
+
+            return {
+                products,
+                total,
+                page,
+                pageSize,
+                hasMore: start + products.length < total,
+                warehouses: [
+                    {
+                        warehouseId: warehouse.id,
+                        warehouseName: warehouse.name,
+                        totalCount: products.reduce((sum, p) => sum + Number(p.totalCount || 0), 0),
+                        totalItems: total,
+                        items: products
+                            .filter(p => Number(p.totalCount || 0) !== 0)
+                            .map(p => ({
+                                productId: p.productId,
+                                name: p.name,
+                                unit: p.unit,
+                                count: p.totalCount,
+                            })),
+                    },
+                ],
+            };
+        }
+
         const warehouses = await prisma.warehouse.findMany({
             where: { deletedAt: null },
             orderBy: { name: 'asc' },
@@ -245,22 +496,73 @@ export const inventoryService = {
             item.count += count;
         }
 
-        const products = Array.from(productTotals.values())
-            .sort((a, b) => b.totalCount - a.totalCount);
+        // ── مدل‌های هر محصول (نام + تعداد) — یک کوئری گروهی، بدون سربار هر-کارت ──
+        const modelInfo = await prisma.$queryRaw<{
+            productId: string;
+            modelCount: number;
+            modelNames: string[];
+        }[]>`
+            SELECT
+                pm."productId" as "productId",
+                COUNT(*)::int as "modelCount",
+                COALESCE(array_agg(pm.name ORDER BY pm.name), '{}') as "modelNames"
+            FROM "ProductModel" pm
+            WHERE pm."deletedAt" IS NULL
+            GROUP BY pm."productId"
+        `;
+        const modelMap = new Map(
+            (modelInfo as { productId: string; modelCount: number; modelNames: string[] }[]).map(item => [
+                item.productId,
+                { modelCount: Number(item.modelCount || 0), modelNames: item.modelNames ?? [] },
+            ]),
+        );
 
+        const allProducts = Array.from(productTotals.values())
+            .sort((a, b) => b.totalCount - a.totalCount)
+            .map(p => ({
+                ...p,
+                modelCount: modelMap.get(p.productId)?.modelCount ?? 0,
+                modelNames: modelMap.get(p.productId)?.modelNames ?? [],
+            }));
+
+        // فیلترهای سمت سرور — جستجو و فقط-موجودی (قبل از صفحه‌بندی)
+        const q = opts.q?.trim().toLowerCase();
+        let filtered = allProducts;
+        if (q) filtered = filtered.filter(p => p.name.toLowerCase().includes(q));
+        if (opts.onlyInStock) filtered = filtered.filter(p => Number(p.totalCount || 0) !== 0);
+
+        // صفحه‌بندی (پیش‌فرض: همه)
+        const usePaging = opts.page !== undefined && opts.pageSize !== undefined;
+        const safePage = usePaging ? Math.max(1, Math.floor(opts.page as number)) : 1;
+        const safeSize = usePaging
+            ? Math.min(500, Math.max(1, Math.floor(opts.pageSize as number)))
+            : filtered.length;
+        const start = (safePage - 1) * safeSize;
+        const products = usePaging
+            ? filtered.slice(start, start + safeSize)
+            : filtered;
+
+        // آیتم‌های هر انبار هم می‌تواند با هزاران محصول بزرگ شود → فقط N تای برتر + شمارنده
+        const MAX_WAREHOUSE_ITEMS = 50;
+        // با فیلتر فعال، آیتم‌های انبار فقط محصولات منطبق را نشان می‌دهند (هماهنگ با جستجو)
+        const filteredIds = q || opts.onlyInStock
+            ? new Set(filtered.map(p => p.productId))
+            : null;
         const warehouseList = warehouses.map(w => {
-            const items = Array.from((warehouseItems.get(w.id) ?? new Map()).values())
-                .filter(item => Number(item.count || 0) !== 0)
-                .sort((a, b) => b.count - a.count);
+            let items = Array.from((warehouseItems.get(w.id) ?? new Map()).values())
+                .filter(item => Number(item.count || 0) !== 0);
+            if (filteredIds) items = items.filter(it => filteredIds.has(it.productId));
+            items.sort((a, b) => b.count - a.count);
             return {
                 warehouseId: w.id,
                 warehouseName: w.name,
                 totalCount: items.reduce((sum, item) => sum + Number(item.count || 0), 0),
-                items,
+                totalItems: items.length,
+                items: items.slice(0, MAX_WAREHOUSE_ITEMS),
             };
         });
 
-        return { products, warehouses: warehouseList };
+        return { products, total: filtered.length, page: safePage, pageSize: safeSize, hasMore: start + products.length < filtered.length, warehouses: warehouseList };
     },
 
     //مدل‌های یک محصول به‌همراه موجودی هر مدل در هر انبار

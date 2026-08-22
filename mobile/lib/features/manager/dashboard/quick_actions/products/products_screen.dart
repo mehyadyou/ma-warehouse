@@ -9,10 +9,42 @@ import '../../../models/product_model.dart';
 import '../../product_management/add_product_screen.dart';
 import '../../product_management/edit_product_screen.dart';
 import '../../../../../core/network/api_error.dart';
+import '../../../../../shared/utils/numbers.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
 const _green = Color(0xFF4ADE80);
+const _red = Color(0xFFF87171);
+
+class _ModelRow {
+  final String id;
+  final String name;
+  final double? price;
+  final int? unitsPerBox;
+  final String? packageType;
+
+  const _ModelRow({
+    required this.id,
+    required this.name,
+    this.price,
+    this.unitsPerBox,
+    this.packageType,
+  });
+}
+
+class _ProductGroup {
+  final String id;
+  final String name;
+  final String unit;
+  final List<_ModelRow> models;
+
+  const _ProductGroup({
+    required this.id,
+    required this.name,
+    required this.unit,
+    required this.models,
+  });
+}
 
 class ProductsScreen extends ConsumerStatefulWidget {
   const ProductsScreen({super.key});
@@ -23,7 +55,7 @@ class ProductsScreen extends ConsumerStatefulWidget {
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   late final ManagerApiService _api = ref.read(managerApiServiceProvider);
-  final List<Map<String, dynamic>> _products = [];
+  final List<_ProductGroup> _groups = [];
   final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
   Timer? _debounce;
@@ -34,8 +66,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   bool _loadingMore = false;
   bool _hasMore = true;
   String _query = '';
+  String? _error;
+  int _requestSeq = 0;
+  final Set<String> _expandedProductIds = {};
 
   static const int _pageSize = 100;
+  static const int _collapsedModelLimit = 3;
 
   @override
   void initState() {
@@ -64,12 +100,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _debounce = Timer(const Duration(milliseconds: 400), () {
       if (!mounted) return;
       setState(() => _query = value.trim());
-      _loadProducts(reset: true);
+      _loadProducts();
     });
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore || _loading) return;
+    final seq = ++_requestSeq;
     setState(() => _loadingMore = true);
     try {
       final result = await _api.getProductsPage(
@@ -77,69 +114,85 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         page: _page + 1,
         pageSize: _pageSize,
       );
-      _addRows(result.products);
-      _page += 1;
-      _hasMore = _products.length < result.total;
-      _total = result.total;
+      if (!mounted || seq != _requestSeq) return;
+      setState(() {
+        _addUnique(_buildGroups(result.products));
+        _page += 1;
+        _total = result.total;
+        _hasMore = _groups.length < _total;
+      });
     } catch (_) {}
-    if (mounted) setState(() => _loadingMore = false);
+    if (!mounted || seq != _requestSeq) return;
+    setState(() => _loadingMore = false);
   }
 
-  Future<void> _loadProducts({bool reset = true}) async {
-    if (reset) {
-      setState(() {
-        _loading = true;
-        _products.clear();
-        _page = 1;
-        _hasMore = true;
-      });
-    }
+  Future<void> _loadProducts() async {
+    final seq = ++_requestSeq;
+    setState(() {
+      _loading = true;
+      _loadingMore = false;
+      _error = null;
+      _groups.clear();
+    });
     try {
       final result = await _api.getProductsPage(
         q: _query.isEmpty ? null : _query,
-        page: reset ? 1 : _page,
+        page: 1,
         pageSize: _pageSize,
       );
-      if (reset) _products.clear();
-      _addRows(result.products);
-      if (reset) _page = 1;
-      _total = result.total;
-      _hasMore = _products.length < result.total;
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+      if (!mounted || seq != _requestSeq) return;
+      setState(() {
+        _groups.addAll(_buildGroups(result.products));
+        _page = 1;
+        _total = result.total;
+        _hasMore = _groups.length < _total;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted || seq != _requestSeq) return;
+      setState(() {
+        _loading = false;
+        _error = friendlyError(e);
+      });
+    }
   }
 
-  void _addRows(List<ProductModel> rawProducts) {
-    for (var p in rawProducts) {
+  List<_ProductGroup> _buildGroups(List<ProductModel> rawProducts) {
+    final map = <String, _ProductGroup>{};
+    for (final p in rawProducts) {
+      if (map.containsKey(p.id)) continue;
       final unit = (p.unit ?? '').trim().isNotEmpty ? p.unit! : 'عدد';
-      final models = p.models;
-      if (models.isEmpty) {
-        _products.add({
-          'productId': p.id,
-          'productName': p.name,
-          'unit': unit,
-          'modelId': '',
-          'modelName': '',
-          'price': null,
-        });
-      } else {
-        for (var m in models) {
-          _products.add({
-            'productId': p.id,
-            'productName': p.name,
-            'unit': unit,
-            'modelId': m.id,
-            'modelName': m.name,
-            'price': m.price,
-          });
-        }
+      map[p.id] = _ProductGroup(
+        id: p.id,
+        name: p.name,
+        unit: unit,
+        models: [
+          for (final m in p.models)
+            _ModelRow(
+              id: m.id,
+              name: m.name,
+              price: m.price,
+              unitsPerBox: m.unitsPerBox?.toInt(),
+              packageType: m.packageType,
+            ),
+        ],
+      );
+    }
+    return map.values.toList();
+  }
+
+  void _addUnique(List<_ProductGroup> incoming) {
+    for (final g in incoming) {
+      if (!_groups.any((existing) => existing.id == g.id)) {
+        _groups.add(g);
       }
     }
   }
 
   void _deleteProduct(String productId, String productName) async {
     final confirmed = await _confirmArchive(
-      '«$productName» بایگانی خواهد شد. هیچ داده‌ای حذف نمی‌شود؛ کارتن‌ها و QRها سالم می‌مانند و هر زمان قابل بازگرداندن است.',
+      '«$productName» و تمام مدل‌هایش بایگانی خواهد شد. هیچ داده‌ای حذف نمی‌شود؛ کارتن‌ها و QRها سالم می‌مانند و هر زمان قابل بازگرداندن است.',
     );
     if (confirmed != true) return;
     try {
@@ -283,12 +336,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ),
               child: Column(children: [
                 Container(
-                  width: 56, height: 56,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(color: _green.withOpacity(0.12), shape: BoxShape.circle),
                   child: const Icon(Icons.add_rounded, color: _green, size: 30),
                 ),
                 const SizedBox(height: 12),
-                const Text('ایجاد محصول جدید', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                const Text('ایجاد محصول جدید',
+                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
               ]),
             ),
           ),
@@ -328,7 +383,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             child: Align(
               alignment: Alignment.centerRight,
               child: Text(
-                '${_products.length} از $_total',
+                '${faDigits('$_total')} محصول${_query.isNotEmpty ? ' — جستجو' : ''}',
                 style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
               ),
             ),
@@ -336,90 +391,225 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: _green))
-              : _products.isEmpty
-                  ? Center(
-                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.inventory_2_rounded, size: 48, color: Colors.white.withOpacity(0.2)),
-                        const SizedBox(height: 12),
-                        Text(
-                          _query.isEmpty ? 'هیچ محصولی ثبت نشده' : 'نتیجه‌ای یافت نشد',
-                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
-                        ),
-                      ]),
-                    )
-                  : ListView.builder(
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _products.length + (_hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= _products.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: _green),
-                              ),
+              : _error != null && _groups.isEmpty
+                  ? _buildErrorState()
+                  : _groups.isEmpty
+                      ? Center(
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.inventory_2_rounded, size: 48, color: Colors.white.withOpacity(0.2)),
+                            const SizedBox(height: 12),
+                            Text(
+                              _query.isEmpty ? 'هیچ محصولی ثبت نشده' : 'نتیجه‌ای یافت نشد',
+                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
                             ),
-                          );
-                        }
-                        final p = _products[index];
-                        final pId = p['productId'] ?? '';
-                        final pName = p['productName'] ?? '';
-                        final mId = p['modelId'] ?? '';
-                        final mName = p['modelName'] ?? '';
-                        final unit = p['unit'] ?? 'عدد';
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withOpacity(0.05))),
-                          child: Row(children: [
-                            Container(width: 44, height: 44, decoration: BoxDecoration(color: _green.withOpacity(0.12), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.inventory_2_rounded, color: _green, size: 22)),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: RichText(
-                                text: TextSpan(
-                                  children: [
-                                    TextSpan(text: pName, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                                    TextSpan(text: ' [$unit]', style: const TextStyle(color: _green, fontSize: 11.5, fontWeight: FontWeight.w500)),
-                                    if (mName.isNotEmpty) ...[
-                                      const TextSpan(text: '  '),
-                                      TextSpan(text: mName, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, fontWeight: FontWeight.w300)),
-                                    ]
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // ویرایش + حذف
-                            GestureDetector(
-                              onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => EditProductScreen(productId: pId)),
-                                );
-                                _loadProducts();
-                              },
-                              child: const Icon(Icons.edit_outlined, color: _green, size: 20),
-                            ),
-                            const SizedBox(width: 14),
-                            if (mId.isNotEmpty)
-                              GestureDetector(
-                                onTap: () => _deleteModel(mId, mName),
-                                child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
-                              )
-                            else
-                              GestureDetector(
-                                onTap: () => _deleteProduct(pId, pName),
-                                child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
-                              ),
                           ]),
-                        );
-                      },
-                    ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollCtrl,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: _groups.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= _groups.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+                                  ),
+                                ),
+                              );
+                            }
+                            return _buildProductCard(_groups[index]);
+                          },
+                        ),
         ),
       ]),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.cloud_off_rounded, size: 44, color: Colors.white.withOpacity(0.25)),
+          const SizedBox(height: 12),
+          Text(
+            _error ?? 'خطا در بارگذاری',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13.5),
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: _loadProducts,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              decoration: BoxDecoration(
+                color: _green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _green.withValues(alpha: 0.3)),
+              ),
+              child: const Text('تلاش مجدد', style: TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _toggleExpand(String productId) {
+    setState(() {
+      if (!_expandedProductIds.remove(productId)) {
+        _expandedProductIds.add(productId);
+      }
+    });
+  }
+
+  Widget _buildProductCard(_ProductGroup g) {
+    final expanded = _expandedProductIds.contains(g.id);
+    final allModels = g.models;
+    final visibleModels =
+        expanded || allModels.length <= _collapsedModelLimit ? allModels : allModels.take(_collapsedModelLimit).toList();
+    final hiddenCount = allModels.length - visibleModels.length;
+
+    return GestureDetector(
+      onTap: () => _toggleExpand(g.id),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: expanded ? _green.withValues(alpha: 0.35) : Colors.white.withOpacity(0.05),
+            width: expanded ? 1.2 : 1,
+          ),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: _green.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
+              child: const Icon(Icons.inventory_2_rounded, color: _green, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: RichText(
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  children: [
+                    TextSpan(text: g.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                    TextSpan(text: ' [${g.unit}]', style: const TextStyle(color: _green, fontSize: 11.5, fontWeight: FontWeight.w500)),
+                    if (allModels.isNotEmpty)
+                      TextSpan(
+                        text: ' — ${faDigits('${allModels.length}')} مدل',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11.5, fontWeight: FontWeight.w400),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => EditProductScreen(productId: g.id)),
+                );
+                _loadProducts();
+              },
+              child: const Icon(Icons.edit_outlined, color: _green, size: 20),
+            ),
+            const SizedBox(width: 14),
+            GestureDetector(
+              onTap: () => _deleteProduct(g.id, g.name),
+              child: const Icon(Icons.delete_outline_rounded, color: _red, size: 20),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              color: Colors.white38,
+              size: 20,
+            ),
+          ]),
+          if (allModels.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in visibleModels) _buildModelChip(g, m),
+                if (hiddenCount > 0) _buildToggleChip('و ${faDigits('$hiddenCount')} مدل دیگر', Icons.expand_more_rounded),
+                if (expanded) _buildToggleChip('بستن مدل‌ها', Icons.expand_less_rounded),
+              ],
+            ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                'برای این محصول مدلی ثبت نشده است',
+                style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 12),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildToggleChip(String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _green.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: _green.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _green),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(color: _green, fontSize: 11.5, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModelChip(_ProductGroup g, _ModelRow m) {
+    final parts = <String>[m.name];
+    if (m.unitsPerBox != null && m.packageType != null && m.packageType!.trim().isNotEmpty) {
+      parts.add('${faDigits('${m.unitsPerBox}')} ${g.unit}/${m.packageType}');
+    } else if (m.unitsPerBox != null) {
+      parts.add(faDigits('${m.unitsPerBox}'));
+    }
+    if (m.price != null) {
+      parts.add('قیمت: ${formatNumber(m.price!)}');
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF22262D),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            parts.join(' · '),
+            style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11.5),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => _deleteModel(m.id, m.name),
+            child: Icon(Icons.close_rounded, size: 14, color: Colors.white.withOpacity(0.3)),
+          ),
+        ],
+      ),
     );
   }
 }

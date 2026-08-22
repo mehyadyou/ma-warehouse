@@ -35,8 +35,25 @@ class AuthApiService {
     return Map<String, dynamic>.from(response.data['profile']);
   }
 
-  /// خروج — ابطال توکن رفرش جاری در سرور
-  Future<void> logout(String refreshToken) async {
-    await _dio.post(ApiConstants.logout, data: {'refreshToken': refreshToken});
+  /// تأیید رمز اصلی برای قفل‌گشایی برنامه — همان رمز ورود (۶ رقم)
+  Future<bool> verifyPassword(String password) async {
+    final response = await _dio.post(
+      ApiConstants.verifyPassword,
+      data: {'password': password},
+    );
+    return response.data?['ok'] == true;
+  }
+
+  /// خروج — ابطال توکن رفرش جاری در سرور.
+  /// توکن اکسس صریح داده می‌شود چون خروج پس از پاک‌سازی محلی فرستاده می‌شود
+  /// و اینترسپتور دیگر توکنی برای افزودن ندارد.
+  Future<void> logout(String refreshToken, {String? accessToken}) async {
+    await _dio.post(
+      ApiConstants.logout,
+      data: {'refreshToken': refreshToken},
+      options: (accessToken != null && accessToken.isNotEmpty)
+          ? Options(headers: {'Authorization': 'Bearer $accessToken'})
+          : null,
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { productsService } from './products.service';
 import { asyncHandler } from '../../middleware/asyncHandler';
+import { parseOptionalInt, parseOptionalPrice } from '../../utils/numbers';
 
 export const productsController = {
   getProducts: asyncHandler(async (req: Request, res: Response) => {
@@ -13,6 +14,16 @@ export const productsController = {
       ...(Number.isInteger(pageSize) && pageSize! > 0 ? { pageSize: Math.min(pageSize!, 500) } : {}),
     });
     res.json(Array.isArray(products) ? { products } : products);
+
+  }),
+
+  getProduct: asyncHandler(async (req: Request, res: Response) => {
+    const product = await productsService.getProductById(req.params.id as string);
+    if (!product || product.deletedAt !== null) {
+      res.status(404).json({ error: 'محصول یافت نشد' });
+      return;
+    }
+    res.json({ product });
 
   }),
 
@@ -38,6 +49,12 @@ export const productsController = {
   deleteProductModel: asyncHandler(async (req: Request, res: Response) => {
     const model = await productsService.deleteProductModel(req.params.id as string, req.user!.id);
     res.json({ message: 'مدل بایگانی شد — با بازیابی برمی‌گردد', mode: 'archived', model });
+
+  }),
+
+  addProductModels: asyncHandler(async (req: Request, res: Response) => {
+    const product = await productsService.addProductModels(req.params.id as string, req.body?.models || [], req.user!.id);
+    res.status(201).json({ message: 'مدل‌ها اضافه شدند', product });
 
   }),
 
@@ -70,16 +87,14 @@ export const productsController = {
     const data: { name?: string; price?: number | null; packageType?: string | null; unitsPerBox?: number | null } = {};
     if (req.body?.name !== undefined) data.name = String(req.body.name).trim() || undefined;
     if (req.body?.price !== undefined) {
-      const raw = req.body.price;
-      data.price = raw === null || String(raw).trim() === '' ? null : parseFloat(String(raw));
+      data.price = parseOptionalPrice(req.body.price, 'قیمت');
     }
     if (req.body?.packageType !== undefined) {
       const raw = req.body.packageType;
       data.packageType = raw === null || String(raw).trim() === '' ? null : String(raw).trim();
     }
     if (req.body?.unitsPerBox !== undefined) {
-      const raw = req.body.unitsPerBox;
-      data.unitsPerBox = raw === null || String(raw).trim() === '' ? null : parseInt(String(raw), 10);
+      data.unitsPerBox = parseOptionalInt(req.body.unitsPerBox, 'ظرفیت بسته');
     }
     const model = await productsService.updateProductModel(id, data, req.user!.id);
     res.json({ message: 'مدل ویرایش شد', model });

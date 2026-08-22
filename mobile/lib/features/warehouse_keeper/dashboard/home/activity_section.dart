@@ -2,14 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ma_app/features/warehouse_keeper/models/keeper_order_model.dart';
 import 'package:ma_app/features/warehouse_keeper/models/keeper_transaction_model.dart';
+import 'package:ma_app/features/warehouse_keeper/providers/warehouse_keeper_provider.dart';
+import 'package:ma_app/shared/utils/numbers.dart';
+import 'package:shamsi_date/shamsi_date.dart';
 import 'stat_card.dart';
 
 const _card = Color(0xFF1E2128);
 const _green = Color(0xFF4ADE80);
 const _orange = Color(0xFFFB923C);
 const _blue = Color(0xFF60A5FA);
+const _red = Color(0xFFF87171);
 
-class ActivitySection extends StatelessWidget {
+/// نگاشت کامل وضعیت‌های سفارش (PENDING/SHIPPED/DELIVERED/CANCELED)
+({String label, Color color}) orderStatusStyle(String? status) {
+  switch (status) {
+    case 'SHIPPED':
+      return (label: 'ارسال شده', color: _green);
+    case 'DELIVERED':
+      return (label: 'تحویل شده', color: _blue);
+    case 'CANCELED':
+      return (label: 'لغو شده', color: _red);
+    default:
+      return (label: 'در انتظار', color: _orange);
+  }
+}
+
+class ActivitySection extends ConsumerWidget {
   final AsyncValue<List<KeeperOrderModel>> ordersAsync;
   final AsyncValue<List<KeeperTransactionModel>> transactionsAsync;
 
@@ -20,21 +38,29 @@ class ActivitySection extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isLoading = ordersAsync.isLoading || transactionsAsync.isLoading;
-    final hasError = ordersAsync.hasError && transactionsAsync.hasError;
+    final hasError = ordersAsync.hasError || transactionsAsync.hasError;
 
     if (isLoading) {
       return const LoadingCard(height: 220);
     }
 
     if (hasError) {
-      return const MessageCard(message: 'بارگذاری فعالیت‌های اخیر ناموفق بود');
+      return MessageCard(
+        message: 'بارگذاری فعالیت‌های اخیر ناموفق بود',
+        onRetry: () {
+          ref.invalidate(ordersProvider);
+          ref.invalidate(transactionsProvider);
+        },
+      );
     }
 
     final activities = [
       ..._buildOrderActivities(ordersAsync.asData?.value ?? const []),
-      ..._buildTransactionActivities(transactionsAsync.asData?.value ?? const []),
+      ..._buildTransactionActivities(
+        transactionsAsync.asData?.value ?? const [],
+      ),
     ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     return Column(
@@ -57,35 +83,35 @@ class ActivitySection extends StatelessWidget {
     );
   }
 
-  List<RecentActivityItem> _buildOrderActivities(List<KeeperOrderModel> orders) {
+  List<RecentActivityItem> _buildOrderActivities(
+    List<KeeperOrderModel> orders,
+  ) {
     return orders.map((order) {
-      final status = order.status;
-      final statusColor = status == 'PENDING' ? _orange : _green;
-      final statusLabel = status == 'PENDING'
-          ? 'در انتظار'
-          : status == 'SHIPPED'
-              ? 'ارسال شده'
-              : 'ثبت شده';
+      final style = orderStatusStyle(order.status);
       return RecentActivityItem(
         title: 'سفارش جدید',
-        subtitle: '${order.createdByName.isEmpty ? 'نامشخص' : order.createdByName} • ${_formatDate(order.createdAt)}',
-        status: statusLabel,
-        statusColor: statusColor,
+        subtitle:
+            '${order.createdByName.isEmpty ? 'نامشخص' : order.createdByName} • ${_formatDate(order.createdAt)}',
+        status: style.label,
+        statusColor: style.color,
         icon: Icons.receipt_long_rounded,
-        iconBg: statusColor,
+        iconBg: style.color,
         createdAt: _parseDate(order.createdAt),
       );
     }).toList();
   }
 
-  List<RecentActivityItem> _buildTransactionActivities(List<KeeperTransactionModel> transactions) {
+  List<RecentActivityItem> _buildTransactionActivities(
+    List<KeeperTransactionModel> transactions,
+  ) {
     return transactions.map((tx) {
       final type = tx.type;
       final color = _transactionColor(type);
       return RecentActivityItem(
         title: '${_transactionLabel(type)} ${tx.productName}',
-        subtitle: '${tx.userName.isEmpty ? 'نامشخص' : tx.userName} • ${_formatDate(tx.createdAt)}',
-        status: '${tx.quantity} عدد',
+        subtitle:
+            '${tx.userName.isEmpty ? 'نامشخص' : tx.userName} • ${_formatDate(tx.createdAt)}',
+        status: '${formatNumber(tx.quantity)} عدد',
         statusColor: color,
         icon: _transactionIcon(type),
         iconBg: color,
@@ -127,7 +153,10 @@ class ActivityTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -228,7 +257,8 @@ DateTime _parseDate(dynamic value) {
 String _formatDate(dynamic value) {
   final date = _parseDate(value);
   if (date.millisecondsSinceEpoch == 0) return '';
-  final hh = date.hour.toString().padLeft(2, '0');
-  final mm = date.minute.toString().padLeft(2, '0');
-  return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}  $hh:$mm';
+  final jalali = Jalali.fromDateTime(date);
+  final hh = faDigits(date.hour.toString().padLeft(2, '0'));
+  final mm = faDigits(date.minute.toString().padLeft(2, '0'));
+  return '${faDigits('${jalali.year}/${jalali.month.toString().padLeft(2, '0')}/${jalali.day.toString().padLeft(2, '0')}')}  $hh:$mm';
 }

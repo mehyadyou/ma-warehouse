@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/storage/local_storage.dart';
 import 'core/routes/app_router.dart';
+import 'features/auth/lock/lock_lifecycle_observer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +32,7 @@ class MaApp extends ConsumerWidget {
       routerConfig: router,
       builder: (context, child) => Directionality(
         textDirection: TextDirection.rtl,
-        child: child ?? const SizedBox.shrink(),
+        child: LockLifecycleObserver(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

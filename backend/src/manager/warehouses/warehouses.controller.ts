@@ -23,7 +23,7 @@ export const warehousesController = {
 
   updateWarehouse: asyncHandler(async (req: Request, res: Response) => {
     const { name, address, keeperId } = req.body;
-    const warehouse = await warehousesService.updateWarehouse(req.params.id as string, { name, address, keeperId });
+    const warehouse = await warehousesService.updateWarehouse(req.params.id as string, { name, address, keeperId }, req.user!.id);
     res.json({ message: 'انبار ویرایش شد', warehouse });
 
   }),
@@ -49,7 +49,7 @@ export const warehousesController = {
   createWarehouseWithKeeper: asyncHandler(async (req: Request, res: Response) => {
     const { warehouseName, keeperName, keeperPhone, keeperPassword } = req.body;
     const result = await warehousesService.createWarehouseWithKeeper(
-      warehouseName, keeperName, keeperPhone, keeperPassword
+      warehouseName, keeperName, keeperPhone, keeperPassword, req.user!.id
     );
     res.status(201).json({
       message: 'انبار و انباردار با موفقیت ساخته شدند',

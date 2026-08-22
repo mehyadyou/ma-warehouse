@@ -8,21 +8,33 @@ part of 'warehouse_detail_model.dart';
 
 _WarehouseStatsModel _$WarehouseStatsModelFromJson(Map<String, dynamic> json) =>
     _WarehouseStatsModel(
+      transactionCount: json['transactionCount'] as num? ?? 0,
       productCount: json['productCount'] as num? ?? 0,
       inCount: json['inCount'] as num? ?? 0,
       outCount: json['outCount'] as num? ?? 0,
+      inUnits: json['inUnits'] as num? ?? 0,
+      outUnits: json['outUnits'] as num? ?? 0,
+      returnedUnits: json['returnedUnits'] as num? ?? 0,
       totalUnits: json['totalUnits'] as num? ?? 0,
       totalCartons: json['totalCartons'] as num? ?? 0,
+      orderCount: json['orderCount'] as num? ?? 0,
+      activeOrderCount: json['activeOrderCount'] as num? ?? 0,
     );
 
 Map<String, dynamic> _$WarehouseStatsModelToJson(
   _WarehouseStatsModel instance,
 ) => <String, dynamic>{
+  'transactionCount': instance.transactionCount,
   'productCount': instance.productCount,
   'inCount': instance.inCount,
   'outCount': instance.outCount,
+  'inUnits': instance.inUnits,
+  'outUnits': instance.outUnits,
+  'returnedUnits': instance.returnedUnits,
   'totalUnits': instance.totalUnits,
   'totalCartons': instance.totalCartons,
+  'orderCount': instance.orderCount,
+  'activeOrderCount': instance.activeOrderCount,
 };
 
 _WarehouseProductStockModel _$WarehouseProductStockModelFromJson(

@@ -31,6 +31,11 @@ _ScanOutCartonModel _$ScanOutCartonModelFromJson(Map<String, dynamic> json) =>
       capacityPerBox: (json['capacityPerBox'] as num?)?.toInt(),
       unit: json['unit'] as String?,
       packageType: json['packageType'] as String?,
+      transfer: json['transfer'] == null
+          ? null
+          : ScanOutTransferModel.fromJson(
+              json['transfer'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$ScanOutCartonModelToJson(_ScanOutCartonModel instance) =>
@@ -42,4 +47,21 @@ Map<String, dynamic> _$ScanOutCartonModelToJson(_ScanOutCartonModel instance) =>
       'capacityPerBox': instance.capacityPerBox,
       'unit': instance.unit,
       'packageType': instance.packageType,
+      'transfer': instance.transfer,
     };
+
+_ScanOutTransferModel _$ScanOutTransferModelFromJson(
+  Map<String, dynamic> json,
+) => _ScanOutTransferModel(
+  id: json['id'] as String,
+  toWarehouseId: json['toWarehouseId'] as String?,
+  toWarehouseName: json['toWarehouseName'] as String?,
+);
+
+Map<String, dynamic> _$ScanOutTransferModelToJson(
+  _ScanOutTransferModel instance,
+) => <String, dynamic>{
+  'id': instance.id,
+  'toWarehouseId': instance.toWarehouseId,
+  'toWarehouseName': instance.toWarehouseName,
+};

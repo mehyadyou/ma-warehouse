@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$TransactionEntryModel {
 
- String? get type; String? get productName; String? get title; String? get warehouseName; String? get userName; num get quantity; String? get createdAt;
+ String? get type; String? get productName; String? get title; String? get warehouseName; String? get userName; String? get unit; num get quantity; String? get createdAt;
 /// Create a copy of TransactionEntryModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $TransactionEntryModelCopyWith<TransactionEntryModel> get copyWith => _$Transact
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TransactionEntryModel&&(identical(other.type, type) || other.type == type)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.title, title) || other.title == title)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.userName, userName) || other.userName == userName)&&(identical(other.quantity, quantity) || other.quantity == quantity)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TransactionEntryModel&&(identical(other.type, type) || other.type == type)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.title, title) || other.title == title)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.userName, userName) || other.userName == userName)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.quantity, quantity) || other.quantity == quantity)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,type,productName,title,warehouseName,userName,quantity,createdAt);
+int get hashCode => Object.hash(runtimeType,type,productName,title,warehouseName,userName,unit,quantity,createdAt);
 
 @override
 String toString() {
-  return 'TransactionEntryModel(type: $type, productName: $productName, title: $title, warehouseName: $warehouseName, userName: $userName, quantity: $quantity, createdAt: $createdAt)';
+  return 'TransactionEntryModel(type: $type, productName: $productName, title: $title, warehouseName: $warehouseName, userName: $userName, unit: $unit, quantity: $quantity, createdAt: $createdAt)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $TransactionEntryModelCopyWith<$Res>  {
   factory $TransactionEntryModelCopyWith(TransactionEntryModel value, $Res Function(TransactionEntryModel) _then) = _$TransactionEntryModelCopyWithImpl;
 @useResult
 $Res call({
- String? type, String? productName, String? title, String? warehouseName, String? userName, num quantity, String? createdAt
+ String? type, String? productName, String? title, String? warehouseName, String? userName, String? unit, num quantity, String? createdAt
 });
 
 
@@ -65,13 +65,14 @@ class _$TransactionEntryModelCopyWithImpl<$Res>
 
 /// Create a copy of TransactionEntryModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? type = freezed,Object? productName = freezed,Object? title = freezed,Object? warehouseName = freezed,Object? userName = freezed,Object? quantity = null,Object? createdAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? type = freezed,Object? productName = freezed,Object? title = freezed,Object? warehouseName = freezed,Object? userName = freezed,Object? unit = freezed,Object? quantity = null,Object? createdAt = freezed,}) {
   return _then(_self.copyWith(
 type: freezed == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as String?,productName: freezed == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
 as String?,title: freezed == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
 as String?,warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,userName: freezed == userName ? _self.userName : userName // ignore: cast_nullable_to_non_nullable
+as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,quantity: null == quantity ? _self.quantity : quantity // ignore: cast_nullable_to_non_nullable
 as num,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String?,
@@ -159,10 +160,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  num quantity,  String? createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  String? unit,  num quantity,  String? createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TransactionEntryModel() when $default != null:
-return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.quantity,_that.createdAt);case _:
+return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.unit,_that.quantity,_that.createdAt);case _:
   return orElse();
 
 }
@@ -180,10 +181,10 @@ return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  num quantity,  String? createdAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  String? unit,  num quantity,  String? createdAt)  $default,) {final _that = this;
 switch (_that) {
 case _TransactionEntryModel():
-return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.quantity,_that.createdAt);case _:
+return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.unit,_that.quantity,_that.createdAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -200,10 +201,10 @@ return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  num quantity,  String? createdAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? type,  String? productName,  String? title,  String? warehouseName,  String? userName,  String? unit,  num quantity,  String? createdAt)?  $default,) {final _that = this;
 switch (_that) {
 case _TransactionEntryModel() when $default != null:
-return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.quantity,_that.createdAt);case _:
+return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_that.userName,_that.unit,_that.quantity,_that.createdAt);case _:
   return null;
 
 }
@@ -215,7 +216,7 @@ return $default(_that.type,_that.productName,_that.title,_that.warehouseName,_th
 @JsonSerializable()
 
 class _TransactionEntryModel implements TransactionEntryModel {
-  const _TransactionEntryModel({this.type, this.productName, this.title, this.warehouseName, this.userName, this.quantity = 0, this.createdAt});
+  const _TransactionEntryModel({this.type, this.productName, this.title, this.warehouseName, this.userName, this.unit, this.quantity = 0, this.createdAt});
   factory _TransactionEntryModel.fromJson(Map<String, dynamic> json) => _$TransactionEntryModelFromJson(json);
 
 @override final  String? type;
@@ -223,6 +224,7 @@ class _TransactionEntryModel implements TransactionEntryModel {
 @override final  String? title;
 @override final  String? warehouseName;
 @override final  String? userName;
+@override final  String? unit;
 @override@JsonKey() final  num quantity;
 @override final  String? createdAt;
 
@@ -239,16 +241,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _TransactionEntryModel&&(identical(other.type, type) || other.type == type)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.title, title) || other.title == title)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.userName, userName) || other.userName == userName)&&(identical(other.quantity, quantity) || other.quantity == quantity)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _TransactionEntryModel&&(identical(other.type, type) || other.type == type)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.title, title) || other.title == title)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.userName, userName) || other.userName == userName)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.quantity, quantity) || other.quantity == quantity)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,type,productName,title,warehouseName,userName,quantity,createdAt);
+int get hashCode => Object.hash(runtimeType,type,productName,title,warehouseName,userName,unit,quantity,createdAt);
 
 @override
 String toString() {
-  return 'TransactionEntryModel(type: $type, productName: $productName, title: $title, warehouseName: $warehouseName, userName: $userName, quantity: $quantity, createdAt: $createdAt)';
+  return 'TransactionEntryModel(type: $type, productName: $productName, title: $title, warehouseName: $warehouseName, userName: $userName, unit: $unit, quantity: $quantity, createdAt: $createdAt)';
 }
 
 
@@ -259,7 +261,7 @@ abstract mixin class _$TransactionEntryModelCopyWith<$Res> implements $Transacti
   factory _$TransactionEntryModelCopyWith(_TransactionEntryModel value, $Res Function(_TransactionEntryModel) _then) = __$TransactionEntryModelCopyWithImpl;
 @override @useResult
 $Res call({
- String? type, String? productName, String? title, String? warehouseName, String? userName, num quantity, String? createdAt
+ String? type, String? productName, String? title, String? warehouseName, String? userName, String? unit, num quantity, String? createdAt
 });
 
 
@@ -276,13 +278,14 @@ class __$TransactionEntryModelCopyWithImpl<$Res>
 
 /// Create a copy of TransactionEntryModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? type = freezed,Object? productName = freezed,Object? title = freezed,Object? warehouseName = freezed,Object? userName = freezed,Object? quantity = null,Object? createdAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? type = freezed,Object? productName = freezed,Object? title = freezed,Object? warehouseName = freezed,Object? userName = freezed,Object? unit = freezed,Object? quantity = null,Object? createdAt = freezed,}) {
   return _then(_TransactionEntryModel(
 type: freezed == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as String?,productName: freezed == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
 as String?,title: freezed == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
 as String?,warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,userName: freezed == userName ? _self.userName : userName // ignore: cast_nullable_to_non_nullable
+as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,quantity: null == quantity ? _self.quantity : quantity // ignore: cast_nullable_to_non_nullable
 as num,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String?,

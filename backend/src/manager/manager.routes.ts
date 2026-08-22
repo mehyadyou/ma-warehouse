@@ -11,6 +11,11 @@ import { ordersController } from './orders/orders.controller';
 import { inventoryController } from './inventory/inventory.controller';
 import { searchController } from './search/search.controller';
 import { rateController } from './rate/rate.controller';
+import { shipmentsController } from './shipments/shipments.controller';
+import { transfersController } from './transfers/transfers.controller';
+import { createTransferSchema } from './transfers/transfers.schema';
+import { assistantController } from './assistant/assistant.controller';
+import { assistantChatSchema } from './assistant/assistant.schema';
 
 const router = Router();
 
@@ -42,16 +47,19 @@ router.get('/warehouses/:id/detail', warehousesController.getWarehouseDetail);
 
 // ── Products ──
 router.get('/products', productsController.getProducts);
+router.get('/products/:id', productsController.getProduct);
 router.get('/products/archived', productsController.getArchivedProducts);
 router.post('/products', productsController.createProduct);
 router.put('/products/:id', productsController.updateProduct);
 router.delete('/products/:id', productsController.deleteProduct);
 router.post('/products/:id/restore', productsController.restoreProduct);
+router.post('/products/:id/models', productsController.addProductModels);
 router.put('/product-models/:id', productsController.updateProductModel);
 router.delete('/product-models/:id', productsController.deleteProductModel);
 router.post('/product-models/:id/restore', productsController.restoreProductModel);
 
 // ── Orders ──
+router.get('/orders/stock', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:ostk' }), ordersController.getOrderStock);
 router.get('/orders', ordersController.listOrders);
 router.post('/orders', validate(createOrderSchema), ordersController.createOrder);
 router.put('/orders/:id', validate(updateOrderSchema), ordersController.updateOrder);
@@ -72,5 +80,27 @@ router.get('/search/shipments', userRateLimit({ windowMs: 60_000, max: 120, keyP
 
 // ── Rate ──
 router.get('/rate/dollar', rateController.getDollarRate);
+
+// ── Shipments Report ──
+router.get('/shipments-report', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:shrep' }), shipmentsController.getShipmentsReport);
+
+// ── Transfers (جابه‌جایی/خروج محصول) ──
+router.post('/transfers', validate(createTransferSchema), transfersController.createTransfer);
+router.get('/transfers', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:tr' }), transfersController.listTransfers);
+router.post('/transfers/:id/cancel', userRateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'm:trc' }), transfersController.cancelTransfer);
+
+// ── Assistant (دستیار هوش مصنوعی — فقط‌خواندنی) ──
+router.post(
+    '/assistant/chat',
+    userRateLimit({ windowMs: 60_000, max: 15, keyPrefix: 'm:ai' }),
+    validate(assistantChatSchema),
+    assistantController.chat,
+);
+router.post(
+    '/assistant/chat/stream',
+    userRateLimit({ windowMs: 60_000, max: 15, keyPrefix: 'm:ai' }),
+    validate(assistantChatSchema),
+    assistantController.chatStream,
+);
 
 export const managerRoutes = router;

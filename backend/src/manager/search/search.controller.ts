@@ -25,19 +25,34 @@ export const searchController = {
 
   }),
 
-  searchShipments: asyncHandler(async (req: Request, res: Response) => {
+searchShipments: asyncHandler(async (req: Request, res: Response) => {
+    const rawStatus = String(req.query.status ?? '').trim();
+    const validStatuses = ['pending', 'in_transit', 'delivered', 'other'];
+    if (rawStatus && !validStatuses.includes(rawStatus)) {
+      res.status(400).json({ error: 'فیلتر وضعیت نامعتبر است' });
+      return;
+    }
     const filters = {
       sender:   String(req.query.sender ?? '').trim(),
       receiver: String(req.query.receiver ?? '').trim(),
       product:  String(req.query.product ?? '').trim(),
       model:    String(req.query.model ?? '').trim(),
+      q:        String(req.query.q ?? '').trim(),
+      status:   (rawStatus || undefined) as
+        | 'pending'
+        | 'in_transit'
+        | 'delivered'
+        | 'other'
+        | undefined,
+      page:     req.query.page !== undefined ? Number(req.query.page) : undefined,
+      pageSize: req.query.pageSize !== undefined ? Number(req.query.pageSize) : undefined,
     };
-    if (!filters.sender && !filters.receiver && !filters.product && !filters.model) {
-      res.status(400).json({ error: 'حداقل یکی از فیلدها را وارد کنید' });
+    if (!filters.sender && !filters.receiver && !filters.product && !filters.model && !filters.q && !filters.status) {
+      res.status(400).json({ error: 'حداقل یک فیلتر جستجو یا وضعیت لازم است' });
       return;
     }
-    const orders = await searchService.searchShipments(filters);
-    res.json({ orders });
+    const result = await searchService.searchShipments(filters);
+    res.json(result);
 
   }),
 };

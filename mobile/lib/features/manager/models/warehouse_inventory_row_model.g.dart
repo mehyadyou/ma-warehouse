@@ -11,6 +11,7 @@ _WarehouseInventoryRowModel _$WarehouseInventoryRowModelFromJson(
 ) => _WarehouseInventoryRowModel(
   warehouseName: json['warehouseName'] as String?,
   productName: json['productName'] as String?,
+  unit: json['unit'] as String?,
   count: json['count'] as num? ?? 0,
 );
 
@@ -19,5 +20,6 @@ Map<String, dynamic> _$WarehouseInventoryRowModelToJson(
 ) => <String, dynamic>{
   'warehouseName': instance.warehouseName,
   'productName': instance.productName,
+  'unit': instance.unit,
   'count': instance.count,
 };

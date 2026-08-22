@@ -11,6 +11,7 @@ abstract class TransactionEntryModel with _$TransactionEntryModel {
     String? title,
     String? warehouseName,
     String? userName,
+    String? unit,
     @Default(0) num quantity,
     String? createdAt,
   }) = _TransactionEntryModel;

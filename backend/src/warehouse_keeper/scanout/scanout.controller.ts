@@ -8,12 +8,12 @@ import { ScanOutInput } from './scanout.schema';
 
 export const scanOutController = {
   scan: asyncHandler(async (req: Request, res: Response) => {
-    const { qrPayload, serialNumber } = req.body as ScanOutInput;
+    const { qrPayload, serialNumber, orderId, transferId } = req.body as ScanOutInput;
     const userId      = req.user!.id;
     const warehouseId = req.user!.warehouseId;
     if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
 
-    const result = await scanOutService.scanOut({ qrPayload, serialNumber }, warehouseId, userId);
+    const result = await scanOutService.scanOut({ qrPayload, serialNumber, orderId, transferId }, warehouseId, userId);
 
     if (!result.valid) {
       await notificationService.create(userId, 'خطای خروج', result.error, 'error', { type: 'SCAN_OUT_ERROR' });
@@ -30,6 +30,14 @@ export const scanOutController = {
     const warehouseId = req.user!.warehouseId;
     if (!warehouseId) return res.status(403).json({ error: 'انباری تعریف نشده' });
     const cartons = await scanOutService.listShippedCartons(warehouseId);
+    res.json({ cartons });
+  }),
+
+  //کارتن‌های خروج‌زده‌شده برای یک سفارش — نمایش پیشرفت خروج در جزئیات سفارش انباردار
+  listOrderCartons: asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const warehouseId = req.user!.warehouseId ?? undefined;
+    const cartons = await scanOutService.listOrderCartons(id, warehouseId);
     res.json({ cartons });
   }),
 };

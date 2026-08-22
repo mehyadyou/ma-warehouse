@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$KeeperInventoryListModel {
 
- List<KeeperProductRowModel> get products; List<KeeperWarehouseStockRowModel> get warehouses;
+ List<KeeperProductRowModel> get products; List<KeeperWarehouseStockRowModel> get warehouses; int get total; int get page; int get pageSize; bool get hasMore;
 /// Create a copy of KeeperInventoryListModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $KeeperInventoryListModelCopyWith<KeeperInventoryListModel> get copyWith => _$Ke
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperInventoryListModel&&const DeepCollectionEquality().equals(other.products, products)&&const DeepCollectionEquality().equals(other.warehouses, warehouses));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperInventoryListModel&&const DeepCollectionEquality().equals(other.products, products)&&const DeepCollectionEquality().equals(other.warehouses, warehouses)&&(identical(other.total, total) || other.total == total)&&(identical(other.page, page) || other.page == page)&&(identical(other.pageSize, pageSize) || other.pageSize == pageSize)&&(identical(other.hasMore, hasMore) || other.hasMore == hasMore));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(products),const DeepCollectionEquality().hash(warehouses));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(products),const DeepCollectionEquality().hash(warehouses),total,page,pageSize,hasMore);
 
 @override
 String toString() {
-  return 'KeeperInventoryListModel(products: $products, warehouses: $warehouses)';
+  return 'KeeperInventoryListModel(products: $products, warehouses: $warehouses, total: $total, page: $page, pageSize: $pageSize, hasMore: $hasMore)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $KeeperInventoryListModelCopyWith<$Res>  {
   factory $KeeperInventoryListModelCopyWith(KeeperInventoryListModel value, $Res Function(KeeperInventoryListModel) _then) = _$KeeperInventoryListModelCopyWithImpl;
 @useResult
 $Res call({
- List<KeeperProductRowModel> products, List<KeeperWarehouseStockRowModel> warehouses
+ List<KeeperProductRowModel> products, List<KeeperWarehouseStockRowModel> warehouses, int total, int page, int pageSize, bool hasMore
 });
 
 
@@ -65,11 +65,15 @@ class _$KeeperInventoryListModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperInventoryListModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? products = null,Object? warehouses = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? products = null,Object? warehouses = null,Object? total = null,Object? page = null,Object? pageSize = null,Object? hasMore = null,}) {
   return _then(_self.copyWith(
 products: null == products ? _self.products : products // ignore: cast_nullable_to_non_nullable
 as List<KeeperProductRowModel>,warehouses: null == warehouses ? _self.warehouses : warehouses // ignore: cast_nullable_to_non_nullable
-as List<KeeperWarehouseStockRowModel>,
+as List<KeeperWarehouseStockRowModel>,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
+as int,pageSize: null == pageSize ? _self.pageSize : pageSize // ignore: cast_nullable_to_non_nullable
+as int,hasMore: null == hasMore ? _self.hasMore : hasMore // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -154,10 +158,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _KeeperInventoryListModel() when $default != null:
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   return orElse();
 
 }
@@ -175,10 +179,10 @@ return $default(_that.products,_that.warehouses);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)  $default,) {final _that = this;
 switch (_that) {
 case _KeeperInventoryListModel():
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -195,10 +199,10 @@ return $default(_that.products,_that.warehouses);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<KeeperProductRowModel> products,  List<KeeperWarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)?  $default,) {final _that = this;
 switch (_that) {
 case _KeeperInventoryListModel() when $default != null:
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   return null;
 
 }
@@ -210,7 +214,7 @@ return $default(_that.products,_that.warehouses);case _:
 @JsonSerializable()
 
 class _KeeperInventoryListModel implements KeeperInventoryListModel {
-  const _KeeperInventoryListModel({final  List<KeeperProductRowModel> products = const <KeeperProductRowModel>[], final  List<KeeperWarehouseStockRowModel> warehouses = const <KeeperWarehouseStockRowModel>[]}): _products = products,_warehouses = warehouses;
+  const _KeeperInventoryListModel({final  List<KeeperProductRowModel> products = const <KeeperProductRowModel>[], final  List<KeeperWarehouseStockRowModel> warehouses = const <KeeperWarehouseStockRowModel>[], this.total = 0, this.page = 1, this.pageSize = 50, this.hasMore = false}): _products = products,_warehouses = warehouses;
   factory _KeeperInventoryListModel.fromJson(Map<String, dynamic> json) => _$KeeperInventoryListModelFromJson(json);
 
  final  List<KeeperProductRowModel> _products;
@@ -227,6 +231,10 @@ class _KeeperInventoryListModel implements KeeperInventoryListModel {
   return EqualUnmodifiableListView(_warehouses);
 }
 
+@override@JsonKey() final  int total;
+@override@JsonKey() final  int page;
+@override@JsonKey() final  int pageSize;
+@override@JsonKey() final  bool hasMore;
 
 /// Create a copy of KeeperInventoryListModel
 /// with the given fields replaced by the non-null parameter values.
@@ -241,16 +249,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperInventoryListModel&&const DeepCollectionEquality().equals(other._products, _products)&&const DeepCollectionEquality().equals(other._warehouses, _warehouses));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperInventoryListModel&&const DeepCollectionEquality().equals(other._products, _products)&&const DeepCollectionEquality().equals(other._warehouses, _warehouses)&&(identical(other.total, total) || other.total == total)&&(identical(other.page, page) || other.page == page)&&(identical(other.pageSize, pageSize) || other.pageSize == pageSize)&&(identical(other.hasMore, hasMore) || other.hasMore == hasMore));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_products),const DeepCollectionEquality().hash(_warehouses));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_products),const DeepCollectionEquality().hash(_warehouses),total,page,pageSize,hasMore);
 
 @override
 String toString() {
-  return 'KeeperInventoryListModel(products: $products, warehouses: $warehouses)';
+  return 'KeeperInventoryListModel(products: $products, warehouses: $warehouses, total: $total, page: $page, pageSize: $pageSize, hasMore: $hasMore)';
 }
 
 
@@ -261,7 +269,7 @@ abstract mixin class _$KeeperInventoryListModelCopyWith<$Res> implements $Keeper
   factory _$KeeperInventoryListModelCopyWith(_KeeperInventoryListModel value, $Res Function(_KeeperInventoryListModel) _then) = __$KeeperInventoryListModelCopyWithImpl;
 @override @useResult
 $Res call({
- List<KeeperProductRowModel> products, List<KeeperWarehouseStockRowModel> warehouses
+ List<KeeperProductRowModel> products, List<KeeperWarehouseStockRowModel> warehouses, int total, int page, int pageSize, bool hasMore
 });
 
 
@@ -278,11 +286,15 @@ class __$KeeperInventoryListModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperInventoryListModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? products = null,Object? warehouses = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? products = null,Object? warehouses = null,Object? total = null,Object? page = null,Object? pageSize = null,Object? hasMore = null,}) {
   return _then(_KeeperInventoryListModel(
 products: null == products ? _self._products : products // ignore: cast_nullable_to_non_nullable
 as List<KeeperProductRowModel>,warehouses: null == warehouses ? _self._warehouses : warehouses // ignore: cast_nullable_to_non_nullable
-as List<KeeperWarehouseStockRowModel>,
+as List<KeeperWarehouseStockRowModel>,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
+as int,pageSize: null == pageSize ? _self.pageSize : pageSize // ignore: cast_nullable_to_non_nullable
+as int,hasMore: null == hasMore ? _self.hasMore : hasMore // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

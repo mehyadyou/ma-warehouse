@@ -52,8 +52,36 @@ export const ordersController = {
   listOrders: asyncHandler(async (req: Request, res: Response) => {
     const page = Number(req.query.page ?? 1);
     const pageSize = Number(req.query.pageSize ?? 100);
-    const result = await ordersService.listOrders(page, pageSize);
+    const rawStatus = String(req.query.status ?? '').trim();
+    const validStatuses = ['pending', 'in_transit', 'delivered', 'other'];
+    const status = rawStatus && validStatuses.includes(rawStatus)
+      ? (rawStatus as 'pending' | 'in_transit' | 'delivered' | 'other')
+      : undefined;
+    if (rawStatus && !status) {
+      res.status(400).json({ error: 'فیلتر وضعیت نامعتبر است' });
+      return;
+    }
+    const result = await ordersService.listOrders(page, pageSize, status);
     res.json(result);
+
+  }),
+
+  getOrderStock: asyncHandler(async (req: Request, res: Response) => {
+    const warehouseId = String(req.query.warehouseId ?? '').trim();
+    const productIds = String(req.query.productIds ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!warehouseId || productIds.length === 0) {
+      res.status(400).json({ error: 'انبار و شناسه‌های محصول الزامی است' });
+      return;
+    }
+    const stock = await ordersService.getOrderStock(warehouseId, productIds);
+    if (!stock) {
+      res.status(404).json({ error: 'انبار یافت نشد' });
+      return;
+    }
+    res.json({ stock });
 
   }),
 

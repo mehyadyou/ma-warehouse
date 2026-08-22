@@ -1,21 +1,20 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'manager_api_provider.dart';
 import '../models/warehouse_model.dart';
 import '../models/inventory_summary_model.dart';
 
 // Provider for inventory summary (used in InventoryChartCard)
-// Remove autoDispose for real-time sync
-final managerInventorySummaryProvider = FutureProvider<InventorySummaryModel>((ref) async {
-  try {
-    return await ref.read(managerApiServiceProvider).getInventorySummary();
-  } catch (_) {
-    return const InventorySummaryModel();
-  }
+// Remove autoDispose for real-time sync — خطاها بهجای بلیع، در AsyncError میآیند
+final managerInventorySummaryProvider = FutureProvider<InventorySummaryModel>((
+  ref,
+) async {
+  return ref.read(managerApiServiceProvider).getInventorySummary();
 });
 
-final warehousesProvider = AsyncNotifierProvider<WarehousesNotifier, List<WarehouseModel>>(
-  WarehousesNotifier.new,
-);
+final warehousesProvider =
+    AsyncNotifierProvider<WarehousesNotifier, List<WarehouseModel>>(
+      WarehousesNotifier.new,
+    );
 
 class WarehousesNotifier extends AsyncNotifier<List<WarehouseModel>> {
   @override

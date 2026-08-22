@@ -2,6 +2,9 @@
 import { prisma } from '../../utils/prisma';
 import { AppError } from '../../common/exceptions/AppError';
 import { writeAuditStandalone } from '../../utils/audit';
+import { parseOptionalInt, parseOptionalPrice } from '../../utils/numbers';
+
+type ProductModelInput = { name: string; price?: unknown; packageType?: unknown; unitsPerBox?: unknown };
 
 // محاسبهٔ نام پیشنهادی با پسوند فارسی — «X (۲)»، «X (۳)» و… — چک علیه نام‌های فعال و بایگانیشده
 async function nextAvailableName(base: string): Promise<string> {
@@ -35,6 +38,65 @@ async function archivedNameConflict(productName: string): Promise<AppError | nul
             suggestedName: await nextAvailableName(productName),
         },
     );
+}
+
+// ساخت دادهٔ نرمال‌شدهٔ مدل — قیمت/ظرفیت با ارقام فارسی هم پذیرفته می‌شود؛ مقدار نامعتبر → 400
+function buildModelData(m: { name: string; price?: unknown; packageType?: unknown; unitsPerBox?: unknown }) {
+    return {
+        name: m.name.trim(),
+        price: parseOptionalPrice(m.price, 'قیمت'),
+        packageType: m.packageType ? String(m.packageType).trim() || null : null,
+        unitsPerBox: parseOptionalInt(m.unitsPerBox, 'ظرفیت بسته'),
+    };
+}
+
+// ادغام اتمی مدل‌ها با محصول موجود — بازیابی مدل بایگان‌شدهٔ همنام یا ساخت مدل جدید؛ همه داخل یک تراکنش
+async function mergeModels(
+    product: { id: string; name: string; unit: string | null },
+    models: ProductModelInput[],
+    opts: { managerId?: string; unit?: string; label?: string } = {},
+) {
+    await prisma.$transaction(async (tx) => {
+        for (const m of models) {
+            const existingModel = await tx.productModel.findUnique({
+                where: {
+                    productId_name: {
+                        productId: product.id,
+                        name: m.name.trim(),
+                    },
+                },
+            });
+            if (existingModel && !existingModel.deletedAt) {
+                throw new AppError(`مدل "${m.name.trim()}" قبلاً برای این محصول ثبت شده است`, 409);
+            }
+            if (existingModel) {
+                // احیأ مدل بایگانی‌شده با آخرین دادهٔ ارسال‌شده
+                await tx.productModel.update({
+                    where: { id: existingModel.id },
+                    data: { ...buildModelData(m), deletedAt: null },
+                });
+            } else {
+                await tx.productModel.create({
+                    data: { productId: product.id, ...buildModelData(m) },
+                });
+            }
+        }
+
+        if (opts.unit?.trim() && opts.unit.trim() !== product.unit) {
+            await tx.product.update({ where: { id: product.id }, data: { unit: opts.unit.trim() } });
+        }
+
+        //ثبت در تاریخچه
+        if (opts.managerId) {
+            await tx.activityLog.create({
+                data: {
+                    type: 'product_updated',
+                    label: opts.label ?? `مدل‌های جدید برای محصول «${product.name}»: ${models.map(m => m.name.trim()).join('، ')}`,
+                    userId: opts.managerId,
+                },
+            }).catch(() => {});
+        }
+    });
 }
 
 export const productsService = {
@@ -84,6 +146,26 @@ export const productsService = {
         return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include });
     },
 
+    //یک محصول با مدل‌هایش — برای فرم ویرایش (بدون واکشی کل لیست)
+    getProductById: async (id: string) => {
+        return prisma.product.findUnique({
+            where: { id },
+            include: {
+                models: {
+                    where: { deletedAt: null },
+                    orderBy: { name: 'asc' as const },
+                    select: {
+                        id: true,
+                        name: true,
+                        price: true,
+                        packageType: true,
+                        unitsPerBox: true,
+                    },
+                },
+            },
+        });
+    },
+
     //محصولات بایگانی‌شده — برای بازیابی با آخرین دادهٔ کامل
     getArchivedProducts: async () => {
         return await prisma.product.findMany({
@@ -110,7 +192,7 @@ export const productsService = {
     //نام همنام با محصول بایگانیشده → 409 ARCHIVED_CONFLICT (دیالوگ: بازیابی یا پسوند)
     createProduct: async (
         name: string,
-        models: { name: string; price?: string; packageType?: string; unitsPerBox?: string | number }[],
+        models: ProductModelInput[],
         managerId?: string,
         unit?: string,
     ) => {
@@ -121,60 +203,14 @@ export const productsService = {
             throw new AppError('حداقل یک مدل برای محصول وارد کنید', 400);
         }
 
-        const buildModelData = (m: typeof validModels[number]) => ({
-            name: m.name.trim(),
-            price: m.price ? parseFloat(String(m.price)) : null,
-            packageType: m.packageType?.trim() || null,
-            unitsPerBox:
-                m.unitsPerBox !== undefined && m.unitsPerBox !== null && String(m.unitsPerBox).trim() !== ''
-                    ? parseInt(String(m.unitsPerBox), 10)
-                    : null,
-        });
-
         const product = await prisma.product.findFirst({ where: { name: productName, deletedAt: null } });
 
         if (product) {
             //ادغام مدل‌ها با محصول موجود — در تراکنش تا نصفه‌نیمه نماند
-            await prisma.$transaction(async (tx) => {
-                for (const m of validModels) {
-                    const existingModel = await tx.productModel.findUnique({
-                        where: {
-                            productId_name: {
-                                productId: product.id,
-                                name: m.name.trim(),
-                            },
-                        },
-                    });
-                    if (existingModel && !existingModel.deletedAt) {
-                        throw new AppError(`مدل "${m.name.trim()}" قبلاً برای این محصول ثبت شده است`, 409);
-                    }
-                    if (existingModel) {
-                        // احیأ مدل بایگانی‌شده با آخرین دادهٔ ارسال‌شده
-                        await tx.productModel.update({
-                            where: { id: existingModel.id },
-                            data: { ...buildModelData(m), deletedAt: null },
-                        });
-                    } else {
-                        await tx.productModel.create({
-                            data: { productId: product.id, ...buildModelData(m) },
-                        });
-                    }
-                }
-
-                if (unit?.trim() && unit.trim() !== product.unit) {
-                    await tx.product.update({ where: { id: product.id }, data: { unit: productUnit } });
-                }
-
-                //ثبت در تاریخچه
-                if (managerId) {
-                    await tx.activityLog.create({
-                        data: {
-                            type: 'product_updated',
-                            label: `مدل‌های جدید برای محصول «${productName}»: ${validModels.map(m => m.name.trim()).join('، ')}`,
-                            userId: managerId,
-                        },
-                    }).catch(() => {});
-                }
+            await mergeModels(product, validModels, {
+                managerId,
+                unit,
+                label: `مدل‌های جدید برای محصول «${productName}»: ${validModels.map(m => m.name.trim()).join('، ')}`,
             });
 
             return await prisma.product.findUnique({
@@ -313,6 +349,40 @@ export const productsService = {
         });
     },
 
+    //افزودن اتمی مدل‌های جدید به محصول موجود — یک درخواست، یک تراکنش (برای ویرایش سمت اپ)
+    addProductModels: async (id: string, models: ProductModelInput[], managerId?: string) => {
+        const product = await prisma.product.findUnique({ where: { id } });
+        if (!product) throw new AppError('محصول یافت نشد', 404);
+        if (product.deletedAt) throw new AppError('این محصول بایگانیشده است؛ ابتدا آن را بازگردانی کنید', 400);
+
+        const validModels = models.filter(m => m.name?.trim());
+        if (validModels.length === 0) {
+            throw new AppError('حداقل یک مدل وارد کنید', 400);
+        }
+        const seen = new Set<string>();
+        for (const m of validModels) {
+            const name = m.name.trim();
+            if (seen.has(name)) throw new AppError(`نام تکراری: مدل «${name}» دوبار وارد شده است`, 400);
+            seen.add(name);
+        }
+
+        await mergeModels(product, validModels, {
+            managerId,
+            label: `مدل‌های جدید برای محصول «${product.name}»: ${validModels.map(m => m.name.trim()).join('، ')}`,
+        });
+
+        return prisma.product.findUnique({
+            where: { id },
+            include: {
+                models: {
+                    where: { deletedAt: null },
+                    orderBy: { name: 'asc' },
+                    select: { id: true, name: true, price: true, packageType: true, unitsPerBox: true },
+                },
+            },
+        });
+    },
+
     //بایگانی مدل محصول — کارتن‌ها و QRها سالم می‌مانند
     deleteProductModel: async (id: string, managerId?: string) => {
         const model = await prisma.productModel.findUnique({ where: { id } });
@@ -384,13 +454,34 @@ export const productsService = {
         const model = await prisma.productModel.findUnique({ where: { id } });
         if (!model) throw new AppError('مدل یافت نشد', 404);
         if (data.name) {
+            const trimmed = data.name.trim();
             const dup = await prisma.productModel.findFirst({
-                where: { productId: model.productId, name: data.name.trim(), deletedAt: null, NOT: { id } },
+                where: { productId: model.productId, name: trimmed, deletedAt: null, NOT: { id } },
             });
-            if (dup) throw new AppError(`مدل "${data.name.trim()}" قبلاً برای این محصول ثبت شده است`, 409);
+            if (dup) throw new AppError(`مدل "${trimmed}" قبلاً برای این محصول ثبت شده است`, 409);
+            // مدل بایگانیشدهٔ همنام هنوز ردیف «productId_name» را اشغال کرده است → 409 دوستانه (به‌جای P2002)
+            const archivedDup = await prisma.productModel.findFirst({
+                where: { productId: model.productId, name: trimmed, deletedAt: { not: null }, NOT: { id } },
+            });
+            if (archivedDup) {
+                throw new AppError(
+                    `مدل «${trimmed}» در بایگانی این محصول است؛ ابتدا آن را بازگردانی کنید یا نام دیگری انتخاب کنید`,
+                    409,
+                );
+            }
+            data.name = trimmed;
         }
         const before = { name: model.name, price: model.price, packageType: model.packageType, unitsPerBox: model.unitsPerBox };
-        const updated = await prisma.productModel.update({ where: { id }, data });
+        let updated;
+        try {
+            updated = await prisma.productModel.update({ where: { id }, data });
+        } catch (e: any) {
+            // race: نام بین چک و آپدیت ثبت شد
+            if (e?.code === 'P2002') {
+                throw new AppError('مدلی با این نام برای این محصول ثبت شده است؛ صفحه را تازه کنید', 409);
+            }
+            throw e;
+        }
 
         // ممیزی تغییر قیمت مدل
         if (managerId && data.price !== undefined && (data.price ?? null) !== (model.price ? Number(model.price) : null)) {

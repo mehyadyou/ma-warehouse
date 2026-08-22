@@ -25,6 +25,10 @@ _KeeperInventoryListModel _$KeeperInventoryListModelFromJson(
           )
           .toList() ??
       const <KeeperWarehouseStockRowModel>[],
+  total: (json['total'] as num?)?.toInt() ?? 0,
+  page: (json['page'] as num?)?.toInt() ?? 1,
+  pageSize: (json['pageSize'] as num?)?.toInt() ?? 50,
+  hasMore: json['hasMore'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$KeeperInventoryListModelToJson(
@@ -32,6 +36,10 @@ Map<String, dynamic> _$KeeperInventoryListModelToJson(
 ) => <String, dynamic>{
   'products': instance.products,
   'warehouses': instance.warehouses,
+  'total': instance.total,
+  'page': instance.page,
+  'pageSize': instance.pageSize,
+  'hasMore': instance.hasMore,
 };
 
 _KeeperProductRowModel _$KeeperProductRowModelFromJson(

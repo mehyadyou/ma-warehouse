@@ -120,7 +120,7 @@ describe('warehousesService.createWarehouseWithKeeper', () => {
         mockWarehouseNameLookup({}, { 'انبار مرکزی': { id: 'arch1', name: 'انبار مرکزی', deletedAt: archivedDate } });
 
         const err = await warehousesService
-            .createWarehouseWithKeeper('انبار مرکزی', 'علی', '09120000000', 'password123')
+            .createWarehouseWithKeeper('انبار مرکزی', 'علی', '09120000000', '123456')
             .catch(e => e);
 
         expect(err).toMatchObject({
@@ -137,7 +137,7 @@ describe('warehousesService.createWarehouseWithKeeper', () => {
         (prisma.$transaction as any).mockRejectedValue({ code: 'P2002' });
 
         const err = await warehousesService
-            .createWarehouseWithKeeper('انبار جدید', 'علی', '09120000000', 'password123')
+            .createWarehouseWithKeeper('انبار جدید', 'علی', '09120000000', '123456')
             .catch(e => e);
 
         expect(err.statusCode).toBe(409);
@@ -154,7 +154,7 @@ describe('warehousesService.createWarehouseWithKeeper', () => {
         (prisma.$transaction as any).mockImplementation(async (cb: any) => cb(tx));
 
         const result = await warehousesService
-            .createWarehouseWithKeeper('انبار جدید', 'علی', '09120000000', 'password123');
+            .createWarehouseWithKeeper('انبار جدید', 'علی', '09120000000', '123456');
 
         expect(tx.user.create).toHaveBeenCalledWith(
             expect.objectContaining({

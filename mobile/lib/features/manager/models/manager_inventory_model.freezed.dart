@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ManagerInventoryModel {
 
- List<ManagerProductRowModel> get products; List<WarehouseStockRowModel> get warehouses;
+ List<ManagerProductRowModel> get products; List<WarehouseStockRowModel> get warehouses; int get total; int get page; int get pageSize; bool get hasMore;
 /// Create a copy of ManagerInventoryModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $ManagerInventoryModelCopyWith<ManagerInventoryModel> get copyWith => _$ManagerI
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ManagerInventoryModel&&const DeepCollectionEquality().equals(other.products, products)&&const DeepCollectionEquality().equals(other.warehouses, warehouses));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ManagerInventoryModel&&const DeepCollectionEquality().equals(other.products, products)&&const DeepCollectionEquality().equals(other.warehouses, warehouses)&&(identical(other.total, total) || other.total == total)&&(identical(other.page, page) || other.page == page)&&(identical(other.pageSize, pageSize) || other.pageSize == pageSize)&&(identical(other.hasMore, hasMore) || other.hasMore == hasMore));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(products),const DeepCollectionEquality().hash(warehouses));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(products),const DeepCollectionEquality().hash(warehouses),total,page,pageSize,hasMore);
 
 @override
 String toString() {
-  return 'ManagerInventoryModel(products: $products, warehouses: $warehouses)';
+  return 'ManagerInventoryModel(products: $products, warehouses: $warehouses, total: $total, page: $page, pageSize: $pageSize, hasMore: $hasMore)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $ManagerInventoryModelCopyWith<$Res>  {
   factory $ManagerInventoryModelCopyWith(ManagerInventoryModel value, $Res Function(ManagerInventoryModel) _then) = _$ManagerInventoryModelCopyWithImpl;
 @useResult
 $Res call({
- List<ManagerProductRowModel> products, List<WarehouseStockRowModel> warehouses
+ List<ManagerProductRowModel> products, List<WarehouseStockRowModel> warehouses, int total, int page, int pageSize, bool hasMore
 });
 
 
@@ -65,11 +65,15 @@ class _$ManagerInventoryModelCopyWithImpl<$Res>
 
 /// Create a copy of ManagerInventoryModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? products = null,Object? warehouses = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? products = null,Object? warehouses = null,Object? total = null,Object? page = null,Object? pageSize = null,Object? hasMore = null,}) {
   return _then(_self.copyWith(
 products: null == products ? _self.products : products // ignore: cast_nullable_to_non_nullable
 as List<ManagerProductRowModel>,warehouses: null == warehouses ? _self.warehouses : warehouses // ignore: cast_nullable_to_non_nullable
-as List<WarehouseStockRowModel>,
+as List<WarehouseStockRowModel>,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
+as int,pageSize: null == pageSize ? _self.pageSize : pageSize // ignore: cast_nullable_to_non_nullable
+as int,hasMore: null == hasMore ? _self.hasMore : hasMore // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -154,10 +158,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ManagerInventoryModel() when $default != null:
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   return orElse();
 
 }
@@ -175,10 +179,10 @@ return $default(_that.products,_that.warehouses);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)  $default,) {final _that = this;
 switch (_that) {
 case _ManagerInventoryModel():
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -195,10 +199,10 @@ return $default(_that.products,_that.warehouses);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<ManagerProductRowModel> products,  List<WarehouseStockRowModel> warehouses,  int total,  int page,  int pageSize,  bool hasMore)?  $default,) {final _that = this;
 switch (_that) {
 case _ManagerInventoryModel() when $default != null:
-return $default(_that.products,_that.warehouses);case _:
+return $default(_that.products,_that.warehouses,_that.total,_that.page,_that.pageSize,_that.hasMore);case _:
   return null;
 
 }
@@ -210,7 +214,7 @@ return $default(_that.products,_that.warehouses);case _:
 @JsonSerializable()
 
 class _ManagerInventoryModel implements ManagerInventoryModel {
-  const _ManagerInventoryModel({final  List<ManagerProductRowModel> products = const <ManagerProductRowModel>[], final  List<WarehouseStockRowModel> warehouses = const <WarehouseStockRowModel>[]}): _products = products,_warehouses = warehouses;
+  const _ManagerInventoryModel({final  List<ManagerProductRowModel> products = const <ManagerProductRowModel>[], final  List<WarehouseStockRowModel> warehouses = const <WarehouseStockRowModel>[], this.total = 0, this.page = 0, this.pageSize = 0, this.hasMore = false}): _products = products,_warehouses = warehouses;
   factory _ManagerInventoryModel.fromJson(Map<String, dynamic> json) => _$ManagerInventoryModelFromJson(json);
 
  final  List<ManagerProductRowModel> _products;
@@ -227,6 +231,10 @@ class _ManagerInventoryModel implements ManagerInventoryModel {
   return EqualUnmodifiableListView(_warehouses);
 }
 
+@override@JsonKey() final  int total;
+@override@JsonKey() final  int page;
+@override@JsonKey() final  int pageSize;
+@override@JsonKey() final  bool hasMore;
 
 /// Create a copy of ManagerInventoryModel
 /// with the given fields replaced by the non-null parameter values.
@@ -241,16 +249,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ManagerInventoryModel&&const DeepCollectionEquality().equals(other._products, _products)&&const DeepCollectionEquality().equals(other._warehouses, _warehouses));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ManagerInventoryModel&&const DeepCollectionEquality().equals(other._products, _products)&&const DeepCollectionEquality().equals(other._warehouses, _warehouses)&&(identical(other.total, total) || other.total == total)&&(identical(other.page, page) || other.page == page)&&(identical(other.pageSize, pageSize) || other.pageSize == pageSize)&&(identical(other.hasMore, hasMore) || other.hasMore == hasMore));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_products),const DeepCollectionEquality().hash(_warehouses));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_products),const DeepCollectionEquality().hash(_warehouses),total,page,pageSize,hasMore);
 
 @override
 String toString() {
-  return 'ManagerInventoryModel(products: $products, warehouses: $warehouses)';
+  return 'ManagerInventoryModel(products: $products, warehouses: $warehouses, total: $total, page: $page, pageSize: $pageSize, hasMore: $hasMore)';
 }
 
 
@@ -261,7 +269,7 @@ abstract mixin class _$ManagerInventoryModelCopyWith<$Res> implements $ManagerIn
   factory _$ManagerInventoryModelCopyWith(_ManagerInventoryModel value, $Res Function(_ManagerInventoryModel) _then) = __$ManagerInventoryModelCopyWithImpl;
 @override @useResult
 $Res call({
- List<ManagerProductRowModel> products, List<WarehouseStockRowModel> warehouses
+ List<ManagerProductRowModel> products, List<WarehouseStockRowModel> warehouses, int total, int page, int pageSize, bool hasMore
 });
 
 
@@ -278,11 +286,15 @@ class __$ManagerInventoryModelCopyWithImpl<$Res>
 
 /// Create a copy of ManagerInventoryModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? products = null,Object? warehouses = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? products = null,Object? warehouses = null,Object? total = null,Object? page = null,Object? pageSize = null,Object? hasMore = null,}) {
   return _then(_ManagerInventoryModel(
 products: null == products ? _self._products : products // ignore: cast_nullable_to_non_nullable
 as List<ManagerProductRowModel>,warehouses: null == warehouses ? _self._warehouses : warehouses // ignore: cast_nullable_to_non_nullable
-as List<WarehouseStockRowModel>,
+as List<WarehouseStockRowModel>,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,page: null == page ? _self.page : page // ignore: cast_nullable_to_non_nullable
+as int,pageSize: null == pageSize ? _self.pageSize : pageSize // ignore: cast_nullable_to_non_nullable
+as int,hasMore: null == hasMore ? _self.hasMore : hasMore // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -293,7 +305,7 @@ as List<WarehouseStockRowModel>,
 /// @nodoc
 mixin _$ManagerProductRowModel {
 
- String? get productId; String? get name; String? get unit; num get totalCount;
+ String? get productId; String? get name; String? get unit; num get totalCount; int get modelCount; List<String> get modelNames;
 /// Create a copy of ManagerProductRowModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -306,16 +318,16 @@ $ManagerProductRowModelCopyWith<ManagerProductRowModel> get copyWith => _$Manage
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ManagerProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ManagerProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&(identical(other.modelCount, modelCount) || other.modelCount == modelCount)&&const DeepCollectionEquality().equals(other.modelNames, modelNames));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount);
+int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount,modelCount,const DeepCollectionEquality().hash(modelNames));
 
 @override
 String toString() {
-  return 'ManagerProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount)';
+  return 'ManagerProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount, modelCount: $modelCount, modelNames: $modelNames)';
 }
 
 
@@ -326,7 +338,7 @@ abstract mixin class $ManagerProductRowModelCopyWith<$Res>  {
   factory $ManagerProductRowModelCopyWith(ManagerProductRowModel value, $Res Function(ManagerProductRowModel) _then) = _$ManagerProductRowModelCopyWithImpl;
 @useResult
 $Res call({
- String? productId, String? name, String? unit, num totalCount
+ String? productId, String? name, String? unit, num totalCount, int modelCount, List<String> modelNames
 });
 
 
@@ -343,13 +355,15 @@ class _$ManagerProductRowModelCopyWithImpl<$Res>
 
 /// Create a copy of ManagerProductRowModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,Object? modelCount = null,Object? modelNames = null,}) {
   return _then(_self.copyWith(
 productId: freezed == productId ? _self.productId : productId // ignore: cast_nullable_to_non_nullable
 as String?,name: freezed == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,
+as num,modelCount: null == modelCount ? _self.modelCount : modelCount // ignore: cast_nullable_to_non_nullable
+as int,modelNames: null == modelNames ? _self.modelNames : modelNames // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 
@@ -434,10 +448,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount,  int modelCount,  List<String> modelNames)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ManagerProductRowModel() when $default != null:
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.modelCount,_that.modelNames);case _:
   return orElse();
 
 }
@@ -455,10 +469,10 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount,  int modelCount,  List<String> modelNames)  $default,) {final _that = this;
 switch (_that) {
 case _ManagerProductRowModel():
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.modelCount,_that.modelNames);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -475,10 +489,10 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? productId,  String? name,  String? unit,  num totalCount)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? productId,  String? name,  String? unit,  num totalCount,  int modelCount,  List<String> modelNames)?  $default,) {final _that = this;
 switch (_that) {
 case _ManagerProductRowModel() when $default != null:
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.modelCount,_that.modelNames);case _:
   return null;
 
 }
@@ -490,13 +504,21 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 @JsonSerializable()
 
 class _ManagerProductRowModel implements ManagerProductRowModel {
-  const _ManagerProductRowModel({this.productId, this.name, this.unit, this.totalCount = 0});
+  const _ManagerProductRowModel({this.productId, this.name, this.unit, this.totalCount = 0, this.modelCount = 0, final  List<String> modelNames = const <String>[]}): _modelNames = modelNames;
   factory _ManagerProductRowModel.fromJson(Map<String, dynamic> json) => _$ManagerProductRowModelFromJson(json);
 
 @override final  String? productId;
 @override final  String? name;
 @override final  String? unit;
 @override@JsonKey() final  num totalCount;
+@override@JsonKey() final  int modelCount;
+ final  List<String> _modelNames;
+@override@JsonKey() List<String> get modelNames {
+  if (_modelNames is EqualUnmodifiableListView) return _modelNames;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_modelNames);
+}
+
 
 /// Create a copy of ManagerProductRowModel
 /// with the given fields replaced by the non-null parameter values.
@@ -511,16 +533,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ManagerProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ManagerProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&(identical(other.modelCount, modelCount) || other.modelCount == modelCount)&&const DeepCollectionEquality().equals(other._modelNames, _modelNames));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount);
+int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount,modelCount,const DeepCollectionEquality().hash(_modelNames));
 
 @override
 String toString() {
-  return 'ManagerProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount)';
+  return 'ManagerProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount, modelCount: $modelCount, modelNames: $modelNames)';
 }
 
 
@@ -531,7 +553,7 @@ abstract mixin class _$ManagerProductRowModelCopyWith<$Res> implements $ManagerP
   factory _$ManagerProductRowModelCopyWith(_ManagerProductRowModel value, $Res Function(_ManagerProductRowModel) _then) = __$ManagerProductRowModelCopyWithImpl;
 @override @useResult
 $Res call({
- String? productId, String? name, String? unit, num totalCount
+ String? productId, String? name, String? unit, num totalCount, int modelCount, List<String> modelNames
 });
 
 
@@ -548,13 +570,15 @@ class __$ManagerProductRowModelCopyWithImpl<$Res>
 
 /// Create a copy of ManagerProductRowModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,Object? modelCount = null,Object? modelNames = null,}) {
   return _then(_ManagerProductRowModel(
 productId: freezed == productId ? _self.productId : productId // ignore: cast_nullable_to_non_nullable
 as String?,name: freezed == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,
+as num,modelCount: null == modelCount ? _self.modelCount : modelCount // ignore: cast_nullable_to_non_nullable
+as int,modelNames: null == modelNames ? _self._modelNames : modelNames // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 
@@ -565,7 +589,7 @@ as num,
 /// @nodoc
 mixin _$WarehouseStockRowModel {
 
- String? get warehouseName; num get totalCount; List<StockItemRowModel> get items;
+ String? get warehouseId; String? get warehouseName; num get totalCount; int get totalItems; List<StockItemRowModel> get items;
 /// Create a copy of WarehouseStockRowModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -578,16 +602,16 @@ $WarehouseStockRowModelCopyWith<WarehouseStockRowModel> get copyWith => _$Wareho
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseStockRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&const DeepCollectionEquality().equals(other.items, items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseStockRowModel&&(identical(other.warehouseId, warehouseId) || other.warehouseId == warehouseId)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&(identical(other.totalItems, totalItems) || other.totalItems == totalItems)&&const DeepCollectionEquality().equals(other.items, items));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,warehouseName,totalCount,const DeepCollectionEquality().hash(items));
+int get hashCode => Object.hash(runtimeType,warehouseId,warehouseName,totalCount,totalItems,const DeepCollectionEquality().hash(items));
 
 @override
 String toString() {
-  return 'WarehouseStockRowModel(warehouseName: $warehouseName, totalCount: $totalCount, items: $items)';
+  return 'WarehouseStockRowModel(warehouseId: $warehouseId, warehouseName: $warehouseName, totalCount: $totalCount, totalItems: $totalItems, items: $items)';
 }
 
 
@@ -598,7 +622,7 @@ abstract mixin class $WarehouseStockRowModelCopyWith<$Res>  {
   factory $WarehouseStockRowModelCopyWith(WarehouseStockRowModel value, $Res Function(WarehouseStockRowModel) _then) = _$WarehouseStockRowModelCopyWithImpl;
 @useResult
 $Res call({
- String? warehouseName, num totalCount, List<StockItemRowModel> items
+ String? warehouseId, String? warehouseName, num totalCount, int totalItems, List<StockItemRowModel> items
 });
 
 
@@ -615,11 +639,13 @@ class _$WarehouseStockRowModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseStockRowModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? warehouseName = freezed,Object? totalCount = null,Object? items = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? warehouseId = freezed,Object? warehouseName = freezed,Object? totalCount = null,Object? totalItems = null,Object? items = null,}) {
   return _then(_self.copyWith(
-warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
+warehouseId: freezed == warehouseId ? _self.warehouseId : warehouseId // ignore: cast_nullable_to_non_nullable
+as String?,warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,items: null == items ? _self.items : items // ignore: cast_nullable_to_non_nullable
+as num,totalItems: null == totalItems ? _self.totalItems : totalItems // ignore: cast_nullable_to_non_nullable
+as int,items: null == items ? _self.items : items // ignore: cast_nullable_to_non_nullable
 as List<StockItemRowModel>,
   ));
 }
@@ -705,10 +731,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? warehouseName,  num totalCount,  List<StockItemRowModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? warehouseId,  String? warehouseName,  num totalCount,  int totalItems,  List<StockItemRowModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _WarehouseStockRowModel() when $default != null:
-return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
+return $default(_that.warehouseId,_that.warehouseName,_that.totalCount,_that.totalItems,_that.items);case _:
   return orElse();
 
 }
@@ -726,10 +752,10 @@ return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? warehouseName,  num totalCount,  List<StockItemRowModel> items)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? warehouseId,  String? warehouseName,  num totalCount,  int totalItems,  List<StockItemRowModel> items)  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseStockRowModel():
-return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
+return $default(_that.warehouseId,_that.warehouseName,_that.totalCount,_that.totalItems,_that.items);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -746,10 +772,10 @@ return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? warehouseName,  num totalCount,  List<StockItemRowModel> items)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? warehouseId,  String? warehouseName,  num totalCount,  int totalItems,  List<StockItemRowModel> items)?  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseStockRowModel() when $default != null:
-return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
+return $default(_that.warehouseId,_that.warehouseName,_that.totalCount,_that.totalItems,_that.items);case _:
   return null;
 
 }
@@ -761,11 +787,13 @@ return $default(_that.warehouseName,_that.totalCount,_that.items);case _:
 @JsonSerializable()
 
 class _WarehouseStockRowModel implements WarehouseStockRowModel {
-  const _WarehouseStockRowModel({this.warehouseName, this.totalCount = 0, final  List<StockItemRowModel> items = const <StockItemRowModel>[]}): _items = items;
+  const _WarehouseStockRowModel({this.warehouseId, this.warehouseName, this.totalCount = 0, this.totalItems = 0, final  List<StockItemRowModel> items = const <StockItemRowModel>[]}): _items = items;
   factory _WarehouseStockRowModel.fromJson(Map<String, dynamic> json) => _$WarehouseStockRowModelFromJson(json);
 
+@override final  String? warehouseId;
 @override final  String? warehouseName;
 @override@JsonKey() final  num totalCount;
+@override@JsonKey() final  int totalItems;
  final  List<StockItemRowModel> _items;
 @override@JsonKey() List<StockItemRowModel> get items {
   if (_items is EqualUnmodifiableListView) return _items;
@@ -787,16 +815,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseStockRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&const DeepCollectionEquality().equals(other._items, _items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseStockRowModel&&(identical(other.warehouseId, warehouseId) || other.warehouseId == warehouseId)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&(identical(other.totalItems, totalItems) || other.totalItems == totalItems)&&const DeepCollectionEquality().equals(other._items, _items));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,warehouseName,totalCount,const DeepCollectionEquality().hash(_items));
+int get hashCode => Object.hash(runtimeType,warehouseId,warehouseName,totalCount,totalItems,const DeepCollectionEquality().hash(_items));
 
 @override
 String toString() {
-  return 'WarehouseStockRowModel(warehouseName: $warehouseName, totalCount: $totalCount, items: $items)';
+  return 'WarehouseStockRowModel(warehouseId: $warehouseId, warehouseName: $warehouseName, totalCount: $totalCount, totalItems: $totalItems, items: $items)';
 }
 
 
@@ -807,7 +835,7 @@ abstract mixin class _$WarehouseStockRowModelCopyWith<$Res> implements $Warehous
   factory _$WarehouseStockRowModelCopyWith(_WarehouseStockRowModel value, $Res Function(_WarehouseStockRowModel) _then) = __$WarehouseStockRowModelCopyWithImpl;
 @override @useResult
 $Res call({
- String? warehouseName, num totalCount, List<StockItemRowModel> items
+ String? warehouseId, String? warehouseName, num totalCount, int totalItems, List<StockItemRowModel> items
 });
 
 
@@ -824,11 +852,13 @@ class __$WarehouseStockRowModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseStockRowModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? warehouseName = freezed,Object? totalCount = null,Object? items = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? warehouseId = freezed,Object? warehouseName = freezed,Object? totalCount = null,Object? totalItems = null,Object? items = null,}) {
   return _then(_WarehouseStockRowModel(
-warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
+warehouseId: freezed == warehouseId ? _self.warehouseId : warehouseId // ignore: cast_nullable_to_non_nullable
+as String?,warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
+as num,totalItems: null == totalItems ? _self.totalItems : totalItems // ignore: cast_nullable_to_non_nullable
+as int,items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
 as List<StockItemRowModel>,
   ));
 }

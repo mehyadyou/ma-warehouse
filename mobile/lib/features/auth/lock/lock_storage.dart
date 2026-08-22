@@ -1,8 +1,4 @@
-import 'dart:convert';
-import 'dart:math';
-
-import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../../core/storage/local_storage.dart';
 import '../../../core/storage/secure_storage.dart';
@@ -10,85 +6,45 @@ import 'lock_config.dart';
 
 /// ذخیره‌سازی تنظیمات قفل برنامه:
 /// - روش قفل → LocalStorage (غیرحساس)
-/// - پین → هش SHA-256 + salt تصادفی در SecureStorage (روی وب در LocalStorage)
+/// - مدت قفل خودکار → LocalStorage
 ///
-/// تصمیم مصوب: تغییر روش قفل هرگز پین را پاک نمی‌کند؛ پین فقط با
-/// «خروج کامل از حساب» یا حذف صریح توسط کاربر پاک می‌شود.
+/// پین جداگانه وجود ندارد — قفل با همان رمز اصلی ۶ رقمی حساب (تأیید سمت سرور)
+/// یا بیومتریک دستگاه باز می‌شود.
 class LockStorage {
-  static const _pinSaltKey = 'lock_pin_salt';
-  static const _pinHashKey = 'lock_pin_hash';
-
-  static const int maxPinLength = 4;
-
-  static String _hashPin(String pin, String salt) {
-    final bytes = utf8.encode('$salt:$pin');
-    return sha256.convert(bytes).toString();
-  }
-
-  static String _generateSalt() {
-    final random = Random.secure();
-    return List.generate(16, (_) => random.nextInt(256))
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
-  }
-
   // ═══ روش قفل ═══
   static Future<void> saveMethod(LockMethod method) {
     return LocalStorage.saveLockMethod(method.name);
   }
 
   static Future<LockMethod> getMethod() async {
-    return LockMethod.fromName(await LocalStorage.getLockMethod());
+    return LockMethod.fromName(LocalStorage.getLockMethod());
   }
 
-  // ═══ پین ═══
-  static Future<void> setPin(String pin) async {
-    assert(pin.length == maxPinLength && RegExp(r'^\d{4}$').hasMatch(pin));
-    final salt = _generateSalt();
-    final hash = _hashPin(pin, salt);
-    if (kIsWeb) {
-      await LocalStorage.savePinData(salt: salt, hash: hash);
-      return;
-    }
-    await SecureStorage.write(key: _pinSaltKey, value: salt);
-    await SecureStorage.write(key: _pinHashKey, value: hash);
+  // ═══ زمان قفل خودکار ═══
+  /// ۰ = فوراً (با رفتن به پس‌زمینه) — مقدار پیش‌فرض
+  static const int defaultAutoLockMinutes = 0;
+
+  static Future<void> saveAutoLockMinutes(int minutes) {
+    return LocalStorage.saveAutoLockMinutes(minutes);
   }
 
-  static Future<bool> hasPin() async {
-    final salt = await _readPinSalt();
-    final hash = await _readPinHash();
-    return salt != null && salt.isNotEmpty && hash != null && hash.isNotEmpty;
-  }
-
-  static Future<bool> verifyPin(String pin) async {
-    final salt = await _readPinSalt();
-    final hash = await _readPinHash();
-    if (salt == null || hash == null) return false;
-    return _hashPin(pin, salt) == hash;
-  }
-
-  static Future<void> clearPin() async {
-    if (kIsWeb) {
-      await LocalStorage.clearPinData();
-      return;
-    }
-    await SecureStorage.delete(key: _pinSaltKey);
-    await SecureStorage.delete(key: _pinHashKey);
+  static int getAutoLockMinutes() {
+    return LocalStorage.getAutoLockMinutes() ?? defaultAutoLockMinutes;
   }
 
   /// پاک‌سازی کامل قفل — فقط در «خروج کامل از حساب» صدا زده می‌شود
   static Future<void> clearAll() async {
-    await clearPin();
     await saveMethod(LockMethod.none);
+    await _clearLegacyPinData();
   }
 
-  static Future<String?> _readPinSalt() async {
-    if (kIsWeb) return LocalStorage.getPinSalt();
-    return SecureStorage.read(key: _pinSaltKey);
-  }
-
-  static Future<String?> _readPinHash() async {
-    if (kIsWeb) return LocalStorage.getPinHash();
-    return SecureStorage.read(key: _pinHashKey);
+  /// حذف پین قدیمی (نسخه‌های قبل از یکپارچه‌سازی رمز) — از دستگاه پاک شود
+  static Future<void> _clearLegacyPinData() async {
+    if (kIsWeb) {
+      await LocalStorage.clearPinData();
+      return;
+    }
+    await SecureStorage.delete(key: 'lock_pin_salt');
+    await SecureStorage.delete(key: 'lock_pin_hash');
   }
 }

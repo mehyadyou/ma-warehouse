@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 import '../../../core/network/api_constants.dart';
 import '../../../core/network/dio_client.dart';
 import '../models/warehouse_model.dart';
@@ -17,6 +17,8 @@ import '../models/carrier_model.dart';
 import '../models/recent_activity_model.dart';
 import '../models/transaction_entry_model.dart';
 import '../models/user_report_model.dart';
+import '../models/shipment_report_model.dart';
+import '../models/transfer_model.dart';
 
 class ManagerApiService {
   final Dio _dio = DioClient().dio;
@@ -35,12 +37,19 @@ class ManagerApiService {
         .toList();
   }
 
-  Future<List<ProductModel>> getProducts({String? q, int? page, int? pageSize}) async {
-    final response = await _dio.get('/manager/products', queryParameters: {
-      if (q != null && q.isNotEmpty) 'q': q,
-      if (page != null) 'page': page,
-      if (pageSize != null) 'pageSize': pageSize,
-    });
+  Future<List<ProductModel>> getProducts({
+    String? q,
+    int? page,
+    int? pageSize,
+  }) async {
+    final response = await _dio.get(
+      '/manager/products',
+      queryParameters: {
+        if (q != null && q.isNotEmpty) 'q': q,
+        if (page != null) 'page': page,
+        if (pageSize != null) 'pageSize': pageSize,
+      },
+    );
     final data = response.data['products'] as List;
     return data.map((json) => ProductModel.fromJson(json)).toList();
   }
@@ -51,16 +60,27 @@ class ManagerApiService {
     required int page,
     required int pageSize,
   }) async {
-    final response = await _dio.get('/manager/products', queryParameters: {
-      if (q != null && q.isNotEmpty) 'q': q,
-      'page': page,
-      'pageSize': pageSize,
-    });
+    final response = await _dio.get(
+      '/manager/products',
+      queryParameters: {
+        if (q != null && q.isNotEmpty) 'q': q,
+        'page': page,
+        'pageSize': pageSize,
+      },
+    );
     final data = response.data;
     final list = (data['products'] as List)
         .map((json) => ProductModel.fromJson(json))
         .toList();
     return (products: list, total: (data['total'] as int?) ?? 0);
+  }
+
+  /// یک محصول با مدل‌هایش (برای فرم ویرایش)
+  Future<ProductModel> getProduct(String id) async {
+    final response = await _dio.get('/manager/products/$id');
+    return ProductModel.fromJson(
+      response.data['product'] as Map<String, dynamic>,
+    );
   }
 
   /// لیست محصولات بایگانی‌شده (برای بازیابی)
@@ -98,7 +118,8 @@ class ManagerApiService {
     final data = response.data;
     if (data is Map && data['warehouse'] is Map) {
       return WarehouseModel.fromJson(
-          Map<String, dynamic>.from(data['warehouse'] as Map));
+        Map<String, dynamic>.from(data['warehouse'] as Map),
+      );
     }
     return WarehouseModel.fromJson(Map<String, dynamic>.from(data as Map));
   }
@@ -121,7 +142,9 @@ class ManagerApiService {
 
   /// لیست انبارهای بایگانی‌شده (برای بازیابی)
   Future<List<ArchivedWarehouseModel>> getArchivedWarehouses() async {
-    final response = await _dio.get('${ApiConstants.managerWarehouses}/archived');
+    final response = await _dio.get(
+      '${ApiConstants.managerWarehouses}/archived',
+    );
     return (response.data['warehouses'] as List)
         .map((e) => ArchivedWarehouseModel.fromJson(e))
         .toList();
@@ -131,7 +154,10 @@ class ManagerApiService {
     await _dio.post('${ApiConstants.managerWarehouses}/$id/restore');
   }
 
-  Future<List<TransactionEntryModel>> getTransactionsByDate(String warehouseId, String date) async {
+  Future<List<TransactionEntryModel>> getTransactionsByDate(
+    String warehouseId,
+    String date,
+  ) async {
     final response = await _dio.get(
       '${ApiConstants.managerWarehouses}/$warehouseId/transactions',
       queryParameters: {'date': date},
@@ -143,7 +169,9 @@ class ManagerApiService {
 
   /// جزئیات کامل یک انبار: آمار ورود/خروج + موجودی محصولات (صفحه جزئیات انبار)
   Future<WarehouseDetailModel> getWarehouseDetail(String warehouseId) async {
-    final response = await _dio.get('${ApiConstants.managerWarehouses}/$warehouseId/detail');
+    final response = await _dio.get(
+      '${ApiConstants.managerWarehouses}/$warehouseId/detail',
+    );
     return WarehouseDetailModel.fromJson(response.data);
   }
 
@@ -153,8 +181,26 @@ class ManagerApiService {
   }
 
   /// نمودارهای عمودی موجودی: مجموع هر محصول در همهٔ انبارها + ریز هر انبار
-  Future<ManagerInventoryModel> getManagerInventory() async {
-    final response = await _dio.get('/manager/inventory');
+  /// page/pageSize: صفحهٔ محصولات (مرتب بر موجودی نزولی) — سقف سرور ۵۰۰
+  /// q/onlyInStock: جستجو و فیلتر سمت سرور
+  Future<ManagerInventoryModel> getManagerInventory({
+    int page = 1,
+    int pageSize = 12,
+    String? q,
+    bool onlyInStock = false,
+    String? warehouseId,
+  }) async {
+    final response = await _dio.get(
+      '/manager/inventory',
+      queryParameters: {
+        'page': page,
+        'pageSize': pageSize,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (onlyInStock) 'onlyInStock': 'true',
+        if (warehouseId != null && warehouseId.trim().isNotEmpty)
+          'warehouseId': warehouseId,
+      },
+    );
     return ManagerInventoryModel.fromJson(response.data);
   }
 
@@ -176,18 +222,27 @@ class ManagerApiService {
     return RecentActivityData.fromJson(response.data);
   }
 
+  /// گزارش ارسالی‌ها: تعداد هر انبار + تاریخچهٔ روزانه + آخرین ارسالی
+  Future<ShipmentReportModel> getShipmentsReport() async {
+    final response = await _dio.get('/manager/shipments-report');
+    return ShipmentReportModel.fromJson(response.data);
+  }
+
   Future<HistoryPageResult> getHistoryPage({
     int page = 1,
     int pageSize = 50,
     String? category,
     String? q,
   }) async {
-    final response = await _dio.get('/manager/history', queryParameters: {
-      'page': page,
-      'pageSize': pageSize,
-      if (category != null && category != 'all') 'category': category,
-      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-    });
+    final response = await _dio.get(
+      '/manager/history',
+      queryParameters: {
+        'page': page,
+        'pageSize': pageSize,
+        if (category != null && category != 'all') 'category': category,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      },
+    );
     final data = response.data as Map<String, dynamic>;
     return HistoryPageResult(
       entries: ((data['entries'] as List?) ?? [])
@@ -200,7 +255,10 @@ class ManagerApiService {
   /// جستجوی کارتن با سریال — مکان فعلی و مرحله
   Future<CartonSearchModel?> searchBySerial(String serial) async {
     try {
-      final response = await _dio.get('/manager/search/serial', queryParameters: {'serial': serial});
+      final response = await _dio.get(
+        '/manager/search/serial',
+        queryParameters: {'serial': serial},
+      );
       return CartonSearchModel.fromJson(response.data['carton']);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
@@ -208,17 +266,54 @@ class ManagerApiService {
     }
   }
 
-  /// لیست کامل ارسالی‌ها (سفارش‌های ثبت‌شده) با جزئیات دقیق
-  Future<List<OrderModel>> getOrders() async {
-    final response = await _dio.get('/manager/orders');
-    return (response.data['orders'] as List)
-        .map((e) => OrderModel.fromJson(e))
-        .toList();
+  /// لیست ارسالی‌ها (سفارش‌های ثبت‌شده) با صفحه‌بندی و شمارندهٔ وضعیت‌ها
+  /// [status] = فیلتر وضعیت سمت سرور: pending | in_transit | delivered | other
+  Future<OrdersPageModel> getOrders({
+    int page = 1,
+    int pageSize = 50,
+    String? status,
+  }) async {
+    final response = await _dio.get(
+      '/manager/orders',
+      queryParameters: {
+        'page': page,
+        'pageSize': pageSize,
+        if (status != null) 'status': status,
+      },
+    );
+    return OrdersPageModel.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// ثبت سفارش جدید
-  Future<void> createOrder(Map<String, dynamic> data) async {
-    await _dio.post('/manager/orders', data: data);
+  /// موجودی قابل سفارش محصولات مشخص در یک انبار (کارتن + لِگاسی)
+  Future<Map<String, int>> getOrderStock(
+    String warehouseId,
+    List<String> productIds,
+  ) async {
+    final ids = productIds.where((p) => p.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return {};
+    final response = await _dio.get(
+      '/manager/orders/stock',
+      queryParameters: {
+        'warehouseId': warehouseId,
+        'productIds': ids.join(','),
+      },
+    );
+    final list = (response.data['stock'] as List? ?? []);
+    return {
+      for (final e in list)
+        if (e is Map && e['productId'] != null)
+          e['productId'] as String: ((e['available'] as num?) ?? 0).toInt(),
+    };
+  }
+
+  /// ثبت سفارش جدید — سفارش ساخته‌شده (با شمارهٔ خودکار) برمی‌گردد
+  Future<OrderModel> createOrder(Map<String, dynamic> data) async {
+    final response = await _dio.post('/manager/orders', data: data);
+    final order = (response.data as Map?)?['order'];
+    if (order is Map) {
+      return OrderModel.fromJson(Map<String, dynamic>.from(order));
+    }
+    return const OrderModel(id: '');
   }
 
   /// ویرایش سفارش
@@ -231,22 +326,33 @@ class ManagerApiService {
     await _dio.delete('/manager/orders/$id');
   }
 
-  /// جستجوی ارسالی‌ها (فرستنده / گیرنده / کالا / مدل) — مرحله ارسال
-  Future<List<OrderModel>> searchShipments({
+  /// جستجوی ارسالی‌ها — متن آزاد یا فیلد‌به‌فیلد، صفحه‌بندی‌شده
+  Future<OrdersPageModel> searchShipments({
+    String? q,
     String? sender,
     String? receiver,
     String? product,
     String? model,
+    String? status,
+    int page = 1,
+    int pageSize = 50,
   }) async {
-    final response = await _dio.get('/manager/search/shipments', queryParameters: {
-      if (sender != null && sender.trim().isNotEmpty) 'sender': sender.trim(),
-      if (receiver != null && receiver.trim().isNotEmpty) 'receiver': receiver.trim(),
-      if (product != null && product.trim().isNotEmpty) 'product': product.trim(),
-      if (model != null && model.trim().isNotEmpty) 'model': model.trim(),
-    });
-    return (response.data['orders'] as List)
-        .map((e) => OrderModel.fromJson(e))
-        .toList();
+    final response = await _dio.get(
+      '/manager/search/shipments',
+      queryParameters: {
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (sender != null && sender.trim().isNotEmpty) 'sender': sender.trim(),
+        if (receiver != null && receiver.trim().isNotEmpty)
+          'receiver': receiver.trim(),
+        if (product != null && product.trim().isNotEmpty)
+          'product': product.trim(),
+        if (model != null && model.trim().isNotEmpty) 'model': model.trim(),
+        if (status != null) 'status': status,
+        'page': page,
+        'pageSize': pageSize,
+      },
+    );
+    return OrdersPageModel.fromJson(response.data as Map<String, dynamic>);
   }
 
   /// نرخ دلار آزاد (تومان) — tgju؛ روی خطا null برمی‌گرداند تا UI دست نگه دارد
@@ -283,12 +389,26 @@ class ManagerApiService {
     await _dio.post('/manager/products', data: data);
   }
 
-  Future<void> updateProduct(String productId, Map<String, dynamic> data) async {
+  Future<void> updateProduct(
+    String productId,
+    Map<String, dynamic> data,
+  ) async {
     await _dio.put('/manager/products/$productId', data: data);
   }
 
   Future<void> updateModel(String modelId, Map<String, dynamic> data) async {
     await _dio.put('/manager/product-models/$modelId', data: data);
+  }
+
+  /// افزودن اتمی مدل‌های جدید به محصول موجود — یک درخواست، یک تراکنش در سرور
+  Future<void> addProductModels(
+    String productId,
+    List<Map<String, dynamic>> models,
+  ) async {
+    await _dio.post(
+      '/manager/products/$productId/models',
+      data: {'models': models},
+    );
   }
 
   Future<void> deleteUser(String id) async {
@@ -307,6 +427,43 @@ class ManagerApiService {
   Future<UserReportModel> getUserReport(String userId) async {
     final response = await _dio.get('/manager/users/$userId/report');
     return UserReportModel.fromJson(response.data);
+  }
+
+  /// ثبت خروج یا جابه‌جایی محصول توسط مدیر (دستور دوفازی)
+  /// [toWarehouseId] = فقط برای جابه‌جایی؛ خروج بدون مقصد، کالا را از سیستم خارج می‌کند
+  Future<void> createTransfer({
+    required String fromWarehouseId,
+    String? toWarehouseId,
+    required String productId,
+    String? modelId,
+    required int quantity,
+    String description = '',
+  }) async {
+    await _dio.post('/manager/transfers', data: {
+      'fromWarehouseId': fromWarehouseId,
+      if (toWarehouseId != null && toWarehouseId.trim().isNotEmpty)
+        'toWarehouseId': toWarehouseId.trim(),
+      'productId': productId,
+      if (modelId != null && modelId.trim().isNotEmpty) 'modelId': modelId.trim(),
+      'quantity': quantity,
+      'description': description.trim(),
+    });
+  }
+
+  /// لغو دستور در انتظار (فقط PENDING و بدون اسکن اجراشده)
+  Future<void> cancelTransfer(String transferId) async {
+    await _dio.post('/manager/transfers/$transferId/cancel');
+  }
+
+  /// آخرین جابه‌جایی‌ها/خروج‌های ثبت‌شده
+  Future<List<TransferModel>> getTransfers({int limit = 20}) async {
+    final response = await _dio.get(
+      '/manager/transfers',
+      queryParameters: {'limit': limit},
+    );
+    return (response.data['transfers'] as List)
+        .map((json) => TransferModel.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 }
 

@@ -1,6 +1,8 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../../warehouse_keeper/providers/warehouse_keeper_provider.dart';
 import '../../data/manager_api_service.dart';
 import '../../providers/manager_api_provider.dart';
 import '../../models/carton_search_model.dart';
@@ -23,11 +25,13 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   late final ManagerApiService _api = ref.read(managerApiServiceProvider);
+  late final bool _isKeeper = ref.read(authProvider).role == 'WAREHOUSE_KEEPER';
 
   // سریال
   final _serialCtrl = TextEditingController();
   Timer? _debounce;
   bool _serialLoading = false;
+  int _serialQueryId = 0;
   CartonSearchModel? _serialResult;  String? _serialError;
 
   // ارسالی‌ها
@@ -56,33 +60,49 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final query = value.trim();
     if (query.isEmpty) {
       setState(() {
+        _serialQueryId++;
         _serialResult = null;
         _serialError = null;
         _serialLoading = false;
       });
       return;
     }
+    final qid = ++_serialQueryId;
     setState(() => _serialLoading = true);
-    _debounce = Timer(const Duration(milliseconds: 600), () => _searchSerial(query));
+    _debounce = Timer(const Duration(milliseconds: 600), () => _searchSerial(query, qid));
   }
 
-  Future<void> _searchSerial(String query) async {
+  Future<CartonSearchModel?> _requestSerial(String query) {
+    if (_isKeeper) return ref.read(wkApiProvider).searchBySerial(query);
+    return _api.searchBySerial(query);
+  }
+
+  Future<void> _searchSerial(String query, int qid) async {
     try {
-      final result = await _api.searchBySerial(query);
-      if (!mounted) return;
+      final result = await _requestSerial(query);
+      if (!mounted || qid != _serialQueryId) return;
       setState(() {
         _serialLoading = false;
         _serialResult = result;
         _serialError = result == null ? 'کارتنی با این سریال یافت نشد' : null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || qid != _serialQueryId) return;
       setState(() {
         _serialLoading = false;
         _serialResult = null;
         _serialError = 'خطا در جستجو';
       });
     }
+  }
+
+  Future<List<OrderModel>> _requestShipments(String sender, String receiver, String product, String model) {
+    if (_isKeeper) {
+      return ref.read(wkApiProvider).searchShipments(sender: sender, receiver: receiver, product: product, model: model);
+    }
+    return _api
+        .searchShipments(sender: sender, receiver: receiver, product: product, model: model)
+        .then((page) => page.orders);
   }
 
   Future<void> _searchShipments() async {
@@ -98,7 +118,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _shipmentsError = null;
     });
     try {
-      final orders = await _api.searchShipments(sender: sender, receiver: receiver, product: product, model: model);
+      final orders = await _requestShipments(sender, receiver, product, model);
       if (!mounted) return;
       setState(() {
         _shipmentsLoading = false;
@@ -267,20 +287,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   // ═══════════ نتایج ═══════════
 
   List<Widget> _results() {
-    if (_serialLoading) {
-      return const [Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: _green)))];
-    }
-    if (_serialError != null && _serialResult == null) {
-      return [
-        _emptyState(Icons.qr_code_2_rounded, _serialError!),
-        const SizedBox(height: 16),
-        if (_shipmentsLoading) const Center(child: CircularProgressIndicator(color: _blue)),
-        if (_shipmentsError != null && (_shipments?.isEmpty ?? true)) _emptyState(Icons.local_shipping_rounded, _shipmentsError!),
-        if (_shipments != null) ..._shipmentCards(),
-      ];
-    }
     return [
-      if (_serialResult != null) _serialResultCard(_serialResult!),
+      if (_serialLoading)
+        const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: _green)))
+      else if (_serialError != null && _serialResult == null)
+        _emptyState(Icons.qr_code_2_rounded, _serialError!)
+      else if (_serialResult != null)
+        _serialResultCard(_serialResult!),
       const SizedBox(height: 16),
       if (_shipmentsLoading) const Center(child: CircularProgressIndicator(color: _blue)),
       if (_shipmentsError != null && (_shipments?.isEmpty ?? true)) _emptyState(Icons.local_shipping_rounded, _shipmentsError!),
@@ -338,8 +351,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               Icon(stageIcon, color: stageColor, size: 20),
               const SizedBox(width: 10),
               Expanded(child: Text('این کالا در انبار «${c.warehouseName ?? '—'}» است', style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600))),
-              const SizedBox(width: 8),
-              _stageChip(stageLabel, stageColor),
             ]),
           ),
           const SizedBox(height: 8),
@@ -440,8 +451,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final status = c.cartonStatus ?? '';
     final orderStatus = c.orderStatus;
     if (status == 'IN_STOCK') return 'کالا در انبار موجود است';
-    if (orderStatus == 'DELIVERED') return 'کالا به مقصد تحویل داده شده است';
-    return 'کالا از انبار خارج شده و در مسیر ارسال است';
+    if (status == 'SHIPPED') {
+      return orderStatus == 'DELIVERED'
+          ? 'کالا به مقصد تحویل داده شده است'
+          : 'کالا از انبار خارج شده و در مسیر ارسال است';
+    }
+    return 'وضعیت مرحله کالا در دسترس نیست';
   }
 
   // ─── نتیجه ارسالی‌ها ───
@@ -516,14 +531,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget _stageTimeline(String status, OrderModel o) {
     final delivered = status == 'DELIVERED';
     final shipped = delivered || status == 'SHIPPED';
-    final deliveredAt = o.deliveredAt;
 
     return Row(children: [
       _timelineDot('در انبار مبدا', true, _green),
       Expanded(child: Container(height: 2, color: shipped ? _green : _border)),
       _timelineDot('در مسیر ارسال', shipped, _amber),
       Expanded(child: Container(height: 2, color: delivered ? _green : _border)),
-      _timelineDot(delivered ? 'تحویل شده' : (deliveredAt != null ? 'تحویل شده' : 'تحویل نشده'), delivered, _green),
+      _timelineDot(delivered ? 'تحویل شده' : 'مقصد', delivered, _green),
     ]);
   }
 

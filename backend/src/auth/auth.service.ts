@@ -184,6 +184,17 @@ export const authService = {
         return user;
     },
 
+    //تأیید رمز اصلی (۶ رقمی) — برای قفل‌گشایی برنامه؛ همان رمز ورود
+    verifyPassword: async (userId: string, password: string) => {
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.isActive || user.deletedAt) {
+            throw new AppError('کاربر نامعتبر است', 401);
+        }
+        const ok = await bcrypt.compare(password, user.password);
+        if (!ok) throw new AppError('رمز عبور اشتباه است', 401);
+        return { ok: true };
+    },
+
     //ویرایش پروفایل (نام + شماره موبایل + رمز عبور)
     updateProfile: async (id: string, data: { name?: string; phone?: string; password?: string }) => {
         const user = await prisma.user.findUnique({ where: { id } });

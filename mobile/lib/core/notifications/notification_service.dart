@@ -100,6 +100,14 @@ class NotificationService {
     _listController.add(List.unmodifiable(_notifications));
   }
 
+  /// ریست کامل پس از خروج: لیست اعلان‌ها و وضعیت اولیه‌سازی پاک می‌شود تا
+  /// اعلان‌های کاربر قبلی به نشست بعدی نشت نکند و init دوباره اجرا شود.
+  void reset() {
+    _notifications.clear();
+    _initialized = false;
+    _emit();
+  }
+
   void dispose() {
     _unreadController.close();
     _listController.close();

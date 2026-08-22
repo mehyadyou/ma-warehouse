@@ -16,11 +16,10 @@ const _green = Color(0xFF4ADE80);
 const _danger = Color(0xFFF87171);
 const _border = Color(0xFF2A2D33);
 
-enum _LockMode { biometric, pin }
-
-/// صفحه قفل یکپارچه — پین (کیپد ۴ رقمی) یا بیومتریک (اثر انگشت/فیس آید).
-/// بعد از ۵ پین اشتباه کولداون ۳۰ ثانیه فعال می‌شود؛ دکمه «ورود با رمز عبور»
-/// همیشه در دسترس است (خروج کامل → صفحه لاگین).
+/// صفحه قفل یکپارچه — با همان رمز اصلی ۶ رقمی حساب باز می‌شود
+/// (تأیید سمت سرور)؛ بیومتریک (اثر انگشت/فیس آید) فقط میان‌بر دستگاه است.
+/// بعد از ۵ رمز اشتباه کولداون ۳۰ ثانیه فعال می‌شود؛ «خروج از حساب»
+/// راه فرار در صورت فراموشی رمز است (بازگشت به صفحه ورود).
 class LockScreen extends ConsumerStatefulWidget {
   const LockScreen({super.key});
 
@@ -34,10 +33,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   bool _checking = true;
   bool _supported = false;
   bool _unlocking = false;
+
   String? _error;
 
-  _LockMode _mode = _LockMode.biometric;
-  String _pin = '';
+  String _password = '';
   Timer? _cooldownTimer;
   int _cooldownRemaining = 0;
 
@@ -55,7 +54,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   Future<void> _init() async {
     final method = await LockStorage.getMethod();
-    final hasPin = await LockStorage.hasPin();
 
     bool supported = false;
     try {
@@ -69,12 +67,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() {
       _supported = supported;
       _checking = false;
-      _mode = method == LockMethod.pin && hasPin
-          ? _LockMode.pin
-          : _LockMode.biometric;
     });
 
-    if (_mode == _LockMode.biometric && supported) {
+    // روش ذخیره‌شده بیومتریک و دستگاه سنسور دارد → تلاش خودکار بیومتریک
+    if (method != LockMethod.none && supported) {
       _unlockWithBiometrics();
     }
   }
@@ -112,41 +108,41 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       setState(() {
         _unlocking = false;
         _error = result == UnlockResult.invalidSession
-            ? 'نشست شما منقضی شده است؛ با رمز عبور وارد شوید'
+            ? 'نشست شما منقضی شده است؛ از حساب خارج شده و دوباره وارد شوید'
             : 'اتصال برقرار نشد؛ دوباره تلاش کنید';
       });
     }
   }
 
   void _onDigit(String digit) {
-    if (_pin.length >= 4 || _cooldownRemaining > 0) return;
+    if (_password.length >= 6 || _cooldownRemaining > 0) return;
     setState(() {
-      _pin += digit;
+      _password += digit;
       _error = null;
     });
-    if (_pin.length == 4) _submitPin();
+    if (_password.length == 6) _submitPassword();
   }
 
   void _onBackspace() {
-    if (_pin.isEmpty) return;
-    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+    if (_password.isEmpty) return;
+    setState(() => _password = _password.substring(0, _password.length - 1));
   }
 
-  Future<void> _submitPin() async {
+  Future<void> _submitPassword() async {
     setState(() => _unlocking = true);
-    final ok = await ref.read(lockProvider.notifier).verifyPin(_pin);
+    final ok = await ref.read(lockProvider.notifier).verifyPassword(_password);
     if (!mounted) return;
 
     if (ok) {
-      setState(() => _pin = '');
+      setState(() => _password = '');
       await _completeUnlock();
       return;
     }
 
     setState(() {
-      _pin = '';
+      _password = '';
       _unlocking = false;
-      _error = 'پین اشتباه است';
+      _error = 'رمز عبور اشتباه است';
     });
     HapticFeedback.heavyImpact();
 
@@ -175,7 +171,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     });
   }
 
-  void _loginWithPassword() {
+  /// راه فرار فراموشی رمز — خروج کامل از حساب (پاک‌سازی قفل + رفتن به ورود)
+  void _logout() {
     ref.read(authProvider.notifier).logout();
   }
 
@@ -205,7 +202,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _iconTile(_mode == _LockMode.pin),
+                      _iconTile(),
                       const SizedBox(height: 24),
                       const Text(
                         'برنامه قفل است',
@@ -226,10 +223,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                         ),
                       ],
                       const SizedBox(height: 32),
-                      if (_mode == _LockMode.pin)
-                        _pinSection(inCooldown)
-                      else
-                        _biometricSection(),
+                      _passwordSection(inCooldown),
                     ],
                   ),
           ),
@@ -238,7 +232,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     );
   }
 
-  Widget _iconTile(bool pinMode) {
+  Widget _iconTile() {
     return Container(
       width: 96,
       height: 96,
@@ -247,8 +241,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: _border),
       ),
-      child: Icon(
-        pinMode ? Icons.lock_rounded : Icons.fingerprint_rounded,
+      child: const Icon(
+        Icons.lock_rounded,
         size: 52,
         color: _green,
       ),
@@ -260,64 +254,59 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       return Text(
         '$_cooldownRemaining ثانیه دیگر تلاش کنید',
         textAlign: TextAlign.center,
-        style: const TextStyle(color: _danger, fontSize: 13, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: _danger,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
       );
     }
-
-    final message = _mode == _LockMode.pin
-        ? 'پین ۴ رقمی خود را وارد کنید'
-        : _supported
-            ? 'برای ورود، اثر انگشت یا فیس آید خود را تأیید کنید'
-            : 'این دستگاه قابلیت تشخیص اثر انگشت یا فیس آید ندارد';
-    return Text(
-      message,
+    return const Text(
+      'رمز ۶ رقمی خود را وارد کنید',
       textAlign: TextAlign.center,
       style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.5),
+        color: Colors.white54,
         fontSize: 13,
       ),
     );
   }
 
-  Widget _pinSection(bool inCooldown) {
+  Widget _passwordSection(bool inCooldown) {
     return Column(
       children: [
-        _pinDots(),
+        _passwordDots(),
         const SizedBox(height: 24),
         _keypad(enabled: !inCooldown && !_unlocking),
         const SizedBox(height: 24),
         if (_supported)
           TextButton(
-            onPressed: inCooldown ? null : () {
-              setState(() => _mode = _LockMode.biometric);
-              _unlockWithBiometrics();
-            },
+            onPressed: inCooldown ? null : _unlockWithBiometrics,
             child: const Text(
               'ورود با اثر انگشت',
               style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
           ),
         TextButton(
-          onPressed: _loginWithPassword,
+          onPressed: _logout,
           child: const Text(
-            'ورود با رمز عبور',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            'خروج از حساب',
+            style: TextStyle(color: Colors.white38, fontSize: 13),
           ),
         ),
       ],
     );
   }
 
-  Widget _pinDots() {
+  Widget _passwordDots() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(4, (i) {
-        final filled = i < _pin.length;
+      children: List.generate(6, (i) {
+        final filled = i < _password.length;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          width: 16,
-          height: 16,
+          margin: const EdgeInsets.symmetric(horizontal: 7),
+          width: 15,
+          height: 15,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: filled ? _green : Colors.transparent,
@@ -381,64 +370,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         ),
         child: Text(digit),
       ),
-    );
-  }
-
-  Widget _biometricSection() {
-    return Column(
-      children: [
-        if (_supported) ...[
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: _unlocking ? null : _unlockWithBiometrics,
-              icon: _unlocking
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black87),
-                    )
-                  : const Icon(Icons.fingerprint_rounded),
-              label: Text(
-                _unlocking ? 'در حال بررسی...' : 'ورود با اثر انگشت',
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _green,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (ref.read(lockProvider).hasPin) ...[
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _mode = _LockMode.pin;
-                _error = null;
-              });
-            },
-            child: const Text(
-              'ورود با پین',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
-            ),
-          ),
-          const SizedBox(height: 4),
-        ],
-        TextButton(
-          onPressed: _loginWithPassword,
-          child: const Text(
-            'ورود با رمز عبور',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
-          ),
-        ),
-      ],
     );
   }
 }

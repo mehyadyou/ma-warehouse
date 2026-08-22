@@ -27,7 +27,8 @@ const TRANSACTIONS = 50_000;
 const ORDERS = 10_000;
 const NOTIFICATIONS = 10_000;
 const ACTIVITY_LOGS = 10_000;
-const PASSWORD = 'Loadtest@1405';
+// رمز اصلی دقیقاً ۶ رقم عددی است (سیاست کل سیستم)
+const PASSWORD = '123456';
 
 const rand = (n: number) => Math.floor(Math.random() * n);
 const pick = <T>(arr: T[]): T => arr[rand(arr.length)];

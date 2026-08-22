@@ -59,6 +59,39 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
       break;
     }
 
+    case 'carton_transferred':
+    case 'carton_exited': {
+      const label = `${payload.productName ?? ''}${payload.modelName ? ` (${payload.modelName})` : ''}`;
+      const isTransfer = type === 'carton_transferred';
+      const managers = await findManagers();
+      for (const mgr of managers) {
+        await notificationService.create(
+          mgr.id,
+          isTransfer ? 'جابه‌جایی کالا' : 'خروج کالا',
+          isTransfer
+            ? `${label} از انبار ${payload.warehouseName ?? ''} به ${payload.destinationWarehouseName ?? ''} منتقل شد`
+            : `${label} از انبار ${payload.warehouseName ?? ''} خارج شد (دستور خروج)`,
+          'info',
+          {
+            type: isTransfer ? 'TRANSFER_EXECUTED' : 'EXIT_EXECUTED',
+            transferId: payload.transferId ?? null,
+            cartonId: payload.cartonId ?? null,
+            warehouseId: payload.warehouseId ?? null,
+            destinationWarehouseId: payload.destinationWarehouseId ?? null,
+            productName: payload.productName ?? null,
+            modelName: payload.modelName ?? null,
+          },
+          `${eventId}:${mgr.id}`,
+        );
+      }
+      realtime.toRole('MANAGER', RealtimeEvents.SCANOUT_DONE, payload);
+      realtime.toWarehouse(payload.warehouseId, RealtimeEvents.SCANOUT_DONE, payload);
+      if (payload.destinationWarehouseId) {
+        realtime.toWarehouse(payload.destinationWarehouseId, RealtimeEvents.SCANOUT_DONE, payload);
+      }
+      break;
+    }
+
     case 'checkin:completed': {
       const entries = Array.isArray(payload.entries) ? payload.entries : [];
       const managers = await findManagers();

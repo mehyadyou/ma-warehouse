@@ -1,10 +1,11 @@
-﻿import { Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { AppError } from '../../common/exceptions/AppError';
 import { writeAudit } from '../../utils/audit';
+import { runSerializable } from '../../utils/serializableTx';
 
 const orderInclude = {
     warehouse: { select: { name: true } },
@@ -27,6 +28,8 @@ const toNumber = (v: Prisma.Decimal | null | undefined): number | null =>
 function mapOrder(o: OrderWithRefs) {
     return {
         id: o.id,
+        orderNumber: o.orderNumber,
+        version: o.version,
         status: o.status,
         shippingMethod: o.shippingMethod,
         carrier: o.carrier,
@@ -65,23 +68,136 @@ export interface OrderItemInput {
     exchangeRate?: number | null;
 }
 
+// ── موجودی قابل سفارش هر محصول در یک انبار ──
+// هماهنگ با منطق موجودی سراسری: محصولاتی که کارتن دارند از کارتن‌های IN_STOCK شمرده می‌شوند
+// و بقیه (لِگاسی) از جمع تراکنش‌های IN−OUT همان انبار — بدون این هماهنگی،
+// کالای لِگاسی با موجودی واقعی، «موجودی کافی نیست» می‌گرفت.
+export const getProductStock = async (
+    warehouseId: string,
+    productIds: string[],
+    client: Prisma.TransactionClient | PrismaClient = prisma,
+): Promise<Map<string, number>> => {
+    const ids = [...new Set(productIds.filter(Boolean))];
+    if (ids.length === 0) return new Map();
+
+    // محصولات دارای کارتن در این انبار (حتی بدون موجودی) → مبنای کارتن
+    const cartonRows = await client.$queryRaw<{ productId: string }[]>`
+        SELECT DISTINCT c."productId" as "productId"
+        FROM "Carton" c
+        WHERE c."warehouseId" = ${warehouseId}
+    `;
+    const cartonBaseProducts = new Set(cartonRows.map((r) => r.productId));
+
+    // مجموع کارتن‌های IN_STOCK برای محصولات کارتنی
+    const cartonInventory = await client.$queryRaw<{ productId: string; available: number }[]>`
+        SELECT c."productId" as "productId",
+            COALESCE(SUM(
+                CASE
+                    WHEN c."isIndividual" THEN 1
+                    ELSE COALESCE(pm."unitsPerBox", 0)
+                END
+            ), 0)::int AS available
+        FROM "Carton" c
+        LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
+        WHERE c."warehouseId" = ${warehouseId}
+            AND c.status = 'IN_STOCK'
+            AND c."productId" IN (${Prisma.join(ids)})
+        GROUP BY c."productId"
+    `;
+    const cartonAvailable = new Map(
+        cartonInventory.map((r) => [r.productId, Number(r.available || 0)]),
+    );
+
+    // تراکنش‌های لِگاسی برای محصولات بدون کارتن
+    const legacyInventory = await client.$queryRaw<{ productId: string; legacyCount: number }[]>`
+        SELECT t."productId" as "productId",
+            COALESCE(SUM(
+                CASE
+                    WHEN t.type = 'IN' THEN t.quantity
+                    WHEN t.type = 'OUT' THEN -t.quantity
+                    ELSE 0
+                END
+            ), 0)::int AS "legacyCount"
+        FROM "Transaction" t
+        WHERE t."warehouseId" = ${warehouseId}
+            AND t."productId" IN (${Prisma.join(ids)})
+        GROUP BY t."productId"
+    `;
+    const legacyMap = new Map(
+        legacyInventory.map((r) => [r.productId, Number(r.legacyCount || 0)]),
+    );
+
+    const result = new Map<string, number>();
+    for (const id of ids) {
+        result.set(
+            id,
+            cartonBaseProducts.has(id)
+                ? (cartonAvailable.get(id) ?? 0)
+                : (legacyMap.get(id) ?? 0),
+        );
+    }
+    return result;
+};
+
+export type OrderStatusFilter = 'pending' | 'in_transit' | 'delivered' | 'other';
+
+// فیلتر وضعیت برای جستجو/لیست — هماهنگ با کلیدهای موبایل (order.status + delivery.status)
+export const orderStatusWhere = (status: OrderStatusFilter): Prisma.OrderWhereInput => {
+    switch (status) {
+        case 'pending':
+            return { status: 'PENDING' };
+        case 'in_transit':
+            return { status: 'SHIPPED' };
+        case 'delivered':
+            return {
+                OR: [
+                    { status: 'DELIVERED' },
+                    { delivery: { is: { status: 'DELIVERED' } } },
+                ],
+            };
+        case 'other':
+            return { status: { notIn: ['PENDING', 'SHIPPED', 'DELIVERED'] } };
+    }
+};
+
 export const ordersService = {
-    //لیست کامل ارسالی‌ها برای مدیر — صفحه‌بندی با پیش‌فرض ۱۰۰
-    listOrders: async (page = 1, pageSize = 100) => {
+    //لیست کامل ارسالی‌ها برای مدیر — صفحه‌بندی با پیش‌فرض ۱۰۰ + شمارندهٔ وضعیت‌ها (هماهنگ با موبایل)
+    listOrders: async (page = 1, pageSize = 100, status?: OrderStatusFilter) => {
         const safePage = Math.max(1, Math.floor(page));
         const safeSize = Math.min(500, Math.max(1, Math.floor(pageSize)));
-        const [orders, total] = await prisma.$transaction([
+        const where = status ? orderStatusWhere(status) : undefined;
+        const [orders, total, countRows] = await prisma.$transaction([
             prisma.order.findMany({
+                where,
                 orderBy: { createdAt: 'desc' },
                 include: orderInclude,
                 skip: (safePage - 1) * safeSize,
                 take: safeSize,
             }),
-            prisma.order.count(),
+            prisma.order.count({ where }),
+            prisma.$queryRaw<{ key: string; count: number }[]>`
+                SELECT
+                    CASE
+                        WHEN d.status = 'DELIVERED' OR o.status = 'DELIVERED' THEN 'delivered'
+                        WHEN d.status = 'IN_TRANSIT' OR o.status = 'SHIPPED' THEN 'in_transit'
+                        WHEN o.status = 'PENDING' THEN 'pending'
+                        ELSE 'other'
+                    END as "key",
+                    COUNT(*)::int as "count"
+                FROM "Order" o
+                LEFT JOIN "Delivery" d ON d."orderId" = o.id
+                GROUP BY 1
+            `,
         ]);
+        const counts = { total, pending: 0, inTransit: 0, delivered: 0, other: 0 };
+        for (const row of countRows) {
+            const key = (row.key === 'in_transit' ? 'inTransit' : row.key) as keyof typeof counts;
+            if (key in counts) counts[key] = Number(row.count || 0);
+        }
         return {
             orders: orders.map(mapOrder),
             pagination: { page: safePage, pageSize: safeSize, total, hasMore: safePage * safeSize < total },
+            counts,
         };
     },
 
@@ -141,25 +257,17 @@ export const ordersService = {
             }
         }
 
-        // چک موجودی کارتنی IN_STOCK — جلوگیری از ثبت سفارش برای کالای ناموجود
-        const stockRows = await prisma.$queryRaw<{ productId: string; available: number }[]>`
-            SELECT c."productId",
-                SUM(CASE WHEN c."isIndividual" THEN 1 ELSE COALESCE(pm."unitsPerBox", 0) END)::int AS available
-            FROM "Carton" c
-            LEFT JOIN "ProductModel" pm ON pm.id = c."modelId"
-            WHERE c."warehouseId" = ${warehouseId} AND c.status = 'IN_STOCK'
-                AND c."productId" IN (${Prisma.join(productIds)})
-            GROUP BY c."productId"
-        `;
-        const stockMap = new Map(stockRows.map((r) => [r.productId, Number(r.available || 0)]));
-        for (const item of items) {
-            const available = stockMap.get(item.productId) ?? 0;
-            if (available < item.quantity) {
-                throw new AppError('موجودی کافی نیست', 400);
+        // چک موجودی + ثبت — داخل یک تراکنش Serializable تا دو ثبت هم‌زمان نتوانند
+        // بیش از موجودی واقعی سفارش بدهند (تعارض هم‌زمانی با P2034 → retry خودکار)
+        await runSerializable(async (tx) => {
+            const stockMap = await getProductStock(warehouseId, productIds, tx);
+            for (const item of items) {
+                const available = stockMap.get(item.productId) ?? 0;
+                if (available < item.quantity) {
+                    throw new AppError(`موجودی کافی نیست (موجودی: ${available})`, 400);
+                }
             }
-        }
 
-        await prisma.$transaction(async (tx) => {
             const totalUnits = items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0);
 
             await tx.order.create({
@@ -243,7 +351,7 @@ export const ordersService = {
             throw new AppError('سفارش توسط کاربر دیگری تغییر کرده است — صفحه را تازه کنید', 409);
         }
 
-        await prisma.$transaction(async (tx) => {
+        await runSerializable(async (tx) => {
             // قفل خوشبینانه: فقط اگر نسخه هنوز همان است، به‌روزرسانی می‌شود
             const updated = await tx.order.updateMany({
                 where: { id, ...(data.version !== undefined ? { version: data.version } : {}) },
@@ -277,6 +385,38 @@ export const ordersService = {
                 if (existing.status !== 'PENDING' || shipped > 0) {
                     throw new AppError('این سفارش وارد مرحلهٔ خروج شده و اقلام آن قابل ویرایش نیست', 400);
                 }
+
+                // اعتبارسنجی مانند createOrder: وجود محصولات + تعلق modelId + موجودی کافی
+                const productIds = [...new Set(data.items.map((item) => item.productId))];
+                const foundProducts = await prisma.product.findMany({
+                    where: { id: { in: productIds } },
+                    select: { id: true },
+                });
+                const foundSet = new Set(foundProducts.map((p) => p.id));
+                if (productIds.some((id) => !foundSet.has(id))) {
+                    throw new AppError('محصول یافت نشد', 400);
+                }
+                const modelIds = [...new Set(data.items.map((it) => it.modelId).filter((v): v is string => !!v))];
+                if (modelIds.length > 0) {
+                    const foundModels = await prisma.productModel.findMany({
+                        where: { id: { in: modelIds } },
+                        select: { id: true, productId: true },
+                    });
+                    const modelMap = new Map(foundModels.map((m) => [m.id, m.productId]));
+                    for (const item of data.items) {
+                        if (item.modelId && modelMap.get(item.modelId) !== item.productId) {
+                            throw new AppError('مدل انتخاب‌شده متعلق به این محصول نیست', 400);
+                        }
+                    }
+                }
+                const stockMap = await getProductStock(existing.warehouseId, productIds, tx);
+                for (const item of data.items) {
+                    const available = stockMap.get(item.productId) ?? 0;
+                    if (available < item.quantity) {
+                        throw new AppError(`موجودی کافی نیست (موجودی: ${available})`, 400);
+                    }
+                }
+
                 await tx.orderItem.deleteMany({ where: { orderId: id } });
                 await tx.orderItem.createMany({
                     data: data.items.map((item) => ({
@@ -306,11 +446,11 @@ export const ordersService = {
                 });
             }
 
-            //ثبت در فعالیت‌های اخیر + ممیزی
+            //ثبت در فعالیت‌های اخیر + ممیزی (با نام‌های مؤثرِ جدید، نه قدیمی)
             await tx.activityLog.create({
                 data: {
                     type: 'order_updated',
-                    label: `${existing.senderName ?? 'فرستنده'} → ${existing.receiverName ?? 'گیرنده'}`,
+                    label: `${sender ?? 'فرستنده'} → ${receiver ?? 'گیرنده'}`,
                     orderId: id,
                     userId: existing.createdById,
                 },
@@ -333,6 +473,7 @@ export const ordersService = {
     },
 
     //حذف سفارش — فقط تا قبل از ورود به مرحله خروج
+    //چک‌ها داخل تراکنش Serializable هستند تا scan-out هم‌زمان نتواند بین چک و حذف بچسبد
     deleteOrder: async (id: string) => {
         const order = await prisma.order.findUnique({
             where: { id },
@@ -340,23 +481,23 @@ export const ordersService = {
         });
         if (!order) throw new AppError('سفارش یافت نشد', 404);
 
-        const cartons = await prisma.carton.findMany({
-            where: { orderId: id },
-            select: { scannedOutAt: true },
-        });
-        if (cartons.some((c) => c.scannedOutAt !== null)) {
-            throw new AppError('این سفارش وارد مرحلهٔ خروج کالا شده و قابل حذف نیست', 400);
-        }
+        await runSerializable(async (tx) => {
+            const cartons = await tx.carton.findMany({
+                where: { orderId: id },
+                select: { scannedOutAt: true },
+            });
+            if (cartons.some((c) => c.scannedOutAt !== null)) {
+                throw new AppError('این سفارش وارد مرحلهٔ خروج کالا شده و قابل حذف نیست', 400);
+            }
 
-        const delivery = await prisma.delivery.findUnique({
-            where: { orderId: id },
-            select: { id: true },
-        });
-        if (delivery) {
-            throw new AppError('این سفارش وارد مرحلهٔ ارسال شده و قابل حذف نیست', 400);
-        }
+            const delivery = await tx.delivery.findUnique({
+                where: { orderId: id },
+                select: { id: true },
+            });
+            if (delivery) {
+                throw new AppError('این سفارش وارد مرحلهٔ ارسال شده و قابل حذف نیست', 400);
+            }
 
-        await prisma.$transaction(async (tx) => {
             await tx.carton.updateMany({ where: { orderId: id }, data: { orderId: null } });
             // حذف سفارش؛ اقلام، بیجک‌ها و ارسال با CASCADE پاک می‌شوند
             await tx.order.delete({ where: { id } });
@@ -388,6 +529,20 @@ export const ordersService = {
                 },
             });
         });
+    },
+
+    //موجودی قابل سفارش محصولات مشخص در یک انبار — برای فرم ثبت سفارش
+    getOrderStock: async (warehouseId: string, productIds: string[]) => {
+        const warehouse = await prisma.warehouse.findUnique({
+            where: { id: warehouseId },
+            select: { id: true },
+        });
+        if (!warehouse) return null;
+        const stock = await getProductStock(warehouseId, productIds);
+        return Array.from(stock.entries()).map(([productId, available]) => ({
+            productId,
+            available,
+        }));
     },
 
     //لیست باربری‌ها

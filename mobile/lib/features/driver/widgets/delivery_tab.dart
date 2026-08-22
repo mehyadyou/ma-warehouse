@@ -136,6 +136,7 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
 
   Widget _buildDeliveryCard(Map<String, dynamic> order) {
     final id = order['id'] as String;
+    final orderNumber = order['orderNumber'];
     final carrier = order['carrier'] ?? 'نامشخص';
     final city = order['city'] ?? '';
     final address = order['address'] ?? '';
@@ -155,7 +156,10 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
         // Header
         Row(children: [
           Expanded(
-            child: Text('سفارش #${id.substring(0, 8).toUpperCase()}',
+            child: Text(
+                orderNumber != null && orderNumber.toString().isNotEmpty
+                    ? 'سفارش شماره $orderNumber'
+                    : 'سفارش #${id.substring(0, 8).toUpperCase()}',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
           ),
           Container(

@@ -8,6 +8,7 @@ abstract class WarehouseInventoryRowModel with _$WarehouseInventoryRowModel {
   const factory WarehouseInventoryRowModel({
     String? warehouseName,
     String? productName,
+    String? unit,
     @Default(0) num count,
   }) = _WarehouseInventoryRowModel;
 

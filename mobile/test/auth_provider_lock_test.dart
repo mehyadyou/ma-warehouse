@@ -1,4 +1,5 @@
-﻿import 'dart:convert';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -118,7 +119,7 @@ void main() {
     });
 
     test('بدون توکن رفرش → قفل نمی‌شود', () async {
-      await LockStorage.saveMethod(LockMethod.pin);
+      await LockStorage.saveMethod(LockMethod.fingerprint);
 
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -131,7 +132,7 @@ void main() {
 
     test('unlock با رفرش شکست‌خورده (401) → logout و بازگشت به حالت خالی', () async {
       store['refresh_token'] = 'expired-refresh';
-      await LockStorage.saveMethod(LockMethod.pin);
+      await LockStorage.saveMethod(LockMethod.fingerprint);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
       await LocalStorage.saveUserData(
         name: 'کاربر تست',
@@ -159,7 +160,7 @@ void main() {
 
     test('unlock با خطای شبکه → روی قفل می‌ماند و نشست حفظ می‌شود', () async {
       store['refresh_token'] = 'valid-refresh';
-      await LockStorage.saveMethod(LockMethod.pin);
+      await LockStorage.saveMethod(LockMethod.fingerprint);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
       await LocalStorage.saveUserData(
         name: 'کاربر تست',
@@ -214,10 +215,11 @@ void main() {
       expect(state.token, 'valid-access');
     });
 
-    test('logout → پین و روش قفل پاک می‌شوند (مصوب)', () async {
+    test('logout → روش قفل پاک و پین قدیمی از دستگاه حذف می‌شود', () async {
       store['refresh_token'] = 'old-refresh';
-      await LockStorage.saveMethod(LockMethod.pin);
-      await LockStorage.setPin('1234');
+      store['lock_pin_salt'] = 'salt';
+      store['lock_pin_hash'] = 'hash';
+      await LockStorage.saveMethod(LockMethod.fingerprint);
       await LocalStorage.saveRole('WAREHOUSE_KEEPER');
 
       final container = ProviderContainer();
@@ -227,7 +229,85 @@ void main() {
       await container.read(authProvider.notifier).logout();
 
       expect(await LockStorage.getMethod(), LockMethod.none);
-      expect(await LockStorage.hasPin(), isFalse);
+      expect(store.containsKey('lock_pin_salt'), isFalse);
+      expect(store.containsKey('lock_pin_hash'), isFalse);
+    });
+
+    test('lock هنگام بازگشت از پس‌زمینه → قفل و حفظ نشست (تکرارِ lock بی‌اثر)', () async {
+      store['access_token'] = 'valid-access';
+      await LockStorage.saveMethod(LockMethod.fingerprint);
+      await LocalStorage.saveRole('WAREHOUSE_KEEPER');
+      await LocalStorage.saveUserData(
+        name: 'کاربر تست',
+        phone: '0912',
+        avatarUrl: null,
+      );
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final state = await settled(container);
+      expect(state.isLoggedIn, isTrue);
+      expect(state.isLocked, isFalse);
+
+      final notifier = container.read(authProvider.notifier);
+      notifier.lock();
+
+      final locked = container.read(authProvider);
+      expect(locked.isLocked, isTrue);
+      expect(locked.isLoggedIn, isFalse);
+      expect(locked.token, 'valid-access');
+
+      // تکرار: دوباره قفل نمی‌کند و چیزی خراب نمی‌شود
+      notifier.lock();
+      expect(container.read(authProvider).isLocked, isTrue);
+    });
+
+    test('رقابت: خروج هنگام رفرشِ در جریانِ آنلاک → نشست زنده نمی‌شود و توکنی نوشته نمی‌شود', () async {
+      store['refresh_token'] = 'valid-refresh';
+      await LockStorage.saveMethod(LockMethod.fingerprint);
+      await LocalStorage.saveRole('WAREHOUSE_KEEPER');
+      await LocalStorage.saveUserData(
+        name: 'کاربر تست',
+        phone: '0912',
+        avatarUrl: null,
+      );
+
+      // رفرش آهسته — پاسخ با کامپلیتر به‌تعویق می‌افتد تا خروج وسط آن برسد
+      final slowCompleter = Completer<ResponseBody>();
+      AuthSession.debugDioFactory =
+          () => Dio(BaseOptions(baseUrl: 'http://test.local'))
+            ..httpClientAdapter = FakeHttpAdapter((_) => slowCompleter.future);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final state = await settled(container);
+      expect(state.isLocked, isTrue);
+
+      // آنلاک شروع می‌شود و در رفرشِ آهسته می‌ماند
+      final unlockFuture = container.read(authProvider.notifier).unlock();
+      // قبل از کامل‌شدن رفرش، خروج رخ می‌دهد
+      await container.read(authProvider.notifier).logout();
+
+      slowCompleter.complete(ResponseBody.fromString(
+        jsonEncode({'token': 'new-access', 'refreshToken': 'new-refresh'}),
+        200,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
+      ));
+
+      final result = await unlockFuture;
+      expect(result, UnlockResult.invalidSession);
+      final after = container.read(authProvider);
+      expect(after.isLoggedIn, isFalse);
+      expect(after.isLocked, isFalse);
+      expect(after.token, isNull);
+
+      // رفرشِ دیررس نباید توکن را دوباره در حافظه بنویسد
+      expect(store['access_token'], isNull);
+      expect(store['refresh_token'], isNull);
     });
   });
 }

@@ -7,7 +7,12 @@ part 'manager_inventory_model.g.dart';
 abstract class ManagerInventoryModel with _$ManagerInventoryModel {
   const factory ManagerInventoryModel({
     @Default(<ManagerProductRowModel>[]) List<ManagerProductRowModel> products,
-    @Default(<WarehouseStockRowModel>[]) List<WarehouseStockRowModel> warehouses,
+    @Default(<WarehouseStockRowModel>[])
+    List<WarehouseStockRowModel> warehouses,
+    @Default(0) int total,
+    @Default(0) int page,
+    @Default(0) int pageSize,
+    @Default(false) bool hasMore,
   }) = _ManagerInventoryModel;
 
   factory ManagerInventoryModel.fromJson(Map<String, dynamic> json) =>
@@ -21,6 +26,8 @@ abstract class ManagerProductRowModel with _$ManagerProductRowModel {
     String? name,
     String? unit,
     @Default(0) num totalCount,
+    @Default(0) int modelCount,
+    @Default(<String>[]) List<String> modelNames,
   }) = _ManagerProductRowModel;
 
   factory ManagerProductRowModel.fromJson(Map<String, dynamic> json) =>
@@ -30,8 +37,10 @@ abstract class ManagerProductRowModel with _$ManagerProductRowModel {
 @freezed
 abstract class WarehouseStockRowModel with _$WarehouseStockRowModel {
   const factory WarehouseStockRowModel({
+    String? warehouseId,
     String? warehouseName,
     @Default(0) num totalCount,
+    @Default(0) int totalItems,
     @Default(<StockItemRowModel>[]) List<StockItemRowModel> items,
   }) = _WarehouseStockRowModel;
 

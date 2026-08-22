@@ -198,6 +198,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<UnlockResult>? _unlockFuture;
 
+  /// قفل برنامه هنگام بازگشت از پس‌زمینه — نشست حفظ می‌شود اما تا تأیید
+  /// پین/اثر انگشت/فیس آید، مسیردهی به صفحه قفل می‌رود
+  void lock() {
+    if (state.isLocked) return;
+    state = state.copyWith(isLocked: true, isLoggedIn: false);
+  }
+
   /// پس از تأیید پین/اثر انگشت/فیس آید: رفرش سایلنت و ورود به داشبورد.
   /// تک‌ریسکی — لمس دوباره همان آیندهٔ در جریان را برمی‌گرداند.
   Future<UnlockResult> unlock() {
@@ -207,6 +214,10 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<UnlockResult> _doUnlock() async {
     final outcome = await AuthSession.refreshWithOutcome();
+    // خروج/بسته‌شدن نشست در فاصلهٔ رفرش → نتیجهٔ این آنلاک دور ریخته می‌شود
+    if (_loggingOut || !state.isLocked) {
+      return UnlockResult.invalidSession;
+    }
     if (outcome.isOk) {
       final role = LocalStorage.getRole();
       // دفاعی: بدون نقش ذخیره‌شده مسیری برای ادامه نیست → نشست را ببند
@@ -270,19 +281,15 @@ class AuthNotifier extends Notifier<AuthState> {
     if (_loggingOut) return;
     _loggingOut = true;
 
+    // توکن‌ها برای ابطال سرور پس از پاک‌سازی محلی نگه داشته می‌شوند
+    final refreshToken = await SecureStorage.getRefreshToken();
+    final accessToken = await SecureStorage.getAccessToken();
+
+    // رفرش‌های در جریان باطل می‌شوند تا توکن از نو نوشته نشود
+    AuthSession.invalidatePendingRefresh();
+
     try {
-      // ابطال توکن رفرش در سرور (در صورت امکان — آفلاین/منقضی اشکالی ندارد)
-      final refreshToken = await SecureStorage.getRefreshToken();
-      if (refreshToken != null && refreshToken.isNotEmpty) {
-        try {
-          await ref.read(authServiceProvider).logout(refreshToken);
-        } catch (_) {
-          // بی‌صدا: نشست محلی در هر صورت پاک می‌شود
-        }
-      }
-    } finally {
-      // اول وضعیت در حافظه ریست می‌شود — حتی اگر پاک‌سازی استوریج خطا بدهد، نشست مرده نمی‌ماند
-      _loggingOut = false;
+      // اول وضعیت در حافظه ریست می‌شود — خروج فوری حتی وقتی شبکه در دسترس نیست
       state = AuthState(isInitializing: false);
 
       // Disconnect socket before logout
@@ -292,6 +299,23 @@ class AuthNotifier extends Notifier<AuthState> {
       // پاک‌سازی قفل برنامه (پین و روش قفل) — مصوب: بعد از خروج کامل پاک شوند
       await ref.read(lockProvider.notifier).clearAllForLogout();
       await LocalStorage.clearAll();
+      // ریست اعلان‌ها تا به نشستِ بعدی (حتی کاربر دیگر) نشت نکنند
+      NotificationService().reset();
+    } finally {
+      _loggingOut = false;
+    }
+
+    // ابطال توکن رفرش در سرور — بهترین تلاش؛ آفلاین/منقضی اشکالی ندارد
+    // (پس از پاک‌سازی محلی، با هدر صریح ارسال می‌شود)
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      try {
+        await ref.read(authServiceProvider).logout(
+              refreshToken,
+              accessToken: accessToken,
+            );
+      } catch (_) {
+        // بی‌صدا: نشست محلی در هر صورت پاک شده است
+      }
     }
   }
 }

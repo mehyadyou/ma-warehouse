@@ -6,6 +6,7 @@ part 'keeper_order_model.freezed.dart';
 abstract class KeeperOrderModel with _$KeeperOrderModel {
   const factory KeeperOrderModel({
     @Default('') String id,
+    @Default(0) int orderNumber,
     @Default('') String status,
     @Default('') String createdByName,
     @Default('') String createdAt,
@@ -24,6 +25,7 @@ abstract class KeeperOrderModel with _$KeeperOrderModel {
   factory KeeperOrderModel.fromJson(Map<String, dynamic> json) {
     return KeeperOrderModel(
       id: json['id']?.toString() ?? '',
+      orderNumber: (json['orderNumber'] as num?)?.toInt() ?? 0,
       status: json['status']?.toString() ?? '',
       createdByName: json['createdByName']?.toString() ?? '',
       createdAt: json['createdAt']?.toString() ?? '',

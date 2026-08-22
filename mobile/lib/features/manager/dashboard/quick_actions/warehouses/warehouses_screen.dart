@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 import '../../../models/warehouse_model.dart';
+import '../../../models/user_model.dart';
 import 'create_warehouse_dialog.dart';
 import '../../../providers/manager_api_provider.dart';
 import '../../../providers/warehouses_provider.dart';
+import '../../../data/manager_api_service.dart';
 import 'warehouse_detail_screen.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -34,7 +36,7 @@ class WarehousesScreen extends ConsumerWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('انبار «${response.name}» ساخته شد'), backgroundColor: Colors.green),
+          SnackBar(content: Text('انبار «${response.name}» ساخته شد'), backgroundColor: _green),
         );
         ref.read(warehousesProvider.notifier).refresh();
       }
@@ -45,7 +47,7 @@ class WarehousesScreen extends ConsumerWidget {
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+          SnackBar(content: Text(msg), backgroundColor: _danger),
         );
       }
     }
@@ -53,145 +55,14 @@ class WarehousesScreen extends ConsumerWidget {
 
   // ═══════════ EDIT WAREHOUSE ═══════════
   void _showEditWarehouseDialog(BuildContext context, WidgetRef ref, WarehouseModel w) {
-    final nameCtrl = TextEditingController(text: w.name);
-    final addressCtrl = TextEditingController(text: w.address ?? '');
-    String? selectedKeeperId = w.keeperId;
-
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        title: const Text('ویرایش انبار', style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
-              controller: nameCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'نام انبار',
-                labelStyle: const TextStyle(color: Colors.grey),
-                filled: true,
-                fillColor: _surfaceAlt,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            //انتخاب انباردار
-            SizedBox(
-              width: double.infinity,
-              child: FutureBuilder<List<dynamic>>(
-                future: ref.read(managerApiServiceProvider).getUsers(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return Container(
-                      height: 56,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(color: _surfaceAlt, borderRadius: BorderRadius.circular(10), border: Border.all(color: _border)),
-                      child: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: _green)),
-                    );
-                  }
-                  final users = (snapshot.data ?? []).where((u) => u['role'] != 'MANAGER').toList();
-                  final keeperInList = w.keeperId != null && users.any((u) => u['id'] == w.keeperId);
-                  final items = <DropdownMenuItem<String?>>[
-                    if (w.keeperId != null && !keeperInList && w.keeperName != null)
-                      DropdownMenuItem(
-                        value: w.keeperId,
-                        child: Text('${w.keeperName} (انباردار فعلی)', style: const TextStyle(color: Colors.white)),
-                      ),
-                    ...users.map((u) => DropdownMenuItem(
-                          value: u['id'] as String,
-                          child: Text('${u['name']} (${_roleLabel(u['role'] as String? ?? '')})', style: const TextStyle(color: Colors.white)),
-                        )),
-                  ];
-                  return DropdownButtonFormField<String?>(
-                    value: selectedKeeperId,
-                    isExpanded: true,
-                    dropdownColor: _surfaceAlt,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'انباردار',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: _surfaceAlt,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-                    ),
-                    items: items,
-                    onChanged: (v) {
-                      selectedKeeperId = v;
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: addressCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'آدرس (اختیاری)',
-                labelStyle: const TextStyle(color: Colors.grey),
-                filled: true,
-                fillColor: _surfaceAlt,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _green)),
-              ),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف', style: TextStyle(color: Colors.white38))),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نام انبار الزامی است'), backgroundColor: _danger));
-                return;
-              }
-              try {
-                final apiService = ref.read(managerApiServiceProvider);
-                await apiService.updateWarehouse(
-                  id: w.id,
-                  name: nameCtrl.text.trim(),
-                  address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-                  keeperId: selectedKeeperId,
-                );
-                Navigator.pop(ctx);
-                ref.read(warehousesProvider.notifier).refresh();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('انبار ویرایش شد'), backgroundColor: _green, behavior: SnackBarBehavior.floating),
-                  );
-                }
-              } catch (e) {
-                String msg = 'خطا در ویرایش';
-                if (e is DioException && e.response?.data != null && e.response?.data['error'] != null) {
-                  msg = '${e.response?.data['error']}';
-                }
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: _danger));
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: _green),
-            child: const Text('ذخیره', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      builder: (_) => _EditWarehouseDialog(
+        warehouse: w,
+        apiService: ref.read(managerApiServiceProvider),
+        onSaved: () => ref.read(warehousesProvider.notifier).refresh(),
       ),
     );
-  }
-
-  String _roleLabel(String role) {
-    switch (role) {
-      case 'MANAGER': return 'مدیر';
-      case 'WAREHOUSE_KEEPER': return 'انباردار';
-      case 'DRIVER': return 'راننده';
-      default: return role;
-    }
   }
 
   // ═══════════ ARCHIVE WAREHOUSE ═══════════
@@ -353,6 +224,278 @@ class WarehousesScreen extends ConsumerWidget {
         icon: const Icon(Icons.add_rounded, color: Colors.white),
         label: const Text('ایجاد انبار', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
+    );
+  }
+}
+
+/// دیالوگ ویرایش انبار — بارگذاری تایپ‌شدهٔ انبارداران فعال با حالت خطا/تلاش دوباره
+class _EditWarehouseDialog extends StatefulWidget {
+  final WarehouseModel warehouse;
+  final ManagerApiService apiService;
+  final VoidCallback onSaved;
+
+  const _EditWarehouseDialog({
+    required this.warehouse,
+    required this.apiService,
+    required this.onSaved,
+  });
+
+  @override
+  State<_EditWarehouseDialog> createState() => _EditWarehouseDialogState();
+}
+
+class _EditWarehouseDialogState extends State<_EditWarehouseDialog> {
+  late final TextEditingController _nameCtrl =
+      TextEditingController(text: widget.warehouse.name);
+  late final TextEditingController _addressCtrl =
+      TextEditingController(text: widget.warehouse.address ?? '');
+
+  List<UserModel> _keepers = [];
+  bool _loading = true;
+  bool _saving = false;
+  String? _loadError;
+  String? _saveError;
+  String? _selectedKeeperId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedKeeperId = widget.warehouse.keeperId;
+    _loadKeepers();
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _addressCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadKeepers() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final users = await widget.apiService.getUsers();
+      if (!mounted) return;
+      setState(() {
+        _keepers =
+            users.where((u) => u.role == 'WAREHOUSE_KEEPER').toList();
+        // اگر انبار انباردار ندارد، اولین انباردار به‌صورت پیش‌فرض انتخاب شود
+        _selectedKeeperId ??=
+            _keepers.isNotEmpty ? _keepers.first.id : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = 'خطا در دریافت لیست انبارداران';
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _saveError = 'نام انبار الزامی است');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.apiService.updateWarehouse(
+        id: widget.warehouse.id,
+        name: name,
+        address: _addressCtrl.text.trim().isEmpty
+            ? null
+            : _addressCtrl.text.trim(),
+        keeperId: _selectedKeeperId,
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      widget.onSaved();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('انبار ویرایش شد'),
+          backgroundColor: _green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      String msg = 'خطا در ویرایش';
+      if (e is DioException &&
+          e.response?.data != null &&
+          e.response?.data['error'] != null) {
+        msg = '${e.response?.data['error']}';
+      }
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = msg;
+      });
+    }
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.grey),
+      filled: true,
+      fillColor: _surfaceAlt,
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _border)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _green)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: _surface,
+      title: const Text('ویرایش انبار', style: TextStyle(color: Colors.white)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration('نام انبار'),
+          ),
+          const SizedBox(height: 12),
+          _buildKeeperField(),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: _decoration('آدرس (اختیاری)'),
+          ),
+          if (_saveError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _danger.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                _saveError!,
+                style: const TextStyle(color: _danger, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ]),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('انصراف', style: TextStyle(color: Colors.white38)),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          style: ElevatedButton.styleFrom(backgroundColor: _green),
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('ذخیره', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKeeperField() {
+    if (_loading) {
+      return Container(
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _surfaceAlt,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _border),
+        ),
+        child: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: _green),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _danger.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _danger.withValues(alpha: 0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.error_outline_rounded, color: _danger, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(_loadError!,
+                style: const TextStyle(color: _danger, fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: _loadKeepers,
+            style: TextButton.styleFrom(
+              foregroundColor: _green,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: const Text('تلاش دوباره', style: TextStyle(fontSize: 12)),
+          ),
+        ]),
+      );
+    }
+
+    // اگر انباردار فعلی بایگانی/حذف شده، به‌عنوان آیتم نمایشی بماند تا مقدار dropdown نشکند
+    final keeperInList = _keepers.any((k) => k.id == widget.warehouse.keeperId);
+    final items = <DropdownMenuItem<String?>>[
+      if (widget.warehouse.keeperId != null &&
+          !keeperInList &&
+          widget.warehouse.keeperName != null)
+        DropdownMenuItem(
+          value: widget.warehouse.keeperId,
+          child: Text(
+            '${widget.warehouse.keeperName} (انباردار فعلی — غیرفعال)',
+            style: const TextStyle(color: Colors.white54),
+          ),
+        ),
+      ..._keepers.map(
+        (k) => DropdownMenuItem(
+          value: k.id,
+          child: Text(
+            '${k.name ?? ''} (انباردار)',
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+    ];
+
+    return DropdownButtonFormField<String?>(
+      value: _selectedKeeperId,
+      isExpanded: true,
+      dropdownColor: _surfaceAlt,
+      style: const TextStyle(color: Colors.white),
+      decoration: _decoration('انباردار'),
+      items: items,
+      onChanged: (v) => setState(() => _selectedKeeperId = v),
     );
   }
 }

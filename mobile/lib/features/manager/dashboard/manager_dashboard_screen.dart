@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shamsi_date/shamsi_date.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/warehouses_provider.dart';
 import '../providers/activity_provider.dart';
 import '../../warehouse_keeper/providers/warehouse_keeper_provider.dart';
+import '../../../shared/widgets/dashboard_header.dart';
 import 'header/header_section.dart';
 import 'inventory_chart/inventory_chart_card.dart';
-import 'search/app_search_bar.dart';
+import '../../../shared/widgets/search_bar_trigger.dart';
 import 'quick_actions/quick_actions_section.dart';
 import 'activity/activity_section.dart';
 import 'quick_actions/inventory/inventory_screen.dart';
+import '../assistant/assistant_screen.dart';
 import 'bottom_nav_bar/bottom_nav_bar.dart';
-import 'navigation_drawer/screens/settings/settings_screen.dart';
 import 'navigation_drawer/screens/history_screen.dart';
 import 'navigation_drawer/screens/archive_screen.dart';
+import 'navigation_drawer/screens/invoices_screen.dart';
+import 'navigation_drawer/screens/transfer_screen.dart';
+import '../../../../shared/settings/settings_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -31,8 +34,8 @@ class ManagerDashboardScreen extends ConsumerStatefulWidget {
       _ManagerDashboardScreenState();
 }
 
-class _ManagerDashboardScreenState
-    extends ConsumerState<ManagerDashboardScreen> with TickerProviderStateMixin {
+class _ManagerDashboardScreenState extends ConsumerState<ManagerDashboardScreen>
+    with TickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late AnimationController _slideCtrl;
   late Animation<double> _fadeAnim;
@@ -40,30 +43,30 @@ class _ManagerDashboardScreenState
 
   int _selectedIndex = 0;
 
-  String _todayShamsi() {
-    final jalali = Jalali.fromDateTime(DateTime.now());
-    return 'امروز ${jalali.year}/${jalali.month}/${jalali.day}';
-  }
-
   void _logout() {
     ref.read(authProvider.notifier).logout();
   }
 
   String _roleLabel(String? role) {
     switch (role) {
-      case 'WAREHOUSE_KEEPER': return 'انباردار';
-      case 'DRIVER': return 'راننده';
-      default: return 'مدیر';
+      case 'WAREHOUSE_KEEPER':
+        return 'انباردار';
+      case 'DRIVER':
+        return 'راننده';
+      default:
+        return 'مدیر';
     }
   }
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
 
     _fadeCtrl = AnimationController(
       vsync: this,
@@ -82,45 +85,58 @@ class _ManagerDashboardScreenState
 
     _fadeCtrl.forward();
     _slideCtrl.forward();
-    
+
     // Setup socket listeners for real-time updates
-    Future.microtask(() {
-      final socket = ref.read(socketServiceProvider);
+    Future.microtask(_registerSocketListeners);
+  }
 
-      // رویدادهای تراکنشی — موجودی و فعالیت‌های اخیر را به‌روزرسانی کن
-      void invalidateTransactionData() {
-        if (mounted) {
-          ref.invalidate(managerInventorySummaryProvider);
-          ref.invalidate(recentActivitiesProvider);
-        }
-      }
+  /// رویدادهای تراکنشی — موجودی و فعالیت‌های اخیر را به‌روزرسانی کن
+  void _invalidateTransactionData() {
+    if (mounted) {
+      ref.invalidate(managerInventorySummaryProvider);
+      ref.invalidate(recentActivitiesProvider);
+    }
+  }
 
+  /// لیست هندلرهای سوکت — برای حذف کامل در dispose نگه داشته می‌شود
+  final Map<String, Function(dynamic)> _socketHandlers = {};
+
+  void _registerSocketListeners() {
+    final socket = ref.read(socketServiceProvider);
+
+    final handlers = <String, Function(dynamic)>{
       // ورود کالا به انبار ثبت شد
-      socket.on('checkin:completed', (_) => invalidateTransactionData());
-
+      'checkin:completed': (_) => _invalidateTransactionData(),
       // خروج کالا از انبار ثبت شد
-      socket.on('scanout:done', (_) => invalidateTransactionData());
-
+      'scanout:done': (_) => _invalidateTransactionData(),
       // تحویل تکمیل شد — فعالیت جدید ثبت شده
-      socket.on('delivery:completed', (_) {
+      'delivery:completed': (_) {
         if (mounted) ref.invalidate(recentActivitiesProvider);
-      });
-
+      },
       // سفارش ثبت/ویرایش/حذف شد — فعالیت جدید ثبت شده
-      socket.on('order:created', (_) {
+      'order:created': (_) {
         if (mounted) ref.invalidate(recentActivitiesProvider);
-      });
-      socket.on('order:updated', (_) {
+      },
+      'order:updated': (_) {
         if (mounted) ref.invalidate(recentActivitiesProvider);
-      });
-      socket.on('order:deleted', (_) {
+      },
+      'order:deleted': (_) {
         if (mounted) ref.invalidate(recentActivitiesProvider);
-      });
+      },
+    };
+    handlers.forEach((event, handler) {
+      socket.on(event, handler);
+      _socketHandlers[event] = handler;
     });
   }
 
   @override
   void dispose() {
+    final socket = ref.read(socketServiceProvider);
+    _socketHandlers.forEach(
+      (event, handler) => socket.offEvent(event, handler),
+    );
+    _socketHandlers.clear();
     _fadeCtrl.dispose();
     _slideCtrl.dispose();
     super.dispose();
@@ -159,28 +175,60 @@ class _ManagerDashboardScreenState
               MaterialPageRoute(builder: (_) => const ArchiveScreen()),
             );
           },
+          onInvoicesTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const InvoicesScreen()),
+            );
+          },
+          onTransferTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TransferScreen()),
+            );
+          },
         ),
         body: FadeTransition(
           opacity: _fadeAnim,
           child: SlideTransition(
             position: _slideAnim,
             child: SafeArea(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: HeaderSection(
-                      title: auth.name ?? 'کاربر',
-                      subtitle: _todayShamsi(),
-                      avatarUrl: auth.avatarUrl,
-                    ),
+              child: RefreshIndicator(
+                color: _green,
+                backgroundColor: _surface,
+                onRefresh: () async {
+                  ref.invalidate(managerInventorySummaryProvider);
+                  ref.invalidate(recentActivitiesProvider);
+                  try {
+                    await ref.read(managerInventorySummaryProvider.future);
+                  } catch (_) {}
+                  try {
+                    await ref.read(recentActivitiesProvider.future);
+                  } catch (_) {}
+                },
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
                   ),
-                  const SliverToBoxAdapter(child: AppSearchBar()),
-                  const SliverToBoxAdapter(child: InventoryChartCard()),
-                  const SliverToBoxAdapter(child: QuickActionsSection()),
-                  const SliverToBoxAdapter(child: ActivitySection()),
-                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                ],
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: HeaderSection(
+                        title: auth.name ?? 'کاربر',
+                        subtitle: todayShamsiLabel(),
+                        avatarUrl: auth.avatarUrl,
+                      ),
+                    ),
+                    const SliverToBoxAdapter(
+                      child: SearchBarTrigger(
+                        padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      ),
+                    ),
+                    const SliverToBoxAdapter(child: InventoryChartCard()),
+                    const SliverToBoxAdapter(child: QuickActionsSection()),
+                    const SliverToBoxAdapter(child: ActivitySection()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                  ],
+                ),
               ),
             ),
           ),
@@ -191,7 +239,9 @@ class _ManagerDashboardScreenState
             if (i == 1) {
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const ManagerInventoryScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const ManagerInventoryScreen(),
+                ),
               );
               if (mounted) ref.invalidate(managerInventorySummaryProvider);
               return;
@@ -199,6 +249,13 @@ class _ManagerDashboardScreenState
             if (i == 2) {
               await context.push('/manager/shipments');
               if (mounted) ref.invalidate(recentActivitiesProvider);
+              return;
+            }
+            if (i == 3) {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AssistantScreen()),
+              );
               return;
             }
             setState(() => _selectedIndex = i);

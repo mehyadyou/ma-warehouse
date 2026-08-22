@@ -1,4 +1,6 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../../../shared/utils/validators.dart';
 
 class CreateWarehouseDialog extends StatefulWidget {
   const CreateWarehouseDialog({super.key});
@@ -13,7 +15,6 @@ class _CreateWarehouseDialogState extends State<CreateWarehouseDialog> {
   final _keeperPhoneCtrl = TextEditingController();
   final _keeperPasswordCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -34,7 +35,6 @@ class _CreateWarehouseDialogState extends State<CreateWarehouseDialog> {
       'keeperPassword': _keeperPasswordCtrl.text.trim(),
     };
 
-    // TODO: اتصال به API
     Navigator.pop(context, data);
   }
 
@@ -87,7 +87,7 @@ class _CreateWarehouseDialogState extends State<CreateWarehouseDialog> {
               ),
               const SizedBox(height: 12),
 
-              // نام انباردار
+// نام انباردار
               TextFormField(
                 controller: _keeperNameCtrl,
                 decoration: const InputDecoration(
@@ -105,14 +105,10 @@ class _CreateWarehouseDialogState extends State<CreateWarehouseDialog> {
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
                   labelText: 'شماره موبایل انباردار',
-                  hintText: '۰۹۱۲۳۴۵۶۷۸۹',
+                  hintText: '09123456789',
                   prefixIcon: Icon(Icons.phone_android_rounded),
                 ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'شماره موبایل الزامی است';
-                  if (v.trim().length != 11) return 'شماره موبایل باید ۱۱ رقم باشد';
-                  return null;
-                },
+                validator: validatePhone,
               ),
               const SizedBox(height: 12),
 
@@ -120,31 +116,29 @@ class _CreateWarehouseDialogState extends State<CreateWarehouseDialog> {
               TextFormField(
                 controller: _keeperPasswordCtrl,
                 obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  labelText: 'رمز عبور انباردار',
-                  hintText: 'حداقل ۶ کاراکتر',
+                  labelText: 'رمز عبور انباردار (۶ رقم)',
+                  hintText: 'دقیقاً ۶ رقم عددی',
+                  counterText: '',
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'رمز عبور الزامی است';
-                  if (v.trim().length < 6) return 'رمز عبور باید حداقل ۶ کاراکتر باشد';
-                  return null;
-                },
+                validator: validatePassword,
               ),
             ],
           ),
         ),
       ),
-      actions: [
+actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('انصراف'),
         ),
         ElevatedButton(
-          onPressed: _isLoading ? null : _submit,
-          child: _isLoading
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('ساخت'),
+          onPressed: _submit,
+          child: const Text('ساخت'),
         ),
       ],
     );

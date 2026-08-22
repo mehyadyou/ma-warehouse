@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$KeeperOrderModel {
 
- String get id; String get status; String get createdByName; String get createdAt; String get warehouseName; String get shippingMethod; String get senderName; String get receiverName; String get carrier; String get city; String get postalCode; String get address; String get customerPhone; List<KeeperOrderItemModel> get items;
+ String get id; int get orderNumber; String get status; String get createdByName; String get createdAt; String get warehouseName; String get shippingMethod; String get senderName; String get receiverName; String get carrier; String get city; String get postalCode; String get address; String get customerPhone; List<KeeperOrderItemModel> get items;
 /// Create a copy of KeeperOrderModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $KeeperOrderModelCopyWith<KeeperOrderModel> get copyWith => _$KeeperOrderModelCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperOrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.status, status) || other.status == status)&&(identical(other.createdByName, createdByName) || other.createdByName == createdByName)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.city, city) || other.city == city)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.address, address) || other.address == address)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&const DeepCollectionEquality().equals(other.items, items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperOrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.status, status) || other.status == status)&&(identical(other.createdByName, createdByName) || other.createdByName == createdByName)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.city, city) || other.city == city)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.address, address) || other.address == address)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&const DeepCollectionEquality().equals(other.items, items));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,status,createdByName,createdAt,warehouseName,shippingMethod,senderName,receiverName,carrier,city,postalCode,address,customerPhone,const DeepCollectionEquality().hash(items));
+int get hashCode => Object.hash(runtimeType,id,orderNumber,status,createdByName,createdAt,warehouseName,shippingMethod,senderName,receiverName,carrier,city,postalCode,address,customerPhone,const DeepCollectionEquality().hash(items));
 
 @override
 String toString() {
-  return 'KeeperOrderModel(id: $id, status: $status, createdByName: $createdByName, createdAt: $createdAt, warehouseName: $warehouseName, shippingMethod: $shippingMethod, senderName: $senderName, receiverName: $receiverName, carrier: $carrier, city: $city, postalCode: $postalCode, address: $address, customerPhone: $customerPhone, items: $items)';
+  return 'KeeperOrderModel(id: $id, orderNumber: $orderNumber, status: $status, createdByName: $createdByName, createdAt: $createdAt, warehouseName: $warehouseName, shippingMethod: $shippingMethod, senderName: $senderName, receiverName: $receiverName, carrier: $carrier, city: $city, postalCode: $postalCode, address: $address, customerPhone: $customerPhone, items: $items)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $KeeperOrderModelCopyWith<$Res>  {
   factory $KeeperOrderModelCopyWith(KeeperOrderModel value, $Res Function(KeeperOrderModel) _then) = _$KeeperOrderModelCopyWithImpl;
 @useResult
 $Res call({
- String id, String status, String createdByName, String createdAt, String warehouseName, String shippingMethod, String senderName, String receiverName, String carrier, String city, String postalCode, String address, String customerPhone, List<KeeperOrderItemModel> items
+ String id, int orderNumber, String status, String createdByName, String createdAt, String warehouseName, String shippingMethod, String senderName, String receiverName, String carrier, String city, String postalCode, String address, String customerPhone, List<KeeperOrderItemModel> items
 });
 
 
@@ -62,10 +62,11 @@ class _$KeeperOrderModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperOrderModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? status = null,Object? createdByName = null,Object? createdAt = null,Object? warehouseName = null,Object? shippingMethod = null,Object? senderName = null,Object? receiverName = null,Object? carrier = null,Object? city = null,Object? postalCode = null,Object? address = null,Object? customerPhone = null,Object? items = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? orderNumber = null,Object? status = null,Object? createdByName = null,Object? createdAt = null,Object? warehouseName = null,Object? shippingMethod = null,Object? senderName = null,Object? receiverName = null,Object? carrier = null,Object? city = null,Object? postalCode = null,Object? address = null,Object? customerPhone = null,Object? items = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
-as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,orderNumber: null == orderNumber ? _self.orderNumber : orderNumber // ignore: cast_nullable_to_non_nullable
+as int,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as String,createdByName: null == createdByName ? _self.createdByName : createdByName // ignore: cast_nullable_to_non_nullable
 as String,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,warehouseName: null == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
@@ -163,10 +164,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  int orderNumber,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _KeeperOrderModel() when $default != null:
-return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
   return orElse();
 
 }
@@ -184,10 +185,10 @@ return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  int orderNumber,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)  $default,) {final _that = this;
 switch (_that) {
 case _KeeperOrderModel():
-return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -204,10 +205,10 @@ return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  int orderNumber,  String status,  String createdByName,  String createdAt,  String warehouseName,  String shippingMethod,  String senderName,  String receiverName,  String carrier,  String city,  String postalCode,  String address,  String customerPhone,  List<KeeperOrderItemModel> items)?  $default,) {final _that = this;
 switch (_that) {
 case _KeeperOrderModel() when $default != null:
-return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.status,_that.createdByName,_that.createdAt,_that.warehouseName,_that.shippingMethod,_that.senderName,_that.receiverName,_that.carrier,_that.city,_that.postalCode,_that.address,_that.customerPhone,_that.items);case _:
   return null;
 
 }
@@ -219,10 +220,11 @@ return $default(_that.id,_that.status,_that.createdByName,_that.createdAt,_that.
 
 
 class _KeeperOrderModel implements KeeperOrderModel {
-  const _KeeperOrderModel({this.id = '', this.status = '', this.createdByName = '', this.createdAt = '', this.warehouseName = '', this.shippingMethod = '', this.senderName = '', this.receiverName = '', this.carrier = '', this.city = '', this.postalCode = '', this.address = '', this.customerPhone = '', final  List<KeeperOrderItemModel> items = const <KeeperOrderItemModel>[]}): _items = items;
+  const _KeeperOrderModel({this.id = '', this.orderNumber = 0, this.status = '', this.createdByName = '', this.createdAt = '', this.warehouseName = '', this.shippingMethod = '', this.senderName = '', this.receiverName = '', this.carrier = '', this.city = '', this.postalCode = '', this.address = '', this.customerPhone = '', final  List<KeeperOrderItemModel> items = const <KeeperOrderItemModel>[]}): _items = items;
   
 
 @override@JsonKey() final  String id;
+@override@JsonKey() final  int orderNumber;
 @override@JsonKey() final  String status;
 @override@JsonKey() final  String createdByName;
 @override@JsonKey() final  String createdAt;
@@ -253,16 +255,16 @@ _$KeeperOrderModelCopyWith<_KeeperOrderModel> get copyWith => __$KeeperOrderMode
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperOrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.status, status) || other.status == status)&&(identical(other.createdByName, createdByName) || other.createdByName == createdByName)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.city, city) || other.city == city)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.address, address) || other.address == address)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&const DeepCollectionEquality().equals(other._items, _items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperOrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.status, status) || other.status == status)&&(identical(other.createdByName, createdByName) || other.createdByName == createdByName)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.city, city) || other.city == city)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.address, address) || other.address == address)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&const DeepCollectionEquality().equals(other._items, _items));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,status,createdByName,createdAt,warehouseName,shippingMethod,senderName,receiverName,carrier,city,postalCode,address,customerPhone,const DeepCollectionEquality().hash(_items));
+int get hashCode => Object.hash(runtimeType,id,orderNumber,status,createdByName,createdAt,warehouseName,shippingMethod,senderName,receiverName,carrier,city,postalCode,address,customerPhone,const DeepCollectionEquality().hash(_items));
 
 @override
 String toString() {
-  return 'KeeperOrderModel(id: $id, status: $status, createdByName: $createdByName, createdAt: $createdAt, warehouseName: $warehouseName, shippingMethod: $shippingMethod, senderName: $senderName, receiverName: $receiverName, carrier: $carrier, city: $city, postalCode: $postalCode, address: $address, customerPhone: $customerPhone, items: $items)';
+  return 'KeeperOrderModel(id: $id, orderNumber: $orderNumber, status: $status, createdByName: $createdByName, createdAt: $createdAt, warehouseName: $warehouseName, shippingMethod: $shippingMethod, senderName: $senderName, receiverName: $receiverName, carrier: $carrier, city: $city, postalCode: $postalCode, address: $address, customerPhone: $customerPhone, items: $items)';
 }
 
 
@@ -273,7 +275,7 @@ abstract mixin class _$KeeperOrderModelCopyWith<$Res> implements $KeeperOrderMod
   factory _$KeeperOrderModelCopyWith(_KeeperOrderModel value, $Res Function(_KeeperOrderModel) _then) = __$KeeperOrderModelCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String status, String createdByName, String createdAt, String warehouseName, String shippingMethod, String senderName, String receiverName, String carrier, String city, String postalCode, String address, String customerPhone, List<KeeperOrderItemModel> items
+ String id, int orderNumber, String status, String createdByName, String createdAt, String warehouseName, String shippingMethod, String senderName, String receiverName, String carrier, String city, String postalCode, String address, String customerPhone, List<KeeperOrderItemModel> items
 });
 
 
@@ -290,10 +292,11 @@ class __$KeeperOrderModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperOrderModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? status = null,Object? createdByName = null,Object? createdAt = null,Object? warehouseName = null,Object? shippingMethod = null,Object? senderName = null,Object? receiverName = null,Object? carrier = null,Object? city = null,Object? postalCode = null,Object? address = null,Object? customerPhone = null,Object? items = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? orderNumber = null,Object? status = null,Object? createdByName = null,Object? createdAt = null,Object? warehouseName = null,Object? shippingMethod = null,Object? senderName = null,Object? receiverName = null,Object? carrier = null,Object? city = null,Object? postalCode = null,Object? address = null,Object? customerPhone = null,Object? items = null,}) {
   return _then(_KeeperOrderModel(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
-as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,orderNumber: null == orderNumber ? _self.orderNumber : orderNumber // ignore: cast_nullable_to_non_nullable
+as int,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as String,createdByName: null == createdByName ? _self.createdByName : createdByName // ignore: cast_nullable_to_non_nullable
 as String,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as String,warehouseName: null == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable

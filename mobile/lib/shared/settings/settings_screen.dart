@@ -1,23 +1,11 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../utils/validators.dart';
 import '../widgets/lock_settings_tile.dart';
 import 'data/settings_api_service.dart';
 import '../../core/network/api_error.dart';
-
-// برش مربعی وسط تصویر — آواتار همیشه مربع کامل می‌شود و در کادر گرد هم گوشه‌ای خالی نمی‌ماند
-Uint8List squareCropAvatar(Uint8List bytes) {
-  final decoded = img.decodeImage(bytes);
-  if (decoded == null) return bytes;
-  final size = decoded.width < decoded.height ? decoded.width : decoded.height;
-  final x = (decoded.width - size) ~/ 2;
-  final y = (decoded.height - size) ~/ 2;
-  final cropped = img.copyCrop(decoded, x: x, y: y, width: size, height: size);
-  return Uint8List.fromList(img.encodeJpg(cropped, quality: 85));
-}
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
@@ -77,9 +65,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _pickAvatar() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: _surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: _green),
+              title: const Text('انتخاب از گالری', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded, color: _green),
+              title: const Text('دوربین', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
     try {
       final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+        source: source,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
@@ -90,9 +103,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SnackBar(content: Text('در حال بارگذاری عکس...'), behavior: SnackBarBehavior.floating),
       );
 
-      // برش مربعی وسط عکس تا در هر کادری (دایره/مربع) کاملاً فول شود
+      // بدون برش — عکس اصلی همان‌طور که هست آپلود و در کادر گرد با cover نمایش داده می‌شود
       final bytes = await picked.readAsBytes();
-      final profile = await _api.uploadAvatar(squareCropAvatar(bytes));
+      final profile = await _api.uploadAvatar(bytes);
       await ref.read(authProvider.notifier).updateProfileFields(avatarUrl: profile['avatarUrl'] as String?);
       if (!mounted) return;
       setState(() => _avatarUrl = profile['avatarUrl'] as String?);
@@ -117,12 +130,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    final newPassword = _passwordCtrl.text;
-    if (newPassword.isNotEmpty && newPassword.length < 6) {
-      _showError('رمز عبور باید حداقل ۶ کاراکتر باشد');
-      return;
+    final newPassword = _passwordCtrl.text.trim();
+    if (newPassword.isNotEmpty) {
+      final passwordError = validatePassword(newPassword);
+      if (passwordError != null) {
+        _showError(passwordError);
+        return;
+      }
     }
-    if (newPassword != _confirmCtrl.text) {
+    if (newPassword != _confirmCtrl.text.trim()) {
       _showError('تکرار رمز عبور مطابقت ندارد');
       return;
     }
@@ -253,8 +269,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _field(
                   controller: _passwordCtrl,
                   icon: Icons.lock_rounded,
-                  label: 'رمز عبور جدید',
-                  hint: 'حداقل ۶ کاراکتر — خالی بگذارید تا تغییر نکند',
+                  label: 'رمز عبور جدید (۶ رقم)',
+                  hint: '۶ رقم — خالی بگذارید تا تغییر نکند',
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
                   obscure: _obscure,
                   toggleVisibility: () => setState(() => _obscure = !_obscure),
                 ),
@@ -336,17 +354,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String label,
     String? hint,
     TextInputType? keyboardType,
+    int? maxLength,
     bool obscure = false,
     VoidCallback? toggleVisibility,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      maxLength: maxLength,
       obscureText: obscure,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        counterText: '',
         hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
         labelStyle: const TextStyle(color: Colors.grey),
         prefixIcon: Icon(icon, color: _green),

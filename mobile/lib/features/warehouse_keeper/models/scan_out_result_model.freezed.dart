@@ -308,7 +308,7 @@ $ScanOutCartonModelCopyWith<$Res>? get carton {
 /// @nodoc
 mixin _$ScanOutCartonModel {
 
- String get productName; String get modelName; String? get serialNumber; bool? get isIndividualUnit; int? get capacityPerBox; String? get unit; String? get packageType;
+ String get productName; String get modelName; String? get serialNumber; bool? get isIndividualUnit; int? get capacityPerBox; String? get unit; String? get packageType; ScanOutTransferModel? get transfer;
 /// Create a copy of ScanOutCartonModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -321,16 +321,16 @@ $ScanOutCartonModelCopyWith<ScanOutCartonModel> get copyWith => _$ScanOutCartonM
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ScanOutCartonModel&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.modelName, modelName) || other.modelName == modelName)&&(identical(other.serialNumber, serialNumber) || other.serialNumber == serialNumber)&&(identical(other.isIndividualUnit, isIndividualUnit) || other.isIndividualUnit == isIndividualUnit)&&(identical(other.capacityPerBox, capacityPerBox) || other.capacityPerBox == capacityPerBox)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.packageType, packageType) || other.packageType == packageType));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ScanOutCartonModel&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.modelName, modelName) || other.modelName == modelName)&&(identical(other.serialNumber, serialNumber) || other.serialNumber == serialNumber)&&(identical(other.isIndividualUnit, isIndividualUnit) || other.isIndividualUnit == isIndividualUnit)&&(identical(other.capacityPerBox, capacityPerBox) || other.capacityPerBox == capacityPerBox)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.packageType, packageType) || other.packageType == packageType)&&(identical(other.transfer, transfer) || other.transfer == transfer));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productName,modelName,serialNumber,isIndividualUnit,capacityPerBox,unit,packageType);
+int get hashCode => Object.hash(runtimeType,productName,modelName,serialNumber,isIndividualUnit,capacityPerBox,unit,packageType,transfer);
 
 @override
 String toString() {
-  return 'ScanOutCartonModel(productName: $productName, modelName: $modelName, serialNumber: $serialNumber, isIndividualUnit: $isIndividualUnit, capacityPerBox: $capacityPerBox, unit: $unit, packageType: $packageType)';
+  return 'ScanOutCartonModel(productName: $productName, modelName: $modelName, serialNumber: $serialNumber, isIndividualUnit: $isIndividualUnit, capacityPerBox: $capacityPerBox, unit: $unit, packageType: $packageType, transfer: $transfer)';
 }
 
 
@@ -341,11 +341,11 @@ abstract mixin class $ScanOutCartonModelCopyWith<$Res>  {
   factory $ScanOutCartonModelCopyWith(ScanOutCartonModel value, $Res Function(ScanOutCartonModel) _then) = _$ScanOutCartonModelCopyWithImpl;
 @useResult
 $Res call({
- String productName, String modelName, String? serialNumber, bool? isIndividualUnit, int? capacityPerBox, String? unit, String? packageType
+ String productName, String modelName, String? serialNumber, bool? isIndividualUnit, int? capacityPerBox, String? unit, String? packageType, ScanOutTransferModel? transfer
 });
 
 
-
+$ScanOutTransferModelCopyWith<$Res>? get transfer;
 
 }
 /// @nodoc
@@ -358,7 +358,7 @@ class _$ScanOutCartonModelCopyWithImpl<$Res>
 
 /// Create a copy of ScanOutCartonModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? productName = null,Object? modelName = null,Object? serialNumber = freezed,Object? isIndividualUnit = freezed,Object? capacityPerBox = freezed,Object? unit = freezed,Object? packageType = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? productName = null,Object? modelName = null,Object? serialNumber = freezed,Object? isIndividualUnit = freezed,Object? capacityPerBox = freezed,Object? unit = freezed,Object? packageType = freezed,Object? transfer = freezed,}) {
   return _then(_self.copyWith(
 productName: null == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
 as String,modelName: null == modelName ? _self.modelName : modelName // ignore: cast_nullable_to_non_nullable
@@ -367,10 +367,23 @@ as String?,isIndividualUnit: freezed == isIndividualUnit ? _self.isIndividualUni
 as bool?,capacityPerBox: freezed == capacityPerBox ? _self.capacityPerBox : capacityPerBox // ignore: cast_nullable_to_non_nullable
 as int?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,packageType: freezed == packageType ? _self.packageType : packageType // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,transfer: freezed == transfer ? _self.transfer : transfer // ignore: cast_nullable_to_non_nullable
+as ScanOutTransferModel?,
   ));
 }
+/// Create a copy of ScanOutCartonModel
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$ScanOutTransferModelCopyWith<$Res>? get transfer {
+    if (_self.transfer == null) {
+    return null;
+  }
 
+  return $ScanOutTransferModelCopyWith<$Res>(_self.transfer!, (value) {
+    return _then(_self.copyWith(transfer: value));
+  });
+}
 }
 
 
@@ -452,10 +465,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType,  ScanOutTransferModel? transfer)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ScanOutCartonModel() when $default != null:
-return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType);case _:
+return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType,_that.transfer);case _:
   return orElse();
 
 }
@@ -473,10 +486,10 @@ return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isInd
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType,  ScanOutTransferModel? transfer)  $default,) {final _that = this;
 switch (_that) {
 case _ScanOutCartonModel():
-return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType);case _:
+return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType,_that.transfer);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -493,10 +506,10 @@ return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isInd
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String productName,  String modelName,  String? serialNumber,  bool? isIndividualUnit,  int? capacityPerBox,  String? unit,  String? packageType,  ScanOutTransferModel? transfer)?  $default,) {final _that = this;
 switch (_that) {
 case _ScanOutCartonModel() when $default != null:
-return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType);case _:
+return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isIndividualUnit,_that.capacityPerBox,_that.unit,_that.packageType,_that.transfer);case _:
   return null;
 
 }
@@ -508,7 +521,7 @@ return $default(_that.productName,_that.modelName,_that.serialNumber,_that.isInd
 @JsonSerializable()
 
 class _ScanOutCartonModel implements ScanOutCartonModel {
-  const _ScanOutCartonModel({this.productName = '', this.modelName = '', this.serialNumber, this.isIndividualUnit, this.capacityPerBox, this.unit, this.packageType});
+  const _ScanOutCartonModel({this.productName = '', this.modelName = '', this.serialNumber, this.isIndividualUnit, this.capacityPerBox, this.unit, this.packageType, this.transfer});
   factory _ScanOutCartonModel.fromJson(Map<String, dynamic> json) => _$ScanOutCartonModelFromJson(json);
 
 @override@JsonKey() final  String productName;
@@ -518,6 +531,7 @@ class _ScanOutCartonModel implements ScanOutCartonModel {
 @override final  int? capacityPerBox;
 @override final  String? unit;
 @override final  String? packageType;
+@override final  ScanOutTransferModel? transfer;
 
 /// Create a copy of ScanOutCartonModel
 /// with the given fields replaced by the non-null parameter values.
@@ -532,16 +546,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ScanOutCartonModel&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.modelName, modelName) || other.modelName == modelName)&&(identical(other.serialNumber, serialNumber) || other.serialNumber == serialNumber)&&(identical(other.isIndividualUnit, isIndividualUnit) || other.isIndividualUnit == isIndividualUnit)&&(identical(other.capacityPerBox, capacityPerBox) || other.capacityPerBox == capacityPerBox)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.packageType, packageType) || other.packageType == packageType));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ScanOutCartonModel&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.modelName, modelName) || other.modelName == modelName)&&(identical(other.serialNumber, serialNumber) || other.serialNumber == serialNumber)&&(identical(other.isIndividualUnit, isIndividualUnit) || other.isIndividualUnit == isIndividualUnit)&&(identical(other.capacityPerBox, capacityPerBox) || other.capacityPerBox == capacityPerBox)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.packageType, packageType) || other.packageType == packageType)&&(identical(other.transfer, transfer) || other.transfer == transfer));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productName,modelName,serialNumber,isIndividualUnit,capacityPerBox,unit,packageType);
+int get hashCode => Object.hash(runtimeType,productName,modelName,serialNumber,isIndividualUnit,capacityPerBox,unit,packageType,transfer);
 
 @override
 String toString() {
-  return 'ScanOutCartonModel(productName: $productName, modelName: $modelName, serialNumber: $serialNumber, isIndividualUnit: $isIndividualUnit, capacityPerBox: $capacityPerBox, unit: $unit, packageType: $packageType)';
+  return 'ScanOutCartonModel(productName: $productName, modelName: $modelName, serialNumber: $serialNumber, isIndividualUnit: $isIndividualUnit, capacityPerBox: $capacityPerBox, unit: $unit, packageType: $packageType, transfer: $transfer)';
 }
 
 
@@ -552,11 +566,11 @@ abstract mixin class _$ScanOutCartonModelCopyWith<$Res> implements $ScanOutCarto
   factory _$ScanOutCartonModelCopyWith(_ScanOutCartonModel value, $Res Function(_ScanOutCartonModel) _then) = __$ScanOutCartonModelCopyWithImpl;
 @override @useResult
 $Res call({
- String productName, String modelName, String? serialNumber, bool? isIndividualUnit, int? capacityPerBox, String? unit, String? packageType
+ String productName, String modelName, String? serialNumber, bool? isIndividualUnit, int? capacityPerBox, String? unit, String? packageType, ScanOutTransferModel? transfer
 });
 
 
-
+@override $ScanOutTransferModelCopyWith<$Res>? get transfer;
 
 }
 /// @nodoc
@@ -569,7 +583,7 @@ class __$ScanOutCartonModelCopyWithImpl<$Res>
 
 /// Create a copy of ScanOutCartonModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? productName = null,Object? modelName = null,Object? serialNumber = freezed,Object? isIndividualUnit = freezed,Object? capacityPerBox = freezed,Object? unit = freezed,Object? packageType = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? productName = null,Object? modelName = null,Object? serialNumber = freezed,Object? isIndividualUnit = freezed,Object? capacityPerBox = freezed,Object? unit = freezed,Object? packageType = freezed,Object? transfer = freezed,}) {
   return _then(_ScanOutCartonModel(
 productName: null == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
 as String,modelName: null == modelName ? _self.modelName : modelName // ignore: cast_nullable_to_non_nullable
@@ -578,6 +592,288 @@ as String?,isIndividualUnit: freezed == isIndividualUnit ? _self.isIndividualUni
 as bool?,capacityPerBox: freezed == capacityPerBox ? _self.capacityPerBox : capacityPerBox // ignore: cast_nullable_to_non_nullable
 as int?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,packageType: freezed == packageType ? _self.packageType : packageType // ignore: cast_nullable_to_non_nullable
+as String?,transfer: freezed == transfer ? _self.transfer : transfer // ignore: cast_nullable_to_non_nullable
+as ScanOutTransferModel?,
+  ));
+}
+
+/// Create a copy of ScanOutCartonModel
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$ScanOutTransferModelCopyWith<$Res>? get transfer {
+    if (_self.transfer == null) {
+    return null;
+  }
+
+  return $ScanOutTransferModelCopyWith<$Res>(_self.transfer!, (value) {
+    return _then(_self.copyWith(transfer: value));
+  });
+}
+}
+
+
+/// @nodoc
+mixin _$ScanOutTransferModel {
+
+ String get id; String? get toWarehouseId; String? get toWarehouseName;
+/// Create a copy of ScanOutTransferModel
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ScanOutTransferModelCopyWith<ScanOutTransferModel> get copyWith => _$ScanOutTransferModelCopyWithImpl<ScanOutTransferModel>(this as ScanOutTransferModel, _$identity);
+
+  /// Serializes this ScanOutTransferModel to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ScanOutTransferModel&&(identical(other.id, id) || other.id == id)&&(identical(other.toWarehouseId, toWarehouseId) || other.toWarehouseId == toWarehouseId)&&(identical(other.toWarehouseName, toWarehouseName) || other.toWarehouseName == toWarehouseName));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,id,toWarehouseId,toWarehouseName);
+
+@override
+String toString() {
+  return 'ScanOutTransferModel(id: $id, toWarehouseId: $toWarehouseId, toWarehouseName: $toWarehouseName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ScanOutTransferModelCopyWith<$Res>  {
+  factory $ScanOutTransferModelCopyWith(ScanOutTransferModel value, $Res Function(ScanOutTransferModel) _then) = _$ScanOutTransferModelCopyWithImpl;
+@useResult
+$Res call({
+ String id, String? toWarehouseId, String? toWarehouseName
+});
+
+
+
+
+}
+/// @nodoc
+class _$ScanOutTransferModelCopyWithImpl<$Res>
+    implements $ScanOutTransferModelCopyWith<$Res> {
+  _$ScanOutTransferModelCopyWithImpl(this._self, this._then);
+
+  final ScanOutTransferModel _self;
+  final $Res Function(ScanOutTransferModel) _then;
+
+/// Create a copy of ScanOutTransferModel
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? toWarehouseId = freezed,Object? toWarehouseName = freezed,}) {
+  return _then(_self.copyWith(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,toWarehouseId: freezed == toWarehouseId ? _self.toWarehouseId : toWarehouseId // ignore: cast_nullable_to_non_nullable
+as String?,toWarehouseName: freezed == toWarehouseName ? _self.toWarehouseName : toWarehouseName // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [ScanOutTransferModel].
+extension ScanOutTransferModelPatterns on ScanOutTransferModel {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _ScanOutTransferModel value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _ScanOutTransferModel() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _ScanOutTransferModel value)  $default,){
+final _that = this;
+switch (_that) {
+case _ScanOutTransferModel():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _ScanOutTransferModel value)?  $default,){
+final _that = this;
+switch (_that) {
+case _ScanOutTransferModel() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String? toWarehouseId,  String? toWarehouseName)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _ScanOutTransferModel() when $default != null:
+return $default(_that.id,_that.toWarehouseId,_that.toWarehouseName);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String? toWarehouseId,  String? toWarehouseName)  $default,) {final _that = this;
+switch (_that) {
+case _ScanOutTransferModel():
+return $default(_that.id,_that.toWarehouseId,_that.toWarehouseName);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String? toWarehouseId,  String? toWarehouseName)?  $default,) {final _that = this;
+switch (_that) {
+case _ScanOutTransferModel() when $default != null:
+return $default(_that.id,_that.toWarehouseId,_that.toWarehouseName);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _ScanOutTransferModel implements ScanOutTransferModel {
+  const _ScanOutTransferModel({required this.id, this.toWarehouseId, this.toWarehouseName});
+  factory _ScanOutTransferModel.fromJson(Map<String, dynamic> json) => _$ScanOutTransferModelFromJson(json);
+
+@override final  String id;
+@override final  String? toWarehouseId;
+@override final  String? toWarehouseName;
+
+/// Create a copy of ScanOutTransferModel
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$ScanOutTransferModelCopyWith<_ScanOutTransferModel> get copyWith => __$ScanOutTransferModelCopyWithImpl<_ScanOutTransferModel>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$ScanOutTransferModelToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ScanOutTransferModel&&(identical(other.id, id) || other.id == id)&&(identical(other.toWarehouseId, toWarehouseId) || other.toWarehouseId == toWarehouseId)&&(identical(other.toWarehouseName, toWarehouseName) || other.toWarehouseName == toWarehouseName));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,id,toWarehouseId,toWarehouseName);
+
+@override
+String toString() {
+  return 'ScanOutTransferModel(id: $id, toWarehouseId: $toWarehouseId, toWarehouseName: $toWarehouseName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$ScanOutTransferModelCopyWith<$Res> implements $ScanOutTransferModelCopyWith<$Res> {
+  factory _$ScanOutTransferModelCopyWith(_ScanOutTransferModel value, $Res Function(_ScanOutTransferModel) _then) = __$ScanOutTransferModelCopyWithImpl;
+@override @useResult
+$Res call({
+ String id, String? toWarehouseId, String? toWarehouseName
+});
+
+
+
+
+}
+/// @nodoc
+class __$ScanOutTransferModelCopyWithImpl<$Res>
+    implements _$ScanOutTransferModelCopyWith<$Res> {
+  __$ScanOutTransferModelCopyWithImpl(this._self, this._then);
+
+  final _ScanOutTransferModel _self;
+  final $Res Function(_ScanOutTransferModel) _then;
+
+/// Create a copy of ScanOutTransferModel
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? toWarehouseId = freezed,Object? toWarehouseName = freezed,}) {
+  return _then(_ScanOutTransferModel(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,toWarehouseId: freezed == toWarehouseId ? _self.toWarehouseId : toWarehouseId // ignore: cast_nullable_to_non_nullable
+as String?,toWarehouseName: freezed == toWarehouseName ? _self.toWarehouseName : toWarehouseName // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
 }

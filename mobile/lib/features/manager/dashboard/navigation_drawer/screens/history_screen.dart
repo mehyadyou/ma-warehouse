@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +7,7 @@ import '../../../data/manager_api_service.dart';
 import '../../../providers/manager_api_provider.dart';
 import '../../../models/history_entry_model.dart';
 import '../../../../../core/realtime/socket_service.dart';
+import '../../../../../shared/utils/numbers.dart';
 import '../../../../warehouse_keeper/providers/warehouse_keeper_provider.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -20,7 +21,14 @@ const _red = Color(0xFFF87171);
 const _border = Color(0xFF2A2D33);
 const _textDim = Color(0xFF8A8F98);
 
-const _categoryOrder = ['all', 'products', 'warehouses', 'users', 'shipments', 'returns'];
+const _categoryOrder = [
+  'all',
+  'products',
+  'warehouses',
+  'users',
+  'shipments',
+  'returns',
+];
 const _categoryLabel = <String, String>{
   'all': 'همه',
   'products': 'محصولات',
@@ -225,11 +233,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       if (j.year == now.year && j.month == now.month && j.day == now.day) {
         return 'امروز';
       }
-      final yest = Jalali.fromDateTime(DateTime.now().subtract(const Duration(days: 1)));
+      final yest = Jalali.fromDateTime(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
       if (j.year == yest.year && j.month == yest.month && j.day == yest.day) {
         return 'دیروز';
       }
-      return '${j.year}/${j.month.toString().padLeft(2, '0')}/${j.day.toString().padLeft(2, '0')}';
+      return faDigits('${j.year}/${j.month.toString().padLeft(2, '0')}/${j.day.toString().padLeft(2, '0')}');
     } catch (_) {
       return '—';
     }
@@ -263,7 +273,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           : Column(
               children: [
                 _buildFilters(),
-                if (_error.isNotEmpty && _entries.isNotEmpty) _buildErrorBanner(),
+                if (_error.isNotEmpty && _entries.isNotEmpty)
+                  _buildErrorBanner(),
                 Expanded(child: _buildList()),
               ],
             ),
@@ -301,11 +312,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             decoration: InputDecoration(
               hintText: 'جستجو در رویدادها و کاربران…',
               hintStyle: const TextStyle(color: _textDim, fontSize: 13),
-              prefixIcon: const Icon(Icons.search_rounded, color: _textDim, size: 20),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: _textDim,
+                size: 20,
+              ),
               suffixIcon: _searchCtrl.text.isEmpty
                   ? null
                   : IconButton(
-                      icon: const Icon(Icons.close_rounded, color: _textDim, size: 18),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: _textDim,
+                        size: 18,
+                      ),
                       onPressed: () {
                         _searchCtrl.clear();
                         setState(() {});
@@ -496,10 +515,7 @@ class _CategoryChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? _green.withValues(alpha: 0.12) : _surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? _green : _border,
-            width: 1,
-          ),
+          border: Border.all(color: selected ? _green : _border, width: 1),
         ),
         child: Text(
           label,
@@ -587,11 +603,7 @@ class _HistoryTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.person_rounded,
-                      size: 13,
-                      color: _textDim,
-                    ),
+                    const Icon(Icons.person_rounded, size: 13, color: _textDim),
                     const SizedBox(width: 4),
                     Text(
                       entry.userName ?? '',
@@ -651,6 +663,12 @@ String _typeTitle(String type) {
       return 'بایگانی انبار';
     case 'warehouse_restored':
       return 'بازگردانی انبار';
+    case 'warehouse_created':
+      return 'ساخت انبار';
+    case 'warehouse_updated':
+      return 'ویرایش انبار';
+    case 'warehouse_keeper_changed':
+      return 'تغییر انباردار';
     default:
       return 'رویداد';
   }
@@ -681,9 +699,13 @@ Color _typeColor(String type) {
     case 'product_restored':
     case 'model_restored':
     case 'warehouse_restored':
+    case 'warehouse_created':
       return _green;
+    case 'warehouse_updated':
+    case 'warehouse_keeper_changed':
+      return _blue;
     default:
-      return _red;
+      return _textDim;
   }
 }
 
@@ -723,6 +745,12 @@ IconData _typeIcon(String type) {
       return Icons.check_circle_rounded;
     case 'return_received':
       return Icons.assignment_return_rounded;
+    case 'warehouse_created':
+      return Icons.add_business_rounded;
+    case 'warehouse_updated':
+      return Icons.edit_rounded;
+    case 'warehouse_keeper_changed':
+      return Icons.manage_accounts_rounded;
     default:
       return Icons.event_rounded;
   }
@@ -737,7 +765,9 @@ String _dateTime(String? iso) {
     final j = Jalali.fromDateTime(dt);
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
-    return '${j.year}/${j.month.toString().padLeft(2, '0')}/${j.day.toString().padLeft(2, '0')}  $hh:$mm';
+    return faDigits(
+      '${j.year}/${j.month.toString().padLeft(2, '0')}/${j.day.toString().padLeft(2, '0')}  $hh:$mm',
+    );
   } catch (_) {
     return '—';
   }

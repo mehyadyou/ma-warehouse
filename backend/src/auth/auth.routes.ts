@@ -3,7 +3,7 @@ import { authController } from './auth.controller';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { rateLimit } from '../middleware/rateLimit';
-import { loginSchema, createFirstManagerSchema, updateProfileSchema, refreshSchema, logoutSchema } from './auth.schema';
+import { loginSchema, createFirstManagerSchema, updateProfileSchema, refreshSchema, logoutSchema, verifyPasswordSchema } from './auth.schema';
 
 const router = Router();
 
@@ -33,6 +33,9 @@ router.post('/refresh',
 
 // POST /api/auth/logout — ابطال توکن رفرش
 router.post('/logout', authenticate, validate(logoutSchema), authController.logout);
+
+// تأیید رمز اصلی برای قفل‌گشایی برنامه (نیازمند توکن)
+router.post('/verify-password', authenticate, validate(verifyPasswordSchema), authController.verifyPassword);
 
 // پروفایل (نیازمند توکن)
 router.get('/profile', authenticate, authController.getProfile);

@@ -6,7 +6,7 @@ const HISTORY_MAX_PAGE_SIZE = 500;
 
 const HISTORY_CATEGORIES: Record<string, string[]> = {
     products: ['product_created', 'product_updated', 'product_checkin', 'product_archived', 'product_restored', 'model_archived', 'model_restored'],
-    warehouses: ['warehouse_archived', 'warehouse_restored'],
+    warehouses: ['warehouse_created', 'warehouse_updated', 'warehouse_archived', 'warehouse_restored', 'warehouse_keeper_changed'],
     users: ['user_created', 'user_role_changed', 'user_warehouse_changed', 'user_deleted'],
     shipments: ['order_created', 'order_updated', 'order_deleted', 'order_shipped', 'order_completed'],
     returns: ['return_received'],
@@ -59,32 +59,24 @@ export const dashboardService = {
         return result;
     },
 
-    //فعالیت‌های اخیر
+    //فعالیت‌های اخیر — یک فید ادغام‌شده بدون تکرار
+    // رویدادهای ورود/مرجوعی در دو جدول ثبت می‌شوند (تراکنش + لاگ با برچسب غنی‌تر) — لاگ می‌ماند و تراکنش تکراری حذف می‌شود
     getRecentActivities: async () => {
-        const transactions = await prisma.$queryRaw`
+        const [transactions, activityLog] = await Promise.all([
+            prisma.$queryRaw<Array<Record<string, unknown>>>`
             SELECT 
                 t.id, t.type, t."productName" as title, t.quantity,
                 t."createdAt", w.name as "warehouseName", u.name as "userName",
+                p.unit as "unit",
                 'transaction' as "activityType"
             FROM "Transaction" t
             JOIN "Warehouse" w ON t."warehouseId" = w.id
             JOIN "User" u ON t."userId" = u.id
+            LEFT JOIN "Product" p ON p.id = t."productId"
             ORDER BY t."createdAt" DESC
-            LIMIT 10
-        `;
-
-        const orders = await prisma.$queryRaw`
-            SELECT 
-                o.id, o.status, o."createdAt", w.name as "warehouseName", u.name as "userName",
-                'order' as "activityType"
-            FROM "Order" o
-            JOIN "Warehouse" w ON o."warehouseId" = w.id
-            JOIN "User" u ON o."createdById" = u.id
-            ORDER BY o."createdAt" DESC
-            LIMIT 5
-        `;
-
-        const activityLog = await prisma.$queryRaw`
+            LIMIT 12
+        `,
+            prisma.$queryRaw<Array<Record<string, unknown>>>`
             SELECT 
                 al.id, al.type, al.label, al."orderId", al."createdAt", u.name as "userName",
                 'activityLog' as "activityType"
@@ -92,9 +84,33 @@ export const dashboardService = {
             JOIN "User" u ON al."userId" = u.id
             ORDER BY al."createdAt" DESC
             LIMIT 15
-        `;
+        `,
+        ]);
 
-        return { transactions, orders, activityLog };
+        // کلید حذف تکرار: کاربر + ثانیه + نوع معادل (IN↔product_checkin، RETURN↔return_received)
+        const logKeys = new Set<string>();
+        for (const log of activityLog as Array<{ type: string; createdAt: Date; userName: string }>) {
+            if (log.type === 'product_checkin' || log.type === 'return_received') {
+                logKeys.add(`${log.userName}|${log.createdAt.toISOString().slice(0, 19)}|${log.type}`);
+            }
+        }
+
+        const activities: Array<Record<string, unknown>> = [...(activityLog as Array<Record<string, unknown>>)];
+        for (const t of transactions as Array<{ type: string; createdAt: Date; userName: string }>) {
+            const logType = t.type === 'IN' ? 'product_checkin' : t.type === 'RETURN' ? 'return_received' : null;
+            if (logType) {
+                const key = `${t.userName}|${t.createdAt.toISOString().slice(0, 19)}|${logType}`;
+                if (logKeys.has(key)) continue;
+            }
+            activities.push(t);
+        }
+
+        activities.sort(
+            (a, b) =>
+                new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime(),
+        );
+
+        return { activities: activities.slice(0, 15) };
     },
 
     //تاریخچهٔ کامل سیستم — صفحه‌بندی + فیلتر دسته + جستجو (بدون پارامتر = رفتار قبلی: ۵۰۰ ردیف اول)

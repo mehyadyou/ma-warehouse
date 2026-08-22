@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$WarehouseInventoryRowModel {
 
- String? get warehouseName; String? get productName; num get count;
+ String? get warehouseName; String? get productName; String? get unit; num get count;
 /// Create a copy of WarehouseInventoryRowModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $WarehouseInventoryRowModelCopyWith<WarehouseInventoryRowModel> get copyWith => 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseInventoryRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.count, count) || other.count == count));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseInventoryRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.count, count) || other.count == count));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,warehouseName,productName,count);
+int get hashCode => Object.hash(runtimeType,warehouseName,productName,unit,count);
 
 @override
 String toString() {
-  return 'WarehouseInventoryRowModel(warehouseName: $warehouseName, productName: $productName, count: $count)';
+  return 'WarehouseInventoryRowModel(warehouseName: $warehouseName, productName: $productName, unit: $unit, count: $count)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $WarehouseInventoryRowModelCopyWith<$Res>  {
   factory $WarehouseInventoryRowModelCopyWith(WarehouseInventoryRowModel value, $Res Function(WarehouseInventoryRowModel) _then) = _$WarehouseInventoryRowModelCopyWithImpl;
 @useResult
 $Res call({
- String? warehouseName, String? productName, num count
+ String? warehouseName, String? productName, String? unit, num count
 });
 
 
@@ -65,10 +65,11 @@ class _$WarehouseInventoryRowModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseInventoryRowModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? warehouseName = freezed,Object? productName = freezed,Object? count = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? warehouseName = freezed,Object? productName = freezed,Object? unit = freezed,Object? count = null,}) {
   return _then(_self.copyWith(
 warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,productName: freezed == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
+as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,count: null == count ? _self.count : count // ignore: cast_nullable_to_non_nullable
 as num,
   ));
@@ -155,10 +156,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? warehouseName,  String? productName,  num count)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? warehouseName,  String? productName,  String? unit,  num count)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _WarehouseInventoryRowModel() when $default != null:
-return $default(_that.warehouseName,_that.productName,_that.count);case _:
+return $default(_that.warehouseName,_that.productName,_that.unit,_that.count);case _:
   return orElse();
 
 }
@@ -176,10 +177,10 @@ return $default(_that.warehouseName,_that.productName,_that.count);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? warehouseName,  String? productName,  num count)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? warehouseName,  String? productName,  String? unit,  num count)  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseInventoryRowModel():
-return $default(_that.warehouseName,_that.productName,_that.count);case _:
+return $default(_that.warehouseName,_that.productName,_that.unit,_that.count);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -196,10 +197,10 @@ return $default(_that.warehouseName,_that.productName,_that.count);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? warehouseName,  String? productName,  num count)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? warehouseName,  String? productName,  String? unit,  num count)?  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseInventoryRowModel() when $default != null:
-return $default(_that.warehouseName,_that.productName,_that.count);case _:
+return $default(_that.warehouseName,_that.productName,_that.unit,_that.count);case _:
   return null;
 
 }
@@ -211,11 +212,12 @@ return $default(_that.warehouseName,_that.productName,_that.count);case _:
 @JsonSerializable()
 
 class _WarehouseInventoryRowModel implements WarehouseInventoryRowModel {
-  const _WarehouseInventoryRowModel({this.warehouseName, this.productName, this.count = 0});
+  const _WarehouseInventoryRowModel({this.warehouseName, this.productName, this.unit, this.count = 0});
   factory _WarehouseInventoryRowModel.fromJson(Map<String, dynamic> json) => _$WarehouseInventoryRowModelFromJson(json);
 
 @override final  String? warehouseName;
 @override final  String? productName;
+@override final  String? unit;
 @override@JsonKey() final  num count;
 
 /// Create a copy of WarehouseInventoryRowModel
@@ -231,16 +233,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseInventoryRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.count, count) || other.count == count));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseInventoryRowModel&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.productName, productName) || other.productName == productName)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.count, count) || other.count == count));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,warehouseName,productName,count);
+int get hashCode => Object.hash(runtimeType,warehouseName,productName,unit,count);
 
 @override
 String toString() {
-  return 'WarehouseInventoryRowModel(warehouseName: $warehouseName, productName: $productName, count: $count)';
+  return 'WarehouseInventoryRowModel(warehouseName: $warehouseName, productName: $productName, unit: $unit, count: $count)';
 }
 
 
@@ -251,7 +253,7 @@ abstract mixin class _$WarehouseInventoryRowModelCopyWith<$Res> implements $Ware
   factory _$WarehouseInventoryRowModelCopyWith(_WarehouseInventoryRowModel value, $Res Function(_WarehouseInventoryRowModel) _then) = __$WarehouseInventoryRowModelCopyWithImpl;
 @override @useResult
 $Res call({
- String? warehouseName, String? productName, num count
+ String? warehouseName, String? productName, String? unit, num count
 });
 
 
@@ -268,10 +270,11 @@ class __$WarehouseInventoryRowModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseInventoryRowModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? warehouseName = freezed,Object? productName = freezed,Object? count = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? warehouseName = freezed,Object? productName = freezed,Object? unit = freezed,Object? count = null,}) {
   return _then(_WarehouseInventoryRowModel(
 warehouseName: freezed == warehouseName ? _self.warehouseName : warehouseName // ignore: cast_nullable_to_non_nullable
 as String?,productName: freezed == productName ? _self.productName : productName // ignore: cast_nullable_to_non_nullable
+as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,count: null == count ? _self.count : count // ignore: cast_nullable_to_non_nullable
 as num,
   ));

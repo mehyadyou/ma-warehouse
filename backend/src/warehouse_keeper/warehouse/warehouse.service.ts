@@ -18,6 +18,7 @@ export const warehouseService = {
         const orders = await prisma.$queryRaw`
             SELECT 
                 o.id,
+                o."orderNumber",
                 o."warehouseId",
                 o.status,
                 o."createdById",
@@ -245,25 +246,34 @@ export const warehouseService = {
                 };
             });
 
+        const totalProducts = products.length;
+        const totalModels = products.reduce(
+            (sum, product) => sum + product.models.length,
+            0,
+        );
+
+        // سقف پاسخ خلاصه: فقط ۶۰ محصول برتر (دونات/کارت‌های موبایل همین را می‌خوانند) —
+        // با هزاران محصول ارسال همهٔ ردیف‌ها و مدل‌ها payload چندمگابایتی می‌سازد
+        const topProducts = products
+            .slice(0, 60)
+            .map(({ models: _m, ...rest }) => rest);
+
         return {
             totalUnits: Number(shipped.totalUnits || 0),
             totalCartons: Number(shipped.totalCartons || 0),
-            totalProducts: products.length,
-            totalModels: products.reduce(
-                (sum, product) => sum + product.models.length,
-                0,
-            ),
+            totalProducts,
+            totalModels,
             shippedUnits: Number(shipped.shippedUnits || 0),
             shippedCartons: Number(shipped.shippedCartons || 0),
             returnedUnits: Number(shipped.returnedUnits || 0),
             returnedCartons: Number(shipped.returnedCartons || 0),
-            products,
+            products: topProducts,
         };
     }),
 
     //موجودی محصولات فقط در انبار خود کاربر — همان منطق پنل مدیر (کارتن + لِگاسی)
     //تضمین دسترسی: هیچ کوئری‌ای خارج از warehouseId کاربر اجرا نمی‌شود
-    getProductInventory: async (warehouseId: string) => {
+    getProductInventory: async (warehouseId: string, opts: { q?: string; onlyInStock?: boolean; page?: number; pageSize?: number } = {}) => {
         const warehouse = await prisma.warehouse.findFirst({
             where: { id: warehouseId, deletedAt: null },
             select: { id: true, name: true },
@@ -359,11 +369,26 @@ export const warehouseService = {
             productTotals.get(row.productId)!.totalCount += Number(row.legacyCount || 0);
         }
 
-        const products = Array.from(productTotals.values())
+        let all = Array.from(productTotals.values())
             .sort((a, b) => b.totalCount - a.totalCount);
+
+        // فیلترهای سمت سرور — جستجو و فقط-موجودی
+        const q = opts.q?.trim().toLowerCase();
+        if (q) all = all.filter(p => p.name.toLowerCase().includes(q));
+        if (opts.onlyInStock) all = all.filter(p => Number(p.totalCount || 0) !== 0);
+
+        const total = all.length;
+        const page = opts.page !== undefined ? Math.max(1, opts.page) : 1;
+        const pageSize = opts.pageSize !== undefined ? Math.max(1, Math.min(opts.pageSize, 500)) : Math.max(1, total);
+        const start = (page - 1) * pageSize;
+        const products = all.slice(start, start + pageSize);
 
         return {
             products,
+            total,
+            page,
+            pageSize,
+            hasMore: start + products.length < total,
             warehouses: [
                 {
                     warehouseId: warehouse.id,

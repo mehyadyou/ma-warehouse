@@ -24,11 +24,18 @@ enum CartonStatus {
   IN_STOCK
   SHIPPED
   RETURNED
+  EXITED
 }
 
 enum CartonEntryType {
   NEW
   RETURNED
+}
+
+enum TransferStatus {
+  PENDING
+  DONE
+  CANCELED
 }
 
 enum TransactionType {
@@ -62,6 +69,11 @@ enum ActivityLogType {
   user_warehouse_changed
   warehouse_archived
   warehouse_restored
+  warehouse_created
+  warehouse_updated
+  warehouse_keeper_changed
+  product_transfer
+  product_exit
 }
 
 model User {
@@ -80,6 +92,7 @@ model User {
   notifications        Notification[]
   deliveries           Delivery[]     @relation("DeliveredBy")
   activityLogs         ActivityLog[]
+  transfers            Transfer[]     @relation("TransferCreatedBy")
   refreshTokens        RefreshToken[]
   failedLoginAttempts  Int            @default(0)
   lockUntil            DateTime?
@@ -100,6 +113,8 @@ model Warehouse {
   transactions Transaction[]
   orders       Order[]
   cartons      Carton[]
+  transfersFrom Transfer[]   @relation("TransferFrom")
+  transfersTo   Transfer[]   @relation("TransferTo")
   version      Int           @default(0)
   deletedAt    DateTime?
   createdAt    DateTime      @default(now())
@@ -139,6 +154,7 @@ model Product {
   orderItems OrderItem[]
   cartons    Carton[]
   transactions Transaction[]
+  transfers  Transfer[]
   version    Int            @default(0)
   deletedAt  DateTime?
   createdAt  DateTime       @default(now())
@@ -158,6 +174,7 @@ model ProductModel {
   unitsPerBox Int?
   cartons     Carton[]
   orderItems  OrderItem[]
+  transfers   Transfer[]
   version     Int          @default(0)
   deletedAt   DateTime?
   createdAt   DateTime     @default(now())
@@ -175,6 +192,8 @@ model Carton {
   warehouse    Warehouse       @relation(fields: [warehouseId], references: [id])
   orderId      String?
   order        Order?          @relation(fields: [orderId], references: [id])
+  transferId   String?
+  transfer     Transfer?       @relation(fields: [transferId], references: [id], onDelete: SetNull)
   qrPayload    String          @unique
   hmac         String
   qrUuid       String          @unique @default(uuid())
@@ -205,6 +224,7 @@ model SerialSequence {
 
 model Order {
   id             String      @id @default(uuid())
+  orderNumber    Int         @unique @default(autoincrement())
   warehouseId    String
   warehouse      Warehouse   @relation(fields: [warehouseId], references: [id])
   status         OrderStatus @default(PENDING)
@@ -276,6 +296,32 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@index([modelId])
+}
+
+/// ثبت جابه‌جایی/خروج محصول توسط مدیر — مسیر خروج کالا از انبار خارج از سفارش
+model Transfer {
+  id              String        @id @default(uuid())
+  fromWarehouseId String
+  fromWarehouse   Warehouse     @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String?
+  toWarehouse     Warehouse?    @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  modelId         String?
+  model           ProductModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  quantity        Int
+  description     String        @default("")
+  status          TransferStatus @default(PENDING)
+  completedAt     DateTime?
+  createdById     String
+  createdBy       User          @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  cartons         Carton[]
+  createdAt       DateTime      @default(now())
+
+  @@index([fromWarehouseId, createdAt(sort: Desc)])
+  @@index([toWarehouseId, createdAt(sort: Desc)])
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([status, fromWarehouseId])
 }
 
 model Delivery {

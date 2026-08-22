@@ -12,49 +12,43 @@ final wkApiProvider = Provider((ref) => WarehouseKeeperApiService());
 // Socket service - singleton, no circular dependency
 final socketServiceProvider = Provider<SocketService>((ref) => SocketService());
 
-final warehouseProvider =
-    FutureProvider.autoDispose<KeeperWarehouseModel>((ref) async {
-  try {
-    return await ref.read(wkApiProvider).getMyWarehouse();
-  } catch (_) {
-    return const KeeperWarehouseModel();
-  }
-});
+/// فیلترهای تب «موجودی» — جستجو و فقط-موجودی به‌همراه صفحه‌بندی سمت سرور
+class KeeperInventoryQuery {
+  final String query;
+  final bool onlyInStock;
+  const KeeperInventoryQuery({this.query = '', this.onlyInStock = false});
+}
 
-// Remove autoDispose for real-time sync
-final ordersProvider = FutureProvider<List<KeeperOrderModel>>((ref) async {
-  try {
-    return await ref.read(wkApiProvider).getOrders();
-  } catch (_) {
-    return const [];
-  }
-});
-
-// Remove autoDispose for real-time sync
-final inventorySummaryProvider =
-    FutureProvider<KeeperInventorySummaryModel>((ref) async {
-  try {
-    return await ref.read(wkApiProvider).getInventorySummary();
-  } catch (_) {
-    return const KeeperInventorySummaryModel();
-  }
-});
-
-// Remove autoDispose for real-time sync
+/// صفحهٔ اول فهرست موجودی با فیلترها — خطاها به‌جای بلیع، در AsyncError می‌آیند
 final keeperInventoryListProvider =
-    FutureProvider<KeeperInventoryListModel>((ref) async {
-  try {
-    return await ref.read(wkApiProvider).getInventoryProducts();
-  } catch (_) {
-    return const KeeperInventoryListModel();
-  }
+    FutureProvider.family<KeeperInventoryListModel, KeeperInventoryQuery>((
+      ref,
+      q,
+    ) async {
+      return ref
+          .read(wkApiProvider)
+          .getInventoryProducts(
+            q: q.query.trim().isEmpty ? null : q.query,
+            onlyInStock: q.onlyInStock,
+          );
+    });
+
+final warehouseProvider = FutureProvider<KeeperWarehouseModel>((ref) async {
+  return ref.read(wkApiProvider).getMyWarehouse();
 });
 
-final transactionsProvider =
-    FutureProvider.autoDispose<List<KeeperTransactionModel>>((ref) async {
-  try {
-    return await ref.read(wkApiProvider).getTransactions();
-  } catch (_) {
-    return const [];
-  }
+final ordersProvider = FutureProvider<List<KeeperOrderModel>>((ref) async {
+  return ref.read(wkApiProvider).getOrders();
+});
+
+final inventorySummaryProvider = FutureProvider<KeeperInventorySummaryModel>((
+  ref,
+) async {
+  return ref.read(wkApiProvider).getInventorySummary();
+});
+
+final transactionsProvider = FutureProvider<List<KeeperTransactionModel>>((
+  ref,
+) async {
+  return ref.read(wkApiProvider).getTransactions();
 });

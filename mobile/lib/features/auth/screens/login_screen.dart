@@ -115,9 +115,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
-                      labelText: 'رمز عبور',
-                      hintText: '••••••••',
+                      labelText: 'رمز عبور (۶ رقم)',
+                      hintText: '••••••',
+                      counterText: '',
                       prefixIcon: const Icon(Icons.lock_outline_rounded),
                       suffixIcon: IconButton(
                         icon: Icon(_obscurePassword
@@ -129,8 +133,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     validator: (value) {
-                      if ((value ?? '').trim().isEmpty) {
-                        return 'رمز عبور را وارد کنید';
+                      final v = (value ?? '').trim();
+                      if (v.isEmpty) return 'رمز عبور را وارد کنید';
+                      if (!RegExp(r'^\d{6}$').hasMatch(v)) {
+                        return 'رمز عبور باید دقیقاً ۶ رقم باشد';
                       }
                       return null;
                     },

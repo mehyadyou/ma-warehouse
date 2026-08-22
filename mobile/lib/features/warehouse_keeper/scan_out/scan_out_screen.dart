@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:dio/dio.dart';
+import '../models/scan_out_result_model.dart';
 import '../providers/warehouse_keeper_provider.dart';
 import '../../../core/network/api_error.dart';
 
@@ -12,7 +13,17 @@ const _red     = Color(0xFFEF4444);
 const _orange  = Color(0xFFFB923C);
 
 class ScanOutScreen extends ConsumerStatefulWidget {
-  const ScanOutScreen({super.key});
+  /// وقتی [orderId] داده شود، هر کارتن اسکن‌شده به همان سفارش متصل می‌شود
+  /// (اولین خروج → سفارش SHIPPED) — اعتبارسنجی تطابق کالا/مدل سمت سرور انجام می‌شود
+  /// وقتی [transferId] داده شود، هر کارتن اسکن‌شده برای همان دستور جابه‌جایی/خروج
+  /// مدیر اجرا می‌شود (تا تکمیل سهمیه → دستور DONE)
+  const ScanOutScreen({super.key, this.orderId, this.orderLabel, this.transferId, this.transferLabel});
+
+  final String? orderId;
+  final String? orderLabel;
+  final String? transferId;
+  final String? transferLabel;
+
   @override
   ConsumerState<ScanOutScreen> createState() => _ScanOutScreenState();
 }
@@ -38,7 +49,9 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
     setState(() { _scanning = false; _processing = true; });
 
     try {
-      final data = await ref.read(wkApiProvider).scanOut(raw);
+      final data = await ref
+          .read(wkApiProvider)
+          .scanOut(raw, orderId: widget.orderId, transferId: widget.transferId);
       if (mounted) {
         setState(() {
           _lastResult = _ScanResult(
@@ -59,6 +72,7 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
             packageType: data.valid
                 ? data.carton?.packageType
                 : null,
+            transfer: data.carton?.transfer,
           );
           _processing = false;
         });
@@ -90,7 +104,9 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
     });
 
     try {
-      final result = await ref.read(wkApiProvider).scanOutSerial(value.trim());
+      final result = await ref
+          .read(wkApiProvider)
+          .scanOutSerial(value.trim(), orderId: widget.orderId, transferId: widget.transferId);
       if (mounted) {
         setState(() {
           _lastResult = _ScanResult(
@@ -111,6 +127,7 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
             packageType: result.valid
                 ? result.carton?.packageType
                 : null,
+            transfer: result.carton?.transfer,
           );
           _processing = false;
         });
@@ -140,11 +157,18 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _surface,
-        title: const Text('اسکن خروج کالا', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+        title: Text(
+          widget.transferId != null
+              ? 'اجرای دستور خروج/جابه‌جایی'
+              : widget.orderId != null
+              ? 'خروج برای سفارش'
+              : 'اسکن خروج کالا',
+          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -152,10 +176,46 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
       ),
       body: Stack(children: [
 
+        // نشانگر هدف — وقتی انباردار برای یک سفارش یا دستور خاص اسکن می‌کند
+        if (widget.transferId != null || widget.orderId != null)
+          Positioned(
+            top: 16, left: 16, right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (widget.transferId != null ? _green : _orange).withOpacity(0.5),
+                ),
+              ),
+              child: Row(children: [
+                Icon(
+                  widget.transferId != null
+                      ? Icons.swap_horizontal_circle_rounded
+                      : Icons.receipt_long_rounded,
+                  color: widget.transferId != null ? _green : _orange,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.transferLabel ??
+                        widget.orderLabel ??
+                        'هدف #${(widget.transferId ?? widget.orderId)!.substring(0, 8)}',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ]),
+            ),
+          ),
+
         // بالای صفحه - فیلد سریال دستی
-Positioned(
-  top: 16, left: 16, right: 16,
-  child: Container(
+        Positioned(
+          top: (widget.transferId != null || widget.orderId != null) ? 76 : 16, left: 16, right: 16,
+          child: Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
     decoration: BoxDecoration(
       color: _surface,
@@ -208,7 +268,7 @@ Positioned(
           ),
         if (_lastResult == null && !_processing)
           Positioned(
-            top: 24, left: 0, right: 0,
+            top: (widget.transferId != null || widget.orderId != null) ? 132 : 24, left: 0, right: 0,
             child: Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -230,7 +290,8 @@ class _ScanResult {
   final int?    capacity;
   final String? unit;
   final String? packageType;
-  const _ScanResult({required this.valid, required this.message, this.serial, this.isIndividual, this.capacity, this.unit, this.packageType});
+  final ScanOutTransferModel? transfer;
+  const _ScanResult({required this.valid, required this.message, this.serial, this.isIndividual, this.capacity, this.unit, this.packageType, this.transfer});
 }
 
 class _ResultCard extends StatelessWidget {
@@ -257,9 +318,21 @@ class _ResultCard extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(result.valid ? 'خروج ثبت شد' : 'خطا', style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700)),
+            Text(
+              result.valid
+                  ? (result.transfer != null ? 'اجرای دستور ثبت شد' : 'خروج ثبت شد')
+                  : 'خطا',
+              style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 4),
             Text(result.message, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            if (result.valid && result.transfer != null && result.transfer!.toWarehouseName != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'انتقال به ${result.transfer!.toWarehouseName}',
+                style: const TextStyle(color: _green, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ],
             if (result.valid && result.serial != null) ...[
               const SizedBox(height: 4),
               Text('سریال: ${result.serial}', style: const TextStyle(color: Colors.white54, fontSize: 12)),

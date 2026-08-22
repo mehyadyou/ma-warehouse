@@ -84,3 +84,51 @@ describe('warehouseService.getOrders', () => {
         expect(result[0].items).toEqual([]);
     });
 });
+
+describe('warehouseService.getInventorySummary', () => {
+    it('خلاصه: totalProducts/totalModels کامل + فقط ۶۰ محصول برتر بدون مدل در پاسخ', async () => {
+        // ۷۰ محصول، هر کدام ۲ مدل → ۱۴۰ ردیف کارتن
+        const cartonStats = [];
+        for (let i = 0; i < 70; i++) {
+            cartonStats.push(
+                { productId: `p${i}`, productName: `کالای ${i}`, unit: 'عدد', modelId: `m${i}a`, modelName: 'مدل A', totalCount: 10, cartonCount: 1, individualCount: 0 },
+                { productId: `p${i}`, productName: `کالای ${i}`, unit: 'عدد', modelId: `m${i}b`, modelName: 'مدل B', totalCount: 5, cartonCount: 1, individualCount: 0 },
+            );
+        }
+        mocks.queryRaw.mockResolvedValueOnce(cartonStats);
+        mocks.queryRaw.mockResolvedValueOnce([
+            { shippedUnits: 0, shippedCartons: 0, returnedUnits: 0, returnedCartons: 0, totalUnits: 1050, totalCartons: 140 },
+        ]);
+        mocks.queryRaw.mockResolvedValueOnce([]);
+
+        const result = await warehouseService.getInventorySummary('wh1');
+
+        expect(result.totalProducts).toBe(70);
+        expect(result.totalModels).toBe(140);
+        expect(result.totalUnits).toBe(1050);
+        expect(result.products).toHaveLength(60);
+        // فقط محصولات برتر (همه موجودی ۱۵ دارند — مرتب‌سازی پایدار، p0 اول)
+        expect(result.products[0].productId).toBe('p0');
+        // مدل‌ها در پاسخ خلاصه نیستند
+        expect('models' in result.products[0]).toBe(false);
+        expect(result.products[0].totalCount).toBe(15);
+        expect(result.products[0].modelCount).toBe(2);
+    });
+
+    it('محصولات لِگاسی (بدون کارتن) هم شمارش می‌شوند و در سقف می‌مانند', async () => {
+        mocks.queryRaw.mockResolvedValueOnce([]);
+        mocks.queryRaw.mockResolvedValueOnce([
+            { shippedUnits: 0, shippedCartons: 0, returnedUnits: 0, returnedCartons: 0, totalUnits: 0, totalCartons: 0 },
+        ]);
+        mocks.queryRaw.mockResolvedValueOnce([
+            { productId: 'l1', name: 'کالای لگاسی', unit: 'عدد', legacyCount: 7 },
+        ]);
+
+        const result = await warehouseService.getInventorySummary('wh2');
+
+        expect(result.totalProducts).toBe(1);
+        expect(result.products).toHaveLength(1);
+        expect(result.products[0].productId).toBe('l1');
+        expect(result.products[0].totalCount).toBe(7);
+    });
+});

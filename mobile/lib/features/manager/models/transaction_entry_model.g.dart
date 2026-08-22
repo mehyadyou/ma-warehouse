@@ -14,6 +14,7 @@ _TransactionEntryModel _$TransactionEntryModelFromJson(
   title: json['title'] as String?,
   warehouseName: json['warehouseName'] as String?,
   userName: json['userName'] as String?,
+  unit: json['unit'] as String?,
   quantity: json['quantity'] as num? ?? 0,
   createdAt: json['createdAt'] as String?,
 );
@@ -26,6 +27,7 @@ Map<String, dynamic> _$TransactionEntryModelToJson(
   'title': instance.title,
   'warehouseName': instance.warehouseName,
   'userName': instance.userName,
+  'unit': instance.unit,
   'quantity': instance.quantity,
   'createdAt': instance.createdAt,
 };

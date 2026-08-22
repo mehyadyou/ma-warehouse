@@ -1,5 +1,6 @@
 import { prisma } from '../../utils/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { orderStatusWhere, OrderStatusFilter } from '../orders/orders.service';
 
 const toNumber = (v: Prisma.Decimal | null | undefined): number | null =>
     v == null ? null : Number(v);
@@ -9,6 +10,7 @@ const orderInclude = {
     delivery: {
         select: { status: true, deliveredAt: true, notes: true, driver: { select: { name: true } } },
     },
+    badges: { select: { count: true } },
     items: { include: { product: { select: { name: true } } } },
 } satisfies Prisma.OrderInclude;
 
@@ -31,8 +33,8 @@ export const searchService = {
         return result.map((r) => ({ ...r, price: toNumber(r.price) }));
     },
 
-    //جستجوی کارتن با سریال — نمایش مکان فعلی و مرحله
-    searchBySerial: async (query: string) => {
+    //جستجوی کارتن با سریال — نمایش مکان فعلی و مرحله (warehouseId = محدودیت به انبار خاص)
+    searchBySerial: async (query: string, warehouseId?: string) => {
         const rows = await prisma.$queryRaw<Array<{
             id: string; productId: string; serialNumber: string | null; status: string; entryType: string;
             isIndividual: boolean; createdAt: Date; scannedOutAt: Date | null;
@@ -58,7 +60,8 @@ export const searchService = {
             LEFT JOIN "Order" o ON c."orderId" = o.id
             LEFT JOIN "Delivery" d ON d."orderId" = o.id
             LEFT JOIN "User" u ON d."driverId" = u.id
-            WHERE c."serialNumber" = ${query} OR c."qrUuid" = ${query}
+            WHERE (c."serialNumber" = ${query} OR c."qrUuid" = ${query})
+              ${warehouseId ? Prisma.sql`AND c."warehouseId" = ${warehouseId}` : Prisma.empty}
             LIMIT 1
         `;
         const carton = rows[0] ?? null;
@@ -71,6 +74,7 @@ export const searchService = {
                 where: {
                     productId: carton.productId,
                     ...(carton.modelName ? { model: carton.modelName } : {}),
+                    ...(warehouseId ? { order: { warehouseId } } : {}),
                 },
                 select: {
                     quantity: true,
@@ -88,10 +92,20 @@ export const searchService = {
         return { ...carton, relatedOrders };
     },
 
-    //جستجوی ارسالی‌ها (فرستنده/گیرنده/کالا/مدل) — نمایش مرحله ارسال
-    searchShipments: async (filters: { sender?: string; receiver?: string; product?: string; model?: string }) => {
+    //جستجوی ارسالی‌ها (فرستنده/گیرنده/کالا/مدل + متن آزاد) — صفحه‌بندی‌شده
+    //warehouseId = محدودیت به انبار خاص؛ q = جستجوی متن آزاد روی همهٔ فیلدها
+    searchShipments: async (filters: {
+        sender?: string; receiver?: string; product?: string; model?: string; q?: string;
+        warehouseId?: string; page?: number; pageSize?: number; status?: OrderStatusFilter;
+    }) => {
         const where: Prisma.OrderWhereInput = {
             AND: [
+                filters.warehouseId
+                    ? { warehouseId: filters.warehouseId }
+                    : null,
+                filters.status
+                    ? orderStatusWhere(filters.status)
+                    : null,
                 filters.sender
                     ? { senderName: { contains: filters.sender, mode: 'insensitive' as const } }
                     : null,
@@ -114,41 +128,70 @@ export const searchService = {
                           },
                       }
                     : null,
+                filters.q
+                    ? {
+                          OR: [
+                              { senderName: { contains: filters.q, mode: 'insensitive' as const } },
+                              { receiverName: { contains: filters.q, mode: 'insensitive' as const } },
+                              { city: { contains: filters.q, mode: 'insensitive' as const } },
+                              { carrier: { contains: filters.q, mode: 'insensitive' as const } },
+                              { items: { some: { product: { name: { contains: filters.q, mode: 'insensitive' as const } } } } },
+                              { items: { some: { model: { contains: filters.q, mode: 'insensitive' as const } } } },
+                          ],
+                      }
+                    : null,
             ].filter(Boolean),
         };
 
-        const orders = await prisma.order.findMany({
-            where,
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            include: orderInclude,
-        });
+        const safePage = Math.max(1, Math.floor(filters.page ?? 1));
+        const safeSize = Math.min(100, Math.max(1, Math.floor(filters.pageSize ?? 20)));
+        const [orders, total] = await prisma.$transaction([
+            prisma.order.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip: (safePage - 1) * safeSize,
+                take: safeSize,
+                include: orderInclude,
+            }),
+            prisma.order.count({ where }),
+        ]);
 
-        return orders.map((o) => ({
-            id: o.id,
-            status: o.status,
-            shippingMethod: o.shippingMethod,
-            carrier: o.carrier,
-            city: o.city,
-            postalCode: o.postalCode,
-            address: o.address,
-            customerPhone: o.customerPhone,
-            senderName: o.senderName,
-            receiverName: o.receiverName,
-            createdAt: o.createdAt,
-            updatedAt: o.updatedAt,
-            warehouseName: o.warehouse.name,
-            deliveryStatus: o.delivery?.status ?? null,
-            deliveredAt: o.delivery?.deliveredAt ?? null,
-            notes: o.delivery?.notes ?? null,
-            driverName: o.delivery?.driver?.name ?? null,
-            items: o.items.map((i) => ({
-                id: i.id,
-                quantity: i.quantity,
-                model: i.model,
-                price: toNumber(i.price),
-                productName: i.product.name,
+        return {
+            orders: orders.map((o) => ({
+                id: o.id,
+                orderNumber: o.orderNumber,
+                version: o.version,
+                status: o.status,
+                shippingMethod: o.shippingMethod,
+                carrier: o.carrier,
+                city: o.city,
+                postalCode: o.postalCode,
+                address: o.address,
+                customerPhone: o.customerPhone,
+                senderName: o.senderName,
+                receiverName: o.receiverName,
+                createdAt: o.createdAt,
+                updatedAt: o.updatedAt,
+                warehouseName: o.warehouse.name,
+                deliveryStatus: o.delivery?.status ?? null,
+                deliveredAt: o.delivery?.deliveredAt ?? null,
+                notes: o.delivery?.notes ?? null,
+                driverName: o.delivery?.driver?.name ?? null,
+                badgeCount: o.badges?.reduce((sum, b) => sum + (b.count ?? 0), 0) ?? 0,
+                items: o.items.map((i) => ({
+                    id: i.id,
+                    quantity: i.quantity,
+                    model: i.model,
+                    price: toNumber(i.price),
+                    productName: i.product.name,
+                })),
             })),
-        }));
+            pagination: {
+                page: safePage,
+                pageSize: safeSize,
+                total,
+                hasMore: safePage * safeSize < total,
+            },
+        };
     },
 };

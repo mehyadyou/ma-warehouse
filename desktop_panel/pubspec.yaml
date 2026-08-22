@@ -1,0 +1,37 @@
+name: ma_warehouse_panel
+description: "پنل انباردار — MA Warehouse (دسکتاپ ویندوز)"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  dio: ^5.11.0
+  flutter:
+    sdk: flutter
+  pdf: ^3.13.0
+  printing: ^5.15.0
+  qr: ^3.0.2
+  qr_flutter: ^4.1.0
+  shamsi_date: ^1.1.1
+  shared_preferences: ^2.5.5
+  socket_io_client: ^3.1.6
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: Vazirmatn
+      fonts:
+        - asset: assets/fonts/Vazirmatn-Regular.ttf
+        - asset: assets/fonts/Vazirmatn-Bold.ttf
+          weight: 700

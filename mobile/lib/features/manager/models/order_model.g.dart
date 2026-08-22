@@ -8,6 +8,8 @@ part of 'order_model.dart';
 
 _OrderModel _$OrderModelFromJson(Map<String, dynamic> json) => _OrderModel(
   id: json['id'] as String,
+  orderNumber: (json['orderNumber'] as num?)?.toInt() ?? 0,
+  version: (json['version'] as num?)?.toInt() ?? 0,
   senderName: json['senderName'] as String?,
   receiverName: json['receiverName'] as String?,
   customerPhone: json['customerPhone'] as String?,
@@ -33,6 +35,8 @@ _OrderModel _$OrderModelFromJson(Map<String, dynamic> json) => _OrderModel(
 Map<String, dynamic> _$OrderModelToJson(_OrderModel instance) =>
     <String, dynamic>{
       'id': instance.id,
+      'orderNumber': instance.orderNumber,
+      'version': instance.version,
       'senderName': instance.senderName,
       'receiverName': instance.receiverName,
       'customerPhone': instance.customerPhone,
@@ -69,4 +73,20 @@ Map<String, dynamic> _$OrderItemModelToJson(_OrderItemModel instance) =>
       'quantity': instance.quantity,
       'price': instance.price,
       'exchangeRate': instance.exchangeRate,
+    };
+
+_OrderCountsModel _$OrderCountsModelFromJson(Map<String, dynamic> json) =>
+    _OrderCountsModel(
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      pending: (json['pending'] as num?)?.toInt() ?? 0,
+      inTransit: (json['inTransit'] as num?)?.toInt() ?? 0,
+      delivered: (json['delivered'] as num?)?.toInt() ?? 0,
+    );
+
+Map<String, dynamic> _$OrderCountsModelToJson(_OrderCountsModel instance) =>
+    <String, dynamic>{
+      'total': instance.total,
+      'pending': instance.pending,
+      'inTransit': instance.inTransit,
+      'delivered': instance.delivered,
     };

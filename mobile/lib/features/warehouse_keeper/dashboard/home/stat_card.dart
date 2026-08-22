@@ -24,7 +24,10 @@ class StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -44,12 +47,19 @@ class StatCard extends StatelessWidget {
               children: [
                 Text(
                   count,
-                  style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   label,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11.5),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 11.5,
+                  ),
                 ),
               ],
             ),
@@ -71,7 +81,10 @@ class LoadingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1,
+        ),
       ),
       child: const Center(child: CircularProgressIndicator(color: _green)),
     );
@@ -80,7 +93,8 @@ class LoadingCard extends StatelessWidget {
 
 class MessageCard extends StatelessWidget {
   final String message;
-  const MessageCard({super.key, required this.message});
+  final VoidCallback? onRetry;
+  const MessageCard({super.key, required this.message, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -89,13 +103,47 @@ class MessageCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1,
+        ),
       ),
       child: Center(
-        child: Text(
-          message,
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13),
-        ),
+        child: onRetry == null
+            ? Text(
+                message,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 13,
+                ),
+              )
+            : GestureDetector(
+                onTap: onRetry,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.refresh_rounded, color: _green, size: 16),
+                        SizedBox(width: 6),
+                        Text(
+                          'تلاش دوباره',
+                          style: TextStyle(color: _green, fontSize: 12.5),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }

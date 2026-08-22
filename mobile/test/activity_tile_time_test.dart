@@ -21,7 +21,7 @@ void main() {
     );
 
     expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
-    expect(find.textContaining('1405/05/16'), findsOneWidget);
+    expect(find.textContaining('۱۴۰۵/۰۵/۱۶'), findsOneWidget);
     expect(find.textContaining(':'), findsWidgets);
   });
 

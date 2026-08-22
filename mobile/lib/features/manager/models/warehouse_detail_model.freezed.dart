@@ -302,7 +302,7 @@ $WarehouseStatsModelCopyWith<$Res> get stats {
 /// @nodoc
 mixin _$WarehouseStatsModel {
 
- num get productCount; num get inCount; num get outCount; num get totalUnits; num get totalCartons;
+ num get transactionCount; num get productCount; num get inCount; num get outCount; num get inUnits; num get outUnits; num get returnedUnits; num get totalUnits; num get totalCartons; num get orderCount; num get activeOrderCount;
 /// Create a copy of WarehouseStatsModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -315,16 +315,16 @@ $WarehouseStatsModelCopyWith<WarehouseStatsModel> get copyWith => _$WarehouseSta
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseStatsModel&&(identical(other.productCount, productCount) || other.productCount == productCount)&&(identical(other.inCount, inCount) || other.inCount == inCount)&&(identical(other.outCount, outCount) || other.outCount == outCount)&&(identical(other.totalUnits, totalUnits) || other.totalUnits == totalUnits)&&(identical(other.totalCartons, totalCartons) || other.totalCartons == totalCartons));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WarehouseStatsModel&&(identical(other.transactionCount, transactionCount) || other.transactionCount == transactionCount)&&(identical(other.productCount, productCount) || other.productCount == productCount)&&(identical(other.inCount, inCount) || other.inCount == inCount)&&(identical(other.outCount, outCount) || other.outCount == outCount)&&(identical(other.inUnits, inUnits) || other.inUnits == inUnits)&&(identical(other.outUnits, outUnits) || other.outUnits == outUnits)&&(identical(other.returnedUnits, returnedUnits) || other.returnedUnits == returnedUnits)&&(identical(other.totalUnits, totalUnits) || other.totalUnits == totalUnits)&&(identical(other.totalCartons, totalCartons) || other.totalCartons == totalCartons)&&(identical(other.orderCount, orderCount) || other.orderCount == orderCount)&&(identical(other.activeOrderCount, activeOrderCount) || other.activeOrderCount == activeOrderCount));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productCount,inCount,outCount,totalUnits,totalCartons);
+int get hashCode => Object.hash(runtimeType,transactionCount,productCount,inCount,outCount,inUnits,outUnits,returnedUnits,totalUnits,totalCartons,orderCount,activeOrderCount);
 
 @override
 String toString() {
-  return 'WarehouseStatsModel(productCount: $productCount, inCount: $inCount, outCount: $outCount, totalUnits: $totalUnits, totalCartons: $totalCartons)';
+  return 'WarehouseStatsModel(transactionCount: $transactionCount, productCount: $productCount, inCount: $inCount, outCount: $outCount, inUnits: $inUnits, outUnits: $outUnits, returnedUnits: $returnedUnits, totalUnits: $totalUnits, totalCartons: $totalCartons, orderCount: $orderCount, activeOrderCount: $activeOrderCount)';
 }
 
 
@@ -335,7 +335,7 @@ abstract mixin class $WarehouseStatsModelCopyWith<$Res>  {
   factory $WarehouseStatsModelCopyWith(WarehouseStatsModel value, $Res Function(WarehouseStatsModel) _then) = _$WarehouseStatsModelCopyWithImpl;
 @useResult
 $Res call({
- num productCount, num inCount, num outCount, num totalUnits, num totalCartons
+ num transactionCount, num productCount, num inCount, num outCount, num inUnits, num outUnits, num returnedUnits, num totalUnits, num totalCartons, num orderCount, num activeOrderCount
 });
 
 
@@ -352,13 +352,19 @@ class _$WarehouseStatsModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseStatsModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? productCount = null,Object? inCount = null,Object? outCount = null,Object? totalUnits = null,Object? totalCartons = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? transactionCount = null,Object? productCount = null,Object? inCount = null,Object? outCount = null,Object? inUnits = null,Object? outUnits = null,Object? returnedUnits = null,Object? totalUnits = null,Object? totalCartons = null,Object? orderCount = null,Object? activeOrderCount = null,}) {
   return _then(_self.copyWith(
-productCount: null == productCount ? _self.productCount : productCount // ignore: cast_nullable_to_non_nullable
+transactionCount: null == transactionCount ? _self.transactionCount : transactionCount // ignore: cast_nullable_to_non_nullable
+as num,productCount: null == productCount ? _self.productCount : productCount // ignore: cast_nullable_to_non_nullable
 as num,inCount: null == inCount ? _self.inCount : inCount // ignore: cast_nullable_to_non_nullable
 as num,outCount: null == outCount ? _self.outCount : outCount // ignore: cast_nullable_to_non_nullable
+as num,inUnits: null == inUnits ? _self.inUnits : inUnits // ignore: cast_nullable_to_non_nullable
+as num,outUnits: null == outUnits ? _self.outUnits : outUnits // ignore: cast_nullable_to_non_nullable
+as num,returnedUnits: null == returnedUnits ? _self.returnedUnits : returnedUnits // ignore: cast_nullable_to_non_nullable
 as num,totalUnits: null == totalUnits ? _self.totalUnits : totalUnits // ignore: cast_nullable_to_non_nullable
 as num,totalCartons: null == totalCartons ? _self.totalCartons : totalCartons // ignore: cast_nullable_to_non_nullable
+as num,orderCount: null == orderCount ? _self.orderCount : orderCount // ignore: cast_nullable_to_non_nullable
+as num,activeOrderCount: null == activeOrderCount ? _self.activeOrderCount : activeOrderCount // ignore: cast_nullable_to_non_nullable
 as num,
   ));
 }
@@ -444,10 +450,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( num productCount,  num inCount,  num outCount,  num totalUnits,  num totalCartons)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( num transactionCount,  num productCount,  num inCount,  num outCount,  num inUnits,  num outUnits,  num returnedUnits,  num totalUnits,  num totalCartons,  num orderCount,  num activeOrderCount)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _WarehouseStatsModel() when $default != null:
-return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits,_that.totalCartons);case _:
+return $default(_that.transactionCount,_that.productCount,_that.inCount,_that.outCount,_that.inUnits,_that.outUnits,_that.returnedUnits,_that.totalUnits,_that.totalCartons,_that.orderCount,_that.activeOrderCount);case _:
   return orElse();
 
 }
@@ -465,10 +471,10 @@ return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( num productCount,  num inCount,  num outCount,  num totalUnits,  num totalCartons)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( num transactionCount,  num productCount,  num inCount,  num outCount,  num inUnits,  num outUnits,  num returnedUnits,  num totalUnits,  num totalCartons,  num orderCount,  num activeOrderCount)  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseStatsModel():
-return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits,_that.totalCartons);case _:
+return $default(_that.transactionCount,_that.productCount,_that.inCount,_that.outCount,_that.inUnits,_that.outUnits,_that.returnedUnits,_that.totalUnits,_that.totalCartons,_that.orderCount,_that.activeOrderCount);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -485,10 +491,10 @@ return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( num productCount,  num inCount,  num outCount,  num totalUnits,  num totalCartons)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( num transactionCount,  num productCount,  num inCount,  num outCount,  num inUnits,  num outUnits,  num returnedUnits,  num totalUnits,  num totalCartons,  num orderCount,  num activeOrderCount)?  $default,) {final _that = this;
 switch (_that) {
 case _WarehouseStatsModel() when $default != null:
-return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits,_that.totalCartons);case _:
+return $default(_that.transactionCount,_that.productCount,_that.inCount,_that.outCount,_that.inUnits,_that.outUnits,_that.returnedUnits,_that.totalUnits,_that.totalCartons,_that.orderCount,_that.activeOrderCount);case _:
   return null;
 
 }
@@ -500,14 +506,20 @@ return $default(_that.productCount,_that.inCount,_that.outCount,_that.totalUnits
 @JsonSerializable()
 
 class _WarehouseStatsModel implements WarehouseStatsModel {
-  const _WarehouseStatsModel({this.productCount = 0, this.inCount = 0, this.outCount = 0, this.totalUnits = 0, this.totalCartons = 0});
+  const _WarehouseStatsModel({this.transactionCount = 0, this.productCount = 0, this.inCount = 0, this.outCount = 0, this.inUnits = 0, this.outUnits = 0, this.returnedUnits = 0, this.totalUnits = 0, this.totalCartons = 0, this.orderCount = 0, this.activeOrderCount = 0});
   factory _WarehouseStatsModel.fromJson(Map<String, dynamic> json) => _$WarehouseStatsModelFromJson(json);
 
+@override@JsonKey() final  num transactionCount;
 @override@JsonKey() final  num productCount;
 @override@JsonKey() final  num inCount;
 @override@JsonKey() final  num outCount;
+@override@JsonKey() final  num inUnits;
+@override@JsonKey() final  num outUnits;
+@override@JsonKey() final  num returnedUnits;
 @override@JsonKey() final  num totalUnits;
 @override@JsonKey() final  num totalCartons;
+@override@JsonKey() final  num orderCount;
+@override@JsonKey() final  num activeOrderCount;
 
 /// Create a copy of WarehouseStatsModel
 /// with the given fields replaced by the non-null parameter values.
@@ -522,16 +534,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseStatsModel&&(identical(other.productCount, productCount) || other.productCount == productCount)&&(identical(other.inCount, inCount) || other.inCount == inCount)&&(identical(other.outCount, outCount) || other.outCount == outCount)&&(identical(other.totalUnits, totalUnits) || other.totalUnits == totalUnits)&&(identical(other.totalCartons, totalCartons) || other.totalCartons == totalCartons));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WarehouseStatsModel&&(identical(other.transactionCount, transactionCount) || other.transactionCount == transactionCount)&&(identical(other.productCount, productCount) || other.productCount == productCount)&&(identical(other.inCount, inCount) || other.inCount == inCount)&&(identical(other.outCount, outCount) || other.outCount == outCount)&&(identical(other.inUnits, inUnits) || other.inUnits == inUnits)&&(identical(other.outUnits, outUnits) || other.outUnits == outUnits)&&(identical(other.returnedUnits, returnedUnits) || other.returnedUnits == returnedUnits)&&(identical(other.totalUnits, totalUnits) || other.totalUnits == totalUnits)&&(identical(other.totalCartons, totalCartons) || other.totalCartons == totalCartons)&&(identical(other.orderCount, orderCount) || other.orderCount == orderCount)&&(identical(other.activeOrderCount, activeOrderCount) || other.activeOrderCount == activeOrderCount));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productCount,inCount,outCount,totalUnits,totalCartons);
+int get hashCode => Object.hash(runtimeType,transactionCount,productCount,inCount,outCount,inUnits,outUnits,returnedUnits,totalUnits,totalCartons,orderCount,activeOrderCount);
 
 @override
 String toString() {
-  return 'WarehouseStatsModel(productCount: $productCount, inCount: $inCount, outCount: $outCount, totalUnits: $totalUnits, totalCartons: $totalCartons)';
+  return 'WarehouseStatsModel(transactionCount: $transactionCount, productCount: $productCount, inCount: $inCount, outCount: $outCount, inUnits: $inUnits, outUnits: $outUnits, returnedUnits: $returnedUnits, totalUnits: $totalUnits, totalCartons: $totalCartons, orderCount: $orderCount, activeOrderCount: $activeOrderCount)';
 }
 
 
@@ -542,7 +554,7 @@ abstract mixin class _$WarehouseStatsModelCopyWith<$Res> implements $WarehouseSt
   factory _$WarehouseStatsModelCopyWith(_WarehouseStatsModel value, $Res Function(_WarehouseStatsModel) _then) = __$WarehouseStatsModelCopyWithImpl;
 @override @useResult
 $Res call({
- num productCount, num inCount, num outCount, num totalUnits, num totalCartons
+ num transactionCount, num productCount, num inCount, num outCount, num inUnits, num outUnits, num returnedUnits, num totalUnits, num totalCartons, num orderCount, num activeOrderCount
 });
 
 
@@ -559,13 +571,19 @@ class __$WarehouseStatsModelCopyWithImpl<$Res>
 
 /// Create a copy of WarehouseStatsModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? productCount = null,Object? inCount = null,Object? outCount = null,Object? totalUnits = null,Object? totalCartons = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? transactionCount = null,Object? productCount = null,Object? inCount = null,Object? outCount = null,Object? inUnits = null,Object? outUnits = null,Object? returnedUnits = null,Object? totalUnits = null,Object? totalCartons = null,Object? orderCount = null,Object? activeOrderCount = null,}) {
   return _then(_WarehouseStatsModel(
-productCount: null == productCount ? _self.productCount : productCount // ignore: cast_nullable_to_non_nullable
+transactionCount: null == transactionCount ? _self.transactionCount : transactionCount // ignore: cast_nullable_to_non_nullable
+as num,productCount: null == productCount ? _self.productCount : productCount // ignore: cast_nullable_to_non_nullable
 as num,inCount: null == inCount ? _self.inCount : inCount // ignore: cast_nullable_to_non_nullable
 as num,outCount: null == outCount ? _self.outCount : outCount // ignore: cast_nullable_to_non_nullable
+as num,inUnits: null == inUnits ? _self.inUnits : inUnits // ignore: cast_nullable_to_non_nullable
+as num,outUnits: null == outUnits ? _self.outUnits : outUnits // ignore: cast_nullable_to_non_nullable
+as num,returnedUnits: null == returnedUnits ? _self.returnedUnits : returnedUnits // ignore: cast_nullable_to_non_nullable
 as num,totalUnits: null == totalUnits ? _self.totalUnits : totalUnits // ignore: cast_nullable_to_non_nullable
 as num,totalCartons: null == totalCartons ? _self.totalCartons : totalCartons // ignore: cast_nullable_to_non_nullable
+as num,orderCount: null == orderCount ? _self.orderCount : orderCount // ignore: cast_nullable_to_non_nullable
+as num,activeOrderCount: null == activeOrderCount ? _self.activeOrderCount : activeOrderCount // ignore: cast_nullable_to_non_nullable
 as num,
   ));
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,6 +67,8 @@ class ShipmentsScreen extends ConsumerStatefulWidget {
 class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
   late final ManagerApiService _api = ref.read(managerApiServiceProvider);
   final _searchCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+  Timer? _debounce;
 
   bool _loading = true;
   String? _error;
@@ -72,28 +76,64 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
   String _query = '';
   String? _statusFilter; // null = همه
 
+  // صفحه‌بندی
+  int _total = 0;
+  bool _hasMore = false;
+  int _nextPage = 2;
+  bool _loadingMore = false;
+  OrderCountsModel _counts = const OrderCountsModel();
+
   @override
   void initState() {
     super.initState();
+    _scrollCtrl.addListener(_onScroll);
     _load();
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 300) {
+      _loadMore();
+    }
   }
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _loading = _orders.isEmpty;
       _error = null;
+      _hasMore = false;
+      _nextPage = 2;
     });
     try {
-      final orders = await _api.getOrders();
+      final q = _query.trim();
+      // فیلتر وضعیت سمت سرور اعمال می‌شود تا با شمارندهٔ chipها و صفحه‌بندی هماهنگ باشد
+      final page = q.isEmpty
+          ? await _api.getOrders(
+              page: 1,
+              pageSize: 50,
+              status: _statusFilter,
+            )
+          : await _api.searchShipments(
+              q: q,
+              page: 1,
+              pageSize: 50,
+              status: _statusFilter,
+            );
       if (!mounted) return;
       setState(() {
-        _orders = orders;
+        _orders = page.orders;
+        _total = page.total;
+        _hasMore = page.hasMore;
+        _nextPage = 2;
+        if (page.counts.total > 0 || q.isEmpty) _counts = page.counts;
         _loading = false;
       });
     } catch (e) {
@@ -105,12 +145,50 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
     }
   }
 
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    setState(() => _query = v);
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) _load();
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _loading) return;
+    setState(() => _loadingMore = true);
+    try {
+      final q = _query.trim();
+      final page = q.isEmpty
+          ? await _api.getOrders(
+              page: _nextPage,
+              pageSize: 50,
+              status: _statusFilter,
+            )
+          : await _api.searchShipments(
+              q: q,
+              page: _nextPage,
+              pageSize: 50,
+              status: _statusFilter,
+            );
+      if (!mounted) return;
+      setState(() {
+        _orders = [..._orders, ...page.orders];
+        _nextPage++;
+        _hasMore = page.hasMore;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
   List<OrderModel> get _filtered {
     final q = _query.trim();
     return _orders.where((o) {
       // فیلتر وضعیت
       if (_statusFilter != null && _statusKey(o) != _statusFilter) return false;
-      // فیلتر جستجو
+      // فیلتر جستجو (تکمیل‌کنندهٔ جستجوی سرور برای حالت جستجو)
       if (q.isEmpty) return true;
       final text = [
         o.senderName,
@@ -154,7 +232,7 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
-                '${_filtered.length} سفارش',
+                '${_faDigits(_total)} سفارش',
                 style: const TextStyle(
                   color: _green,
                   fontSize: 12,
@@ -172,19 +250,24 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: TextField(
               controller: _searchCtrl,
-              onChanged: (v) => setState(() => _query = v),
+              onChanged: _onSearchChanged,
               style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'جستجو: فرستنده، گیرنده، شهر، کالا…',
                 hintStyle: const TextStyle(color: _textDim, fontSize: 13),
-                prefixIcon: const Icon(Icons.search_rounded, color: _textDim, size: 20),
+                prefixIcon:
+                    const Icon(Icons.search_rounded, color: _textDim, size: 20),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close_rounded, color: _textDim, size: 18),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: _textDim,
+                          size: 18,
+                        ),
                         onPressed: () {
                           _searchCtrl.clear();
-                          setState(() => _query = '');
+                          _onSearchChanged('');
                         },
                       ),
                 filled: true,
@@ -211,11 +294,16 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
     );
   }
 
+  String _faDigits(int n) => n.toString().replaceAllMapped(
+    RegExp(r'[0-9]'),
+    (m) => '۰۱۲۳۴۵۶۷۸۹'[m.group(0)!.codeUnitAt(0) - 48],
+  );
+
   Widget _buildStats() {
-    final total = _orders.length;
-    final pending = _orders.where((o) => _statusKey(o) == 'pending').length;
-    final transit = _orders.where((o) => _statusKey(o) == 'in_transit').length;
-    final delivered = _orders.where((o) => _statusKey(o) == 'delivered').length;
+    final total = _counts.total;
+    final pending = _counts.pending;
+    final transit = _counts.inTransit;
+    final delivered = _counts.delivered;
 
     Widget card({
       required String label,
@@ -226,7 +314,11 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
       final active = _statusFilter == key;
       return Expanded(
         child: GestureDetector(
-          onTap: () => setState(() => _statusFilter = active ? null : key),
+          onTap: () {
+            setState(() => _statusFilter = active ? null : key);
+            // فیلتر وضعیت سمت سرور اعمال می‌شود — لیست دوباره بارگذاری می‌شود
+            _load();
+          },
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 250),
@@ -252,7 +344,7 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
             child: Column(
               children: [
                 Text(
-                  '$value',
+                  _faDigits(value),
                   style: TextStyle(
                     color: color,
                     fontSize: 18,
@@ -283,7 +375,12 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
           const SizedBox(width: 8),
           card(label: 'در انتظار', value: pending, color: _blue, key: 'pending'),
           const SizedBox(width: 8),
-          card(label: 'در حال ارسال', value: transit, color: _amber, key: 'in_transit'),
+          card(
+            label: 'در حال ارسال',
+            value: transit,
+            color: _amber,
+            key: 'in_transit',
+          ),
           const SizedBox(width: 8),
           card(label: 'تحویل شده', value: delivered, color: _green, key: 'delivered'),
         ],
@@ -309,10 +406,14 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text(
           'حذف سفارش',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Text(
-          'سفارش «${order.senderName ?? '—'} → ${order.receiverName ?? '—'}» حذف شود؟\nبرای انباردار مربوطه هم بلافاصله حذف میشود.',
+          'سفارش شماره ${order.orderNumber > 0 ? _faDigits(order.orderNumber) : '—'} «${order.senderName ?? '—'} → ${order.receiverName ?? '—'}» حذف شود؟\nبرای انباردار مربوطه هم بلافاصله حذف میشود.',
           style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6),
         ),
         actions: [
@@ -322,7 +423,13 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            child: const Text(
+              'حذف',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -366,23 +473,44 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
       if (_statusFilter != null) {
         return _buildMessage('سفارشی در این وضعیت یافت نشد', clearFilter: true);
       }
-      return _buildMessage(_query.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'نتیجه‌ای یافت نشد');
+      return _buildMessage(
+        _query.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'نتیجه‌ای یافت نشد',
+      );
     }
     return RefreshIndicator(
       color: _green,
       backgroundColor: _surface,
       onRefresh: _load,
       child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        controller: _scrollCtrl,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        itemCount: orders.length,
+        itemCount: orders.length + (_hasMore ? 1 : 0),
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
+          if (index >= orders.length) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: _green.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            );
+          }
           final order = orders[index];
+          final deletable = _statusKey(order) == 'pending';
           return _OrderCard(
             order: order,
             onEdit: () => _editOrder(order),
-            onDelete: () => _deleteOrder(order),
+            onDelete: deletable ? () => _deleteOrder(order) : null,
           );
         },
       ),
@@ -439,12 +567,12 @@ class _ShipmentsScreenState extends ConsumerState<ShipmentsScreen> {
 class _OrderCard extends StatelessWidget {
   final OrderModel order;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
 
   const _OrderCard({
     required this.order,
     required this.onEdit,
-    required this.onDelete,
+    this.onDelete,
   });
 
   @override
@@ -453,6 +581,11 @@ class _OrderCard extends StatelessWidget {
     final receiver = order.receiverName ?? 'گیرنده نامشخص';
     final items = order.items;
     final delivered = order.deliveryStatus == 'DELIVERED';
+
+    String fa(int n) => n.toString().replaceAllMapped(
+      RegExp(r'[0-9]'),
+      (m) => '۰۱۲۳۴۵۶۷۸۹'[m.group(0)!.codeUnitAt(0) - 48],
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -472,6 +605,15 @@ class _OrderCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        'سفارش شماره ${order.orderNumber > 0 ? fa(order.orderNumber) : '—'}',
+                        style: const TextStyle(
+                          color: _green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
                       Text(
                         sender,
                         style: const TextStyle(
@@ -651,13 +793,15 @@ class _OrderCard extends StatelessWidget {
                   height: 18,
                   color: _border,
                 ),
-                const SizedBox(width: 6),
-                _ActionButton(
-                  icon: Icons.delete_rounded,
-                  label: 'حذف',
-                  color: _red,
-                  onTap: onDelete,
-                ),
+                if (onDelete != null) ...[
+                  const SizedBox(width: 6),
+                  _ActionButton(
+                    icon: Icons.delete_rounded,
+                    label: 'حذف',
+                    color: _red,
+                    onTap: onDelete!,
+                  ),
+                ],
               ],
             ),
           ),

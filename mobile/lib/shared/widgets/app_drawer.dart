@@ -8,6 +8,8 @@ class AppDrawer extends StatelessWidget {
   final String? avatarUrl;
   final VoidCallback? onHistoryTap;
   final VoidCallback? onArchiveTap;
+  final VoidCallback? onInvoicesTap;
+  final VoidCallback? onTransferTap;
   final VoidCallback? onSettingsTap;
   final Color greenColor;
   final Color surfaceColor;
@@ -21,6 +23,8 @@ class AppDrawer extends StatelessWidget {
     this.avatarUrl,
     this.onHistoryTap,
     this.onArchiveTap,
+    this.onInvoicesTap,
+    this.onTransferTap,
     this.onSettingsTap,
     this.greenColor = const Color(0xFF4ADE80),
     this.surfaceColor = const Color(0xFF1A1D22),
@@ -94,6 +98,20 @@ class AppDrawer extends StatelessWidget {
               'بایگانی',
               onArchiveTap,
             ),
+          if (onInvoicesTap != null)
+            _buildItem(
+              context,
+              Icons.receipt_long_rounded,
+              'فاکتورها',
+              onInvoicesTap,
+            ),
+          if (onTransferTap != null)
+            _buildItem(
+              context,
+              Icons.swap_horizontal_circle_rounded,
+              'جابه‌جایی محصول',
+              onTransferTap,
+            ),
           if (onSettingsTap != null)
             _buildItem(
               context,
@@ -117,7 +135,42 @@ class AppDrawer extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            onTap: () {
+            onTap: () async {
+              // تأیید قبل از خروج: نشست + پین و قفل برنامه پاک می‌شوند
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: surfaceColor,
+                  title: const Text(
+                    'خروج از حساب',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  content: const Text(
+                    'نشست فعلی بسته می‌شود و پین و تنظیمات قفل برنامه پاک می‌شود. آیا مطمئن هستید؟',
+                    style: TextStyle(color: Colors.white70, fontSize: 13.5),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text(
+                        'انصراف',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        'خروج',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true) return;
               Navigator.pop(context);
               onLogout();
             },

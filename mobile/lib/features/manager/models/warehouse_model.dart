@@ -21,7 +21,7 @@ abstract class WarehouseModel with _$WarehouseModel {
       address: json['address'] as String?,
       keeperId: json['keeperId'] as String?,
       keeperName: json['keeperName'] as String?,
-      productCount: json['_count']?['users'] as int? ?? 0,
+      productCount: json['productCount'] as int? ?? 0,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,

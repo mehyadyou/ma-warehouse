@@ -104,3 +104,63 @@ describe('dashboardService.getHistory', () => {
         expect(queryRaw.mock.calls[1][3]).toBe(0);
     });
 });
+
+describe('dashboardService.getRecentActivities', () => {
+    it('تراکنش تکراری ورود/مرجوعی در برابر لاگ همان ثانیه حذف می‌شود (لاگ می‌ماند)', async () => {
+        queryRaw
+            .mockResolvedValueOnce([
+                { id: 'tx1', type: 'IN', title: 'اسپیکر', quantity: 3, createdAt: new Date('2026-08-18T10:00:00.500Z'), userName: 'علی', activityType: 'transaction' },
+                { id: 'tx2', type: 'RETURN', title: 'ماوس', quantity: 1, createdAt: new Date('2026-08-18T11:00:00.200Z'), userName: 'علی', activityType: 'transaction' },
+                { id: 'tx3', type: 'OUT', title: 'هدفون', quantity: 2, createdAt: new Date('2026-08-18T12:00:00.000Z'), userName: 'رضا', activityType: 'transaction' },
+            ])
+            .mockResolvedValueOnce([
+                { id: 'log1', type: 'product_checkin', label: 'اسپیکر — 1 کارتن — ورود به انبار', createdAt: new Date('2026-08-18T10:00:00.100Z'), userName: 'علی', activityType: 'activityLog' },
+                { id: 'log2', type: 'return_received', label: 'ماوس — بازگشت به انبار', createdAt: new Date('2026-08-18T11:00:00.100Z'), userName: 'علی', activityType: 'activityLog' },
+            ]);
+
+        const res = await dashboardService.getRecentActivities();
+
+        // IN و RETURN حذف شدند، OUT می‌ماند
+        expect(res.activities).toHaveLength(3);
+        expect(res.activities.filter(a => a.activityType === 'transaction').map(a => a.id)).toEqual(['tx3']);
+        expect(res.activities.filter(a => a.activityType === 'activityLog')).toHaveLength(2);
+    });
+
+    it('تراکنش بدون لاگ معادل (ثانیه متفاوت) حفظ می‌شود', async () => {
+        queryRaw
+            .mockResolvedValueOnce([
+                { id: 'tx1', type: 'IN', title: 'اسپیکر', quantity: 3, createdAt: new Date('2026-08-18T10:00:59.500Z'), userName: 'علی', activityType: 'transaction' },
+            ])
+            .mockResolvedValueOnce([
+                { id: 'log1', type: 'product_checkin', label: 'اسپیکر — ورود', createdAt: new Date('2026-08-18T10:01:00.100Z'), userName: 'علی', activityType: 'activityLog' },
+            ]);
+
+        const res = await dashboardService.getRecentActivities();
+
+        expect(res.activities).toHaveLength(2);
+    });
+
+    it('مرتب‌سازی نزولی بر اساس زمان + برش به ۱۵', async () => {
+        const logs = Array.from({ length: 15 }, (_, i) => ({
+            id: `log${i}`,
+            type: 'product_created',
+            label: 'محصول',
+            createdAt: new Date(2026, 7, 18, 10, 0, i),
+            userName: 'علی',
+            activityType: 'activityLog',
+        }));
+        const txs = [
+            { id: 'tx1', type: 'OUT', title: 'کالا', quantity: 1, createdAt: new Date(2026, 7, 18, 12, 0, 0), userName: 'رضا', activityType: 'transaction' },
+            { id: 'tx2', type: 'IN', title: 'کالا', quantity: 1, createdAt: new Date(2026, 7, 18, 9, 0, 0), userName: 'رضا', activityType: 'transaction' },
+        ];
+        queryRaw.mockResolvedValueOnce(txs).mockResolvedValueOnce(logs);
+
+        const res = await dashboardService.getRecentActivities();
+
+        expect(res.activities).toHaveLength(15);
+        // جدیدترین (۱۲:۰۰) اول است
+        expect(res.activities[0].id).toBe('tx1');
+        const times = res.activities.map(a => new Date(a.createdAt as Date).getTime());
+        expect(times).toEqual([...times].sort((a, b) => b - a));
+    });
+});
