@@ -15,3 +15,12 @@ export const scanOutSchema = z.object({
 );
 
 export type ScanOutInput = z.infer<typeof scanOutSchema>;
+
+/** خروج دستی (بدون QR) برای محصولاتی که برچسب/QR ندارند — انتخاب محصول + مدل + تعداد */
+export const manualExitSchema = z.object({
+    productId: z.string().trim().min(1, 'محصول الزامی است'),
+    modelId:    z.string().trim().nullish(),
+    quantity:   z.number().int().positive('تعداد باید عددی مثبت باشد'),
+});
+
+export type ManualExitInput = z.infer<typeof manualExitSchema>;

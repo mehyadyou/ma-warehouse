@@ -23,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _passController = TextEditingController();
   bool _busy = false;
+  bool _showServerField = false;
   String _status = '';
 
   @override
@@ -142,67 +143,108 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ],
           ),
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
             children: [
-              const Text(
-                'MA',
-                style: TextStyle(
-                  color: Palette.primary,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.all(40),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'MA',
+                      style: TextStyle(
+                        color: Palette.primary,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'پنل انباردار',
+                      style: TextStyle(
+                        color: Palette.primary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'ورود ایمن به نرم افزار مدیریت انبار',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Palette.textMuted, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: _showServerField
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AppInput(
+                                  hint: 'آدرس سرور (http://127.0.0.1:3000)',
+                                  controller: _serverController,
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                    AppInput(
+                      hint: 'شماره موبایل (09xxxxxxxxx)',
+                      controller: _phoneController,
+                    ),
+                    const SizedBox(height: 12),
+                    AppInput(
+                      hint: 'رمز عبور',
+                      controller: _passController,
+                      obscure: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: _busy ? null : _login,
+                    ),
+                    const SizedBox(height: 16),
+                    AppButton(
+                      label: _busy ? 'در حال ورود...' : 'ورود به پنل',
+                      height: 48,
+                      onPressed: _busy ? null : _login,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _status,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Palette.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Desktop v3.0',
+                      style: TextStyle(color: Color(0xFF555555), fontSize: 10),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'پنل انباردار',
-                style: TextStyle(
-                  color: Palette.primary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Positioned(
+                top: 8,
+                left: 8,
+                child: IconButton(
+                  tooltip: 'تنظیمات سرور',
+                  onPressed: () =>
+                      setState(() => _showServerField = !_showServerField),
+                  icon: const Icon(
+                    Icons.settings_rounded,
+                    size: 16,
+                    color: Palette.textMuted,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 28,
+                    minHeight: 28,
+                  ),
+                  splashRadius: 16,
                 ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'ورود ایمن به نرم افزار مدیریت انبار',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Palette.textMuted, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              AppInput(
-                hint: 'آدرس سرور (http://127.0.0.1:3000)',
-                controller: _serverController,
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                hint: 'شماره موبایل (09xxxxxxxxx)',
-                controller: _phoneController,
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                hint: 'رمز عبور',
-                controller: _passController,
-                obscure: true,
-                textInputAction: TextInputAction.done,
-                onSubmitted: _busy ? null : _login,
-              ),
-              const SizedBox(height: 16),
-              AppButton(
-                label: _busy ? 'در حال ورود...' : 'ورود به پنل',
-                height: 48,
-                onPressed: _busy ? null : _login,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Palette.textMuted, fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Desktop v3.0',
-                style: TextStyle(color: Color(0xFF555555), fontSize: 10),
               ),
             ],
           ),

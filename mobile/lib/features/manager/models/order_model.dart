@@ -10,6 +10,8 @@ abstract class OrderModel with _$OrderModel {
     @Default(0) int orderNumber,
     @Default(0) int version,
     String? senderName,
+    String? senderNationalId,
+    String? senderPhone,
     String? receiverName,
     String? customerPhone,
     String? city,

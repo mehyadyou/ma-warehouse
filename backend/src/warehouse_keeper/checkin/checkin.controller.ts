@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { checkinService } from './checkin.service';
 import { asyncHandler } from '../../middleware/asyncHandler';
-import { SubmitCheckinInput } from './checkin.schema';
+import { SubmitCheckinInput, MarkPrintedInput } from './checkin.schema';
 
 export const checkinController = {
   submit: asyncHandler(async (req: Request, res: Response) => {
@@ -27,5 +27,20 @@ export const checkinController = {
     if (!warehouseId) { res.status(403).json({ error: 'دسترسی نامعتبر' }); return; }
     const cartons = await checkinService.listRecentCartons(warehouseId);
     res.json({ cartons });
+  }),
+
+  listPrinted: asyncHandler(async (req: Request, res: Response) => {
+    const warehouseId = req.user?.warehouseId;
+    if (!warehouseId) { res.status(403).json({ error: 'دسترسی نامعتبر' }); return; }
+    const cartons = await checkinService.listPrintedCartons(warehouseId);
+    res.json({ cartons });
+  }),
+
+  markPrinted: asyncHandler(async (req: Request, res: Response) => {
+    const warehouseId = req.user?.warehouseId;
+    if (!warehouseId) { res.status(403).json({ error: 'دسترسی نامعتبر' }); return; }
+    const { cartonIds } = req.body as MarkPrintedInput;
+    const marked = await checkinService.markCartonsPrinted(warehouseId, cartonIds);
+    res.json({ marked });
   }),
 };

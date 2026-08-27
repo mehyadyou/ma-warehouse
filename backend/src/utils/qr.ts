@@ -80,12 +80,28 @@ export const buildQrFor = (parts: QrPayloadParts): { qrPayload: string; hmac: st
 export interface SerialQrParts {
     serial: string;
     uuid: string;
+    productName?: string;
+    modelName?: string;
+    capacityPerBox?: number;
 }
 
-// فرمت جدید (v2): محتوای QR همان سریال کارتن است
-// MA|SN|<serial>|<uuid>|<hmac>
+// فرمت v3: علاوه بر سریال، نام محصول/مدل و ظرفیت هم داخل QR می‌آید تا با اسکن
+// گوشی اطلاعات کالا دیده شود. اگر نام محصول داده نشود (v2) فقط سریال می‌رود —
+// هر دو فرمت برای مرجوعی/خروج قابل اعتبارسنجی‌اند.
+// v3: MA|SN|<serial>|<uuid>|<productName>|<modelName>|<capacity>|<hmac>
+// v2: MA|SN|<serial>|<uuid>|<hmac>
 export const buildQrForSerial = (parts: SerialQrParts): { qrPayload: string; hmac: string } => {
-    const body = [PREFIX, 'SN', sanitize(parts.serial), parts.uuid].join(SEPARATOR);
+    const body = parts.productName
+        ? [
+              PREFIX,
+              'SN',
+              sanitize(parts.serial),
+              parts.uuid,
+              sanitize(parts.productName),
+              sanitize(parts.modelName ?? ''),
+              String(parts.capacityPerBox ?? 1),
+          ].join(SEPARATOR)
+        : [PREFIX, 'SN', sanitize(parts.serial), parts.uuid].join(SEPARATOR);
     const hmac = signBody(body);
     return { qrPayload: `${body}${SEPARATOR}${hmac}`, hmac };
 };
@@ -99,16 +115,23 @@ export interface VerifiedSerialPayload {
 
 export const verifySerialPayload = (raw: string): VerifiedSerialPayload => {
     const segments = raw.split(SEPARATOR);
-    if (segments.length !== 5 || segments[0] !== PREFIX || segments[1] !== 'SN') {
+    // هر دو طول پذیرفته می‌شود: v2 (5 بخش) و v3 (8 بخش با اطلاعات محصول)
+    if (
+        (segments.length !== 5 && segments.length !== 8) ||
+        segments[0] !== PREFIX ||
+        segments[1] !== 'SN'
+    ) {
         throw new AppError('فرمت QR نامعتبر است', 400);
     }
 
-    const [, , serial, uuid, hmac] = segments;
-    const body = segments.slice(0, 4).join(SEPARATOR);
+    const serial = segments[2]!;
+    const uuid = segments[3]!;
+    const body = segments.slice(0, -1).join(SEPARATOR);
+    const hmac = segments[segments.length - 1]!;
 
-    if (!verifyBody(body, hmac!)) {
+    if (!verifyBody(body, hmac)) {
         throw new AppError('امضای QR نامعتبر است', 400);
     }
 
-    return { serial: serial!, uuid: uuid!, hmac: hmac!, raw };
+    return { serial, uuid, hmac, raw };
 };

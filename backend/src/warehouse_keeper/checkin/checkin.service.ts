@@ -10,6 +10,7 @@ export interface CheckinItem {
     modelId?: string | null;
     entryType?: 'NEW' | 'RETURNED';
     serialNumber?: string | null;
+    withoutQr?: boolean;
     qrPayload?: string | null;
     cartonCount: number;
     individualCount: number;
@@ -166,7 +167,7 @@ export const checkinService = {
                 throw new AppError('برای هر ردیف حداقل یک کارتن یا یک تکی وارد کنید', 400);
             }
             if (item.entryType === 'RETURNED') {
-                if (!item.serialNumber?.trim()) {
+                if (!item.serialNumber?.trim() && !item.withoutQr) {
                     throw new AppError('برای کالای مرجوعی وارد کردن سریال الزامی است', 400);
                 }
                 if (item.cartonCount !== 0 || item.individualCount !== 1) {
@@ -207,9 +208,16 @@ export const checkinService = {
 
                 for (let i = 0; i < item.cartonCount; i++) {
                     const id = crypto.randomUUID();
-                    // هر کارتن سریال اختصاصی می‌گیرد؛ محتوای QR همان سریال است
+                    // هر کارتن سریال اختصاصی می‌گیرد؛ داخل QR علاوه بر سریال، نام
+                    // محصول/مدل و ظرفیت هم می‌آید تا با اسکن گوشی اطلاعات کالا دیده شود
                     const serial = await nextSerial(tx);
-                    const { qrPayload, hmac } = buildQrForSerial({ serial, uuid: id });
+                    const { qrPayload, hmac } = buildQrForSerial({
+                        serial,
+                        uuid: id,
+                        productName: product.name,
+                        modelName: model?.name ?? '',
+                        capacityPerBox,
+                    });
                     await tx.carton.create({
                         data: {
                             id,
@@ -237,6 +245,7 @@ export const checkinService = {
                     totalUnits += capacityPerBox;
                 }
 
+                let lastIndividualSerial: string | null = serialNumber;
                 for (let i = 0; i < item.individualCount; i++) {
                     // برای مرجوعی: سریال را با قفل شرطی از کارتن اصلی (خروج‌زده) پاک کن —
                     // اگر هم‌زمان درخواست دیگری همین سریال را مرجوع کرده باشد، ۰ ردیف برمی‌گردد و خطا می‌دهد
@@ -256,11 +265,15 @@ export const checkinService = {
                         }
                     }
                     const id = crypto.randomUUID();
-                    // مرجوعی: سریال همان کارتن خروج‌زده؛ جدید: سریال اختصاصی تازه
+                    // مرجوعی: سریال همان کارتن خروج‌زده؛ بدون QR: سریال تازه؛ جدید: سریال اختصاصی
                     const serial = serialNumber ?? (await nextSerial(tx));
+                    lastIndividualSerial = serial;
                     const { qrPayload, hmac } = buildQrForSerial({
                         serial,
                         uuid: id,
+                        productName: product.name,
+                        modelName: model?.name ?? '',
+                        capacityPerBox: 1,
                     });
                     await tx.carton.create({
                         data: {
@@ -306,7 +319,7 @@ export const checkinService = {
                     await tx.activityLog.create({
                         data: {
                             type: 'return_received',
-                            label: `${productPart} — سریال ${serialNumber ?? ''} — بازگشت به انبار ${warehouseName}`,
+                            label: `${productPart} — سریال ${lastIndividualSerial ?? ''} — بازگشت به انبار ${warehouseName}`,
                             userId,
                         },
                     });
@@ -368,15 +381,40 @@ export const checkinService = {
         return { cartons: created, totalUnits };
     },
 
+    // فقط کارتن‌های در انبار (IN_STOCK) و چاپ‌نشده — کارتن‌های خروج‌زده یا
+    // لیبل‌چاپ‌شده نباید در تب «محصولات» بیایند؛ چاپ‌شده‌ها به تب «چاپ شده‌ها» می‌روند
     listRecentCartons: async (warehouseId: string, limit = 50) => {
         return await prisma.carton.findMany({
-            where: { warehouseId },
+            where: { warehouseId, status: 'IN_STOCK', printedAt: null },
             orderBy: { createdAt: 'desc' },
             take: limit,
             include: {
-                product: { select: { name: true } },
+                product: { select: { name: true, unit: true } },
                 model: { select: { name: true, unitsPerBox: true } },
             },
         });
+    },
+
+    // کارتن‌هایی که لیبل‌شان چاپ شده — تب «چاپ شده‌ها» پنل دسکتاپ
+    listPrintedCartons: async (warehouseId: string, limit = 100) => {
+        return await prisma.carton.findMany({
+            where: { warehouseId, printedAt: { not: null } },
+            orderBy: { printedAt: 'desc' },
+            take: limit,
+            include: {
+                product: { select: { name: true, unit: true } },
+                model: { select: { name: true, unitsPerBox: true } },
+            },
+        });
+    },
+
+    // ثبت لحظهٔ چاپ لیبل — فقط کارتن‌های همین انبار و فقط بار اول (idempotent)
+    markCartonsPrinted: async (warehouseId: string, cartonIds: string[]) => {
+        if (cartonIds.length === 0) return 0;
+        const res = await prisma.carton.updateMany({
+            where: { id: { in: cartonIds }, warehouseId, printedAt: null },
+            data: { printedAt: new Date() },
+        });
+        return res.count;
     },
 };

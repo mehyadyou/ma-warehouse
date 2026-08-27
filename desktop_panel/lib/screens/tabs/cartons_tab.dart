@@ -20,6 +20,30 @@ class GroupKey {
 
 typedef GroupEntry = (GroupKey, List<Map<String, dynamic>>);
 
+/// تعداد واحد موجودی یک کارتن: تکی = ۱، کارتن = ظرفیت بسته (unitsPerBox)
+int unitsOfCarton(Map<String, dynamic> carton) {
+  if (carton['isIndividual'] == true) return 1;
+  final model = carton['model'];
+  if (model is Map<String, dynamic>) {
+    final cap = model['unitsPerBox'];
+    if (cap is num) return cap.toInt();
+  }
+  final cap = carton['capacityPerBox'];
+  if (cap is num) return cap.toInt();
+  return 0;
+}
+
+/// واحد نمایش محصول (مثل «عدد») — از واحد تعریف‌شدهٔ مدیر
+String unitOfCartons(List<Map<String, dynamic>> cartons) {
+  if (cartons.isEmpty) return 'عدد';
+  final product = cartons.first['product'];
+  if (product is Map<String, dynamic>) {
+    final unit = product['unit']?.toString().trim() ?? '';
+    if (unit.isNotEmpty) return unit;
+  }
+  return 'عدد';
+}
+
 String _entryDate(Map<String, dynamic> carton) {
   final raw = carton['createdAt']?.toString() ?? '';
   return raw.length > 10
@@ -27,7 +51,10 @@ String _entryDate(Map<String, dynamic> carton) {
       : (raw.isEmpty ? 'نامشخص' : raw);
 }
 
-GroupKey _groupKey(Map<String, dynamic> carton) {
+GroupKey _groupKey(
+  Map<String, dynamic> carton, {
+  required bool groupByDate,
+}) {
   final model = carton['model'];
   final modelName = model is Map<String, dynamic>
       ? (model['name']?.toString() ?? 'بدون مدل')
@@ -36,17 +63,27 @@ GroupKey _groupKey(Map<String, dynamic> carton) {
   final productName = product is Map<String, dynamic>
       ? (product['name']?.toString() ?? 'بدون محصول')
       : 'بدون محصول';
-  return GroupKey(
-    modelName,
-    '$productName | تاریخ ورود: ${_entryDate(carton)}',
-  );
+  // با groupByDate=false تاریخ در کلید گروه نمی‌آید تا مدل تکراریِ همان محصول
+  // در همان ستون جمع شود و ستون جدید ساخته نشود
+  final subtitle = groupByDate
+      ? '$productName | تاریخ ورود: ${_entryDate(carton)}'
+      : productName;
+  return GroupKey(modelName, subtitle);
 }
 
 @visibleForTesting
-List<GroupEntry> groupCartonsByLabel(List<Map<String, dynamic>> cartons) {
+List<GroupEntry> groupCartonsByLabel(
+  List<Map<String, dynamic>> cartons, {
+  bool groupByDate = true,
+}) {
   final groups = <GroupKey, List<Map<String, dynamic>>>{};
   for (final carton in cartons) {
-    groups.putIfAbsent(_groupKey(carton), () => []).add(carton);
+    groups
+        .putIfAbsent(
+          _groupKey(carton, groupByDate: groupByDate),
+          () => [],
+        )
+        .add(carton);
   }
   return [for (final entry in groups.entries) (entry.key, entry.value)];
 }
@@ -60,6 +97,9 @@ class CartonsTab extends StatefulWidget {
     required this.emptyState,
     required this.summary,
     required this.errorSummary,
+    this.groupByDate = true,
+    this.onAddProduct,
+    this.onPrinted,
   });
 
   final Future<List<dynamic>> Function() fetch;
@@ -68,6 +108,16 @@ class CartonsTab extends StatefulWidget {
   final String emptyState;
   final String Function(int groups, int total) summary;
   final String errorSummary;
+
+  /// false یعنی گروه‌بندی فقط بر اساس (محصول، مدل) و بدون تاریخ —
+  /// مدل تکراریِ همان محصول در همان ستون جمع می‌شود
+  final bool groupByDate;
+
+  /// اگر ست باشد، دکمه «افزودن محصول» بالای تب نمایش داده می‌شود
+  final VoidCallback? onAddProduct;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا کارتن‌ها به «چاپ شده‌ها» منتقل شوند
+  final void Function(List<String> cartonIds)? onPrinted;
 
   @override
   State<CartonsTab> createState() => CartonsTabState();
@@ -96,7 +146,10 @@ class CartonsTabState extends State<CartonsTab> {
       final cartons = raw.whereType<Map<String, dynamic>>().toList(
         growable: false,
       );
-      final groups = groupCartonsByLabel(cartons);
+      final groups = groupCartonsByLabel(
+        cartons,
+        groupByDate: widget.groupByDate,
+      );
       if (mounted) {
         setState(() {
           _loading = false;
@@ -112,11 +165,24 @@ class CartonsTabState extends State<CartonsTab> {
             );
             _summary = widget.summary(groups.length, total);
             for (final entry in groups) {
+              var subtitle = entry.$1.subtitle;
+              // در تب محصولات، موجودی (به واحد) و تعداد لیبل/QR را نشان بده تا با
+              // پنل انباردار هماهنگ باشد — فقط کارتن‌های در انبار شمرده می‌شوند؛
+              // هر کارتن/تکی یک QR دارد ولی موجودی به واحد شمرده می‌شود
+              if (!widget.groupByDate) {
+                final units = entry.$2.fold<int>(
+                  0,
+                  (sum, carton) => sum + unitsOfCarton(carton),
+                );
+                subtitle =
+                    '$subtitle | موجودی: $units ${unitOfCartons(entry.$2)} | ${entry.$2.length} لیبل (QR)';
+              }
               _items.add(
                 AccordionItem(
                   title: entry.$1.title,
-                  subtitle: entry.$1.subtitle,
+                  subtitle: subtitle,
                   cartons: entry.$2,
+                  onPrinted: widget.onPrinted,
                 ),
               );
             }
@@ -154,6 +220,13 @@ class CartonsTabState extends State<CartonsTab> {
                   ),
                 ),
               ),
+              if (widget.onAddProduct != null) ...[
+                AppButton(
+                  label: 'افزودن محصول',
+                  onPressed: widget.onAddProduct,
+                ),
+                const SizedBox(width: 8),
+              ],
               AppButton(
                 label: 'بارگذاری مجدد',
                 variant: AppButtonVariant.secondary,

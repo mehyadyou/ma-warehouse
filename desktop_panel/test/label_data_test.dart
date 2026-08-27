@@ -12,6 +12,7 @@ void main() {
         'qrPayload': 'QR-DATA',
       });
       expect(data.modelDisplay, 'مدل ایکس');
+      expect(data.productName, 'محصول وای');
       expect(data.qtyText, '12 عدد / کارتن');
       expect(data.serial, 'ABC-1234');
       expect(data.barcode, 'ABC-1234');
@@ -27,6 +28,7 @@ void main() {
         'serialNumber': 'SER',
       });
       expect(data.modelDisplay, 'محصول تخت');
+      expect(data.productName, 'محصول تخت');
       expect(data.qtyText, '6 عدد / کارتن');
     });
 
@@ -47,6 +49,7 @@ void main() {
       expect(data.tracking, 'MA-XXXXXXXX');
       expect(data.barcode, '000000');
       expect(data.modelDisplay, '—');
+      expect(data.productName, '');
     });
 
     test('qrPayload falls back to tracking', () {

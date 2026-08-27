@@ -49,6 +49,15 @@ _KeeperProductRowModel _$KeeperProductRowModelFromJson(
   name: json['name'] as String?,
   unit: json['unit'] as String?,
   totalCount: json['totalCount'] as num? ?? 0,
+  models:
+      (json['models'] as List<dynamic>?)
+          ?.map(
+            (e) => KeeperProductModelStockModel.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList() ??
+      const <KeeperProductModelStockModel>[],
 );
 
 Map<String, dynamic> _$KeeperProductRowModelToJson(
@@ -58,6 +67,7 @@ Map<String, dynamic> _$KeeperProductRowModelToJson(
   'name': instance.name,
   'unit': instance.unit,
   'totalCount': instance.totalCount,
+  'models': instance.models,
 };
 
 _KeeperWarehouseStockRowModel _$KeeperWarehouseStockRowModelFromJson(

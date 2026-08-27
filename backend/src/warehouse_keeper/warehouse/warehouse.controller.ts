@@ -47,7 +47,11 @@ export const warehouseController = {
         res.json(data);
     }),
     getTransactions: asyncHandler(async (req: Request, res: Response) => {
-        const transactions = await warehouseService.getTransactions(req.user!.warehouseId as string, req.query.date as string);
+        const transactions = await warehouseService.getTransactions(
+            req.user!.warehouseId as string,
+            req.query.date as string | undefined,
+            req.query.type as string | undefined,
+        );
         res.json({ transactions });
     }),
     getProducts: asyncHandler(async (req: Request, res: Response) => {

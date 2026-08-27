@@ -187,6 +187,24 @@ class WarehouseKeeperApiService {
     return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));
   }
 
+  /// خروج دستی (بدون QR) برای محصولاتی که برچسب ندارند — محصول + مدل + تعداد،
+  /// اعتبارسنجی مطابق سفارش یا دستور خروج/جابه‌جایی مدیر سمت سرور انجام می‌شود
+  Future<ScanOutResultModel> manualExit({
+    required String productId,
+    String? modelId,
+    required int quantity,
+  }) async {
+    final res = await _dio.post(
+      '/warehouse-keeper/scan-out/manual',
+      data: {
+        'productId': productId,
+        if (modelId != null && modelId.trim().isNotEmpty) 'modelId': modelId,
+        'quantity': quantity,
+      },
+    );
+    return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));
+  }
+
   /// کارتن‌های خروج‌زده‌شده برای یک سفارش خاص — نمایش پیشرفت خروج
   Future<List<Map<String, dynamic>>> getOrderCartons(String orderId) async {
     final res = await _dio.get('/warehouse-keeper/orders/$orderId/cartons');

@@ -97,6 +97,8 @@ class _EditOrderScreenState extends ConsumerState<EditOrderScreen> {
   bool get _canEditItems => widget.order.status == 'PENDING';
 
   final _senderCtrl = TextEditingController();
+  final _senderNationalIdCtrl = TextEditingController();
+  final _senderPhoneCtrl = TextEditingController();
   final _receiverCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
@@ -110,6 +112,8 @@ class _EditOrderScreenState extends ConsumerState<EditOrderScreen> {
     _shippingMethod = o.shippingMethod ?? 'باربری';
     _selectedCarrier = o.carrier;
     _senderCtrl.text = o.senderName ?? '';
+    _senderNationalIdCtrl.text = o.senderNationalId ?? '';
+    _senderPhoneCtrl.text = o.senderPhone ?? '';
     _receiverCtrl.text = o.receiverName ?? '';
     _phoneCtrl.text = o.customerPhone ?? '';
     _cityCtrl.text = o.city ?? '';
@@ -121,6 +125,8 @@ class _EditOrderScreenState extends ConsumerState<EditOrderScreen> {
   @override
   void dispose() {
     _senderCtrl.dispose();
+    _senderNationalIdCtrl.dispose();
+    _senderPhoneCtrl.dispose();
     _receiverCtrl.dispose();
     _phoneCtrl.dispose();
     _cityCtrl.dispose();

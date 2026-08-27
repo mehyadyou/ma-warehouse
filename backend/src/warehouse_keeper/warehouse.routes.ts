@@ -3,8 +3,8 @@ import { authenticate, authorize } from '../middleware/auth';
 import { requireActiveWarehouse } from '../middleware/requireActiveWarehouse';
 import { userRateLimit } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
-import { submitCheckinSchema } from './checkin/checkin.schema';
-import { scanOutSchema } from './scanout/scanout.schema';
+import { submitCheckinSchema, markPrintedSchema } from './checkin/checkin.schema';
+import { scanOutSchema, manualExitSchema } from './scanout/scanout.schema';
 import { warehouseController } from './warehouse/warehouse.controller';
 import { checkinController } from './checkin/checkin.controller';
 import { scanOutController } from './scanout/scanout.controller';
@@ -40,8 +40,13 @@ router.get('/checkin/recent', checkinController.listRecent);
 router.get('/cartons/shipped', scanOutController.listShipped);
 router.get('/orders/:id/cartons', scanOutController.listOrderCartons);
 
+// ── Printed cartons (لیبل‌های چاپ‌شده از پنل دسکتاپ) ──
+router.get('/cartons/printed', checkinController.listPrinted);
+router.post('/cartons/printed', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'w:printed' }), validate(markPrintedSchema), checkinController.markPrinted);
+
 // ── Scan-out ──
 router.post('/scan-out', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'w:scanout' }), validate(scanOutSchema), scanOutController.scan);
+router.post('/scan-out/manual', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:scanout:manual' }), validate(manualExitSchema), scanOutController.manual);
 
 // ── دستورات جابه‌جایی/خروج مدیر (دوفازی) — برای اجرا با اسکن ──
 router.get('/transfers', warehouseController.listPendingTransfers);

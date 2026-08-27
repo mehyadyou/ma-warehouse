@@ -305,7 +305,7 @@ as bool,
 /// @nodoc
 mixin _$KeeperProductRowModel {
 
- String? get productId; String? get name; String? get unit; num get totalCount;
+ String? get productId; String? get name; String? get unit; num get totalCount; List<KeeperProductModelStockModel> get models;
 /// Create a copy of KeeperProductRowModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -318,16 +318,16 @@ $KeeperProductRowModelCopyWith<KeeperProductRowModel> get copyWith => _$KeeperPr
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is KeeperProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&const DeepCollectionEquality().equals(other.models, models));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount);
+int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount,const DeepCollectionEquality().hash(models));
 
 @override
 String toString() {
-  return 'KeeperProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount)';
+  return 'KeeperProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount, models: $models)';
 }
 
 
@@ -338,7 +338,7 @@ abstract mixin class $KeeperProductRowModelCopyWith<$Res>  {
   factory $KeeperProductRowModelCopyWith(KeeperProductRowModel value, $Res Function(KeeperProductRowModel) _then) = _$KeeperProductRowModelCopyWithImpl;
 @useResult
 $Res call({
- String? productId, String? name, String? unit, num totalCount
+ String? productId, String? name, String? unit, num totalCount, List<KeeperProductModelStockModel> models
 });
 
 
@@ -355,13 +355,14 @@ class _$KeeperProductRowModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperProductRowModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,Object? models = null,}) {
   return _then(_self.copyWith(
 productId: freezed == productId ? _self.productId : productId // ignore: cast_nullable_to_non_nullable
 as String?,name: freezed == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,
+as num,models: null == models ? _self.models : models // ignore: cast_nullable_to_non_nullable
+as List<KeeperProductModelStockModel>,
   ));
 }
 
@@ -446,10 +447,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount,  List<KeeperProductModelStockModel> models)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _KeeperProductRowModel() when $default != null:
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.models);case _:
   return orElse();
 
 }
@@ -467,10 +468,10 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? productId,  String? name,  String? unit,  num totalCount,  List<KeeperProductModelStockModel> models)  $default,) {final _that = this;
 switch (_that) {
 case _KeeperProductRowModel():
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.models);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -487,10 +488,10 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? productId,  String? name,  String? unit,  num totalCount)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? productId,  String? name,  String? unit,  num totalCount,  List<KeeperProductModelStockModel> models)?  $default,) {final _that = this;
 switch (_that) {
 case _KeeperProductRowModel() when $default != null:
-return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
+return $default(_that.productId,_that.name,_that.unit,_that.totalCount,_that.models);case _:
   return null;
 
 }
@@ -502,13 +503,20 @@ return $default(_that.productId,_that.name,_that.unit,_that.totalCount);case _:
 @JsonSerializable()
 
 class _KeeperProductRowModel implements KeeperProductRowModel {
-  const _KeeperProductRowModel({this.productId, this.name, this.unit, this.totalCount = 0});
+  const _KeeperProductRowModel({this.productId, this.name, this.unit, this.totalCount = 0, final  List<KeeperProductModelStockModel> models = const <KeeperProductModelStockModel>[]}): _models = models;
   factory _KeeperProductRowModel.fromJson(Map<String, dynamic> json) => _$KeeperProductRowModelFromJson(json);
 
 @override final  String? productId;
 @override final  String? name;
 @override final  String? unit;
 @override@JsonKey() final  num totalCount;
+ final  List<KeeperProductModelStockModel> _models;
+@override@JsonKey() List<KeeperProductModelStockModel> get models {
+  if (_models is EqualUnmodifiableListView) return _models;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_models);
+}
+
 
 /// Create a copy of KeeperProductRowModel
 /// with the given fields replaced by the non-null parameter values.
@@ -523,16 +531,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KeeperProductRowModel&&(identical(other.productId, productId) || other.productId == productId)&&(identical(other.name, name) || other.name == name)&&(identical(other.unit, unit) || other.unit == unit)&&(identical(other.totalCount, totalCount) || other.totalCount == totalCount)&&const DeepCollectionEquality().equals(other._models, _models));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount);
+int get hashCode => Object.hash(runtimeType,productId,name,unit,totalCount,const DeepCollectionEquality().hash(_models));
 
 @override
 String toString() {
-  return 'KeeperProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount)';
+  return 'KeeperProductRowModel(productId: $productId, name: $name, unit: $unit, totalCount: $totalCount, models: $models)';
 }
 
 
@@ -543,7 +551,7 @@ abstract mixin class _$KeeperProductRowModelCopyWith<$Res> implements $KeeperPro
   factory _$KeeperProductRowModelCopyWith(_KeeperProductRowModel value, $Res Function(_KeeperProductRowModel) _then) = __$KeeperProductRowModelCopyWithImpl;
 @override @useResult
 $Res call({
- String? productId, String? name, String? unit, num totalCount
+ String? productId, String? name, String? unit, num totalCount, List<KeeperProductModelStockModel> models
 });
 
 
@@ -560,13 +568,14 @@ class __$KeeperProductRowModelCopyWithImpl<$Res>
 
 /// Create a copy of KeeperProductRowModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? productId = freezed,Object? name = freezed,Object? unit = freezed,Object? totalCount = null,Object? models = null,}) {
   return _then(_KeeperProductRowModel(
 productId: freezed == productId ? _self.productId : productId // ignore: cast_nullable_to_non_nullable
 as String?,name: freezed == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String?,unit: freezed == unit ? _self.unit : unit // ignore: cast_nullable_to_non_nullable
 as String?,totalCount: null == totalCount ? _self.totalCount : totalCount // ignore: cast_nullable_to_non_nullable
-as num,
+as num,models: null == models ? _self._models : models // ignore: cast_nullable_to_non_nullable
+as List<KeeperProductModelStockModel>,
   ));
 }
 

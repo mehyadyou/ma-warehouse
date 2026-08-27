@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$OrderModel {
 
- String get id; int get orderNumber; int get version; String? get senderName; String? get receiverName; String? get customerPhone; String? get city; String? get address; String? get postalCode; String? get shippingMethod; String? get carrier; String? get warehouseName; String? get driverName; String? get status; String? get deliveryStatus; int? get badgeCount; String? get createdAt; String? get deliveredAt; List<OrderItemModel> get items;
+ String get id; int get orderNumber; int get version; String? get senderName; String? get senderNationalId; String? get senderPhone; String? get receiverName; String? get customerPhone; String? get city; String? get address; String? get postalCode; String? get shippingMethod; String? get carrier; String? get warehouseName; String? get driverName; String? get status; String? get deliveryStatus; int? get badgeCount; String? get createdAt; String? get deliveredAt; List<OrderItemModel> get items;
 /// Create a copy of OrderModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $OrderModelCopyWith<OrderModel> get copyWith => _$OrderModelCopyWithImpl<OrderMo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is OrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.version, version) || other.version == version)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&(identical(other.city, city) || other.city == city)&&(identical(other.address, address) || other.address == address)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.driverName, driverName) || other.driverName == driverName)&&(identical(other.status, status) || other.status == status)&&(identical(other.deliveryStatus, deliveryStatus) || other.deliveryStatus == deliveryStatus)&&(identical(other.badgeCount, badgeCount) || other.badgeCount == badgeCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.deliveredAt, deliveredAt) || other.deliveredAt == deliveredAt)&&const DeepCollectionEquality().equals(other.items, items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is OrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.version, version) || other.version == version)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.senderNationalId, senderNationalId) || other.senderNationalId == senderNationalId)&&(identical(other.senderPhone, senderPhone) || other.senderPhone == senderPhone)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&(identical(other.city, city) || other.city == city)&&(identical(other.address, address) || other.address == address)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.driverName, driverName) || other.driverName == driverName)&&(identical(other.status, status) || other.status == status)&&(identical(other.deliveryStatus, deliveryStatus) || other.deliveryStatus == deliveryStatus)&&(identical(other.badgeCount, badgeCount) || other.badgeCount == badgeCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.deliveredAt, deliveredAt) || other.deliveredAt == deliveredAt)&&const DeepCollectionEquality().equals(other.items, items));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hashAll([runtimeType,id,orderNumber,version,senderName,receiverName,customerPhone,city,address,postalCode,shippingMethod,carrier,warehouseName,driverName,status,deliveryStatus,badgeCount,createdAt,deliveredAt,const DeepCollectionEquality().hash(items)]);
+int get hashCode => Object.hashAll([runtimeType,id,orderNumber,version,senderName,senderNationalId,senderPhone,receiverName,customerPhone,city,address,postalCode,shippingMethod,carrier,warehouseName,driverName,status,deliveryStatus,badgeCount,createdAt,deliveredAt,const DeepCollectionEquality().hash(items)]);
 
 @override
 String toString() {
-  return 'OrderModel(id: $id, orderNumber: $orderNumber, version: $version, senderName: $senderName, receiverName: $receiverName, customerPhone: $customerPhone, city: $city, address: $address, postalCode: $postalCode, shippingMethod: $shippingMethod, carrier: $carrier, warehouseName: $warehouseName, driverName: $driverName, status: $status, deliveryStatus: $deliveryStatus, badgeCount: $badgeCount, createdAt: $createdAt, deliveredAt: $deliveredAt, items: $items)';
+  return 'OrderModel(id: $id, orderNumber: $orderNumber, version: $version, senderName: $senderName, senderNationalId: $senderNationalId, senderPhone: $senderPhone, receiverName: $receiverName, customerPhone: $customerPhone, city: $city, address: $address, postalCode: $postalCode, shippingMethod: $shippingMethod, carrier: $carrier, warehouseName: $warehouseName, driverName: $driverName, status: $status, deliveryStatus: $deliveryStatus, badgeCount: $badgeCount, createdAt: $createdAt, deliveredAt: $deliveredAt, items: $items)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $OrderModelCopyWith<$Res>  {
   factory $OrderModelCopyWith(OrderModel value, $Res Function(OrderModel) _then) = _$OrderModelCopyWithImpl;
 @useResult
 $Res call({
- String id, int orderNumber, int version, String? senderName, String? receiverName, String? customerPhone, String? city, String? address, String? postalCode, String? shippingMethod, String? carrier, String? warehouseName, String? driverName, String? status, String? deliveryStatus, int? badgeCount, String? createdAt, String? deliveredAt, List<OrderItemModel> items
+ String id, int orderNumber, int version, String? senderName, String? senderNationalId, String? senderPhone, String? receiverName, String? customerPhone, String? city, String? address, String? postalCode, String? shippingMethod, String? carrier, String? warehouseName, String? driverName, String? status, String? deliveryStatus, int? badgeCount, String? createdAt, String? deliveredAt, List<OrderItemModel> items
 });
 
 
@@ -65,12 +65,14 @@ class _$OrderModelCopyWithImpl<$Res>
 
 /// Create a copy of OrderModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? orderNumber = null,Object? version = null,Object? senderName = freezed,Object? receiverName = freezed,Object? customerPhone = freezed,Object? city = freezed,Object? address = freezed,Object? postalCode = freezed,Object? shippingMethod = freezed,Object? carrier = freezed,Object? warehouseName = freezed,Object? driverName = freezed,Object? status = freezed,Object? deliveryStatus = freezed,Object? badgeCount = freezed,Object? createdAt = freezed,Object? deliveredAt = freezed,Object? items = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? orderNumber = null,Object? version = null,Object? senderName = freezed,Object? senderNationalId = freezed,Object? senderPhone = freezed,Object? receiverName = freezed,Object? customerPhone = freezed,Object? city = freezed,Object? address = freezed,Object? postalCode = freezed,Object? shippingMethod = freezed,Object? carrier = freezed,Object? warehouseName = freezed,Object? driverName = freezed,Object? status = freezed,Object? deliveryStatus = freezed,Object? badgeCount = freezed,Object? createdAt = freezed,Object? deliveredAt = freezed,Object? items = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,orderNumber: null == orderNumber ? _self.orderNumber : orderNumber // ignore: cast_nullable_to_non_nullable
 as int,version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
 as int,senderName: freezed == senderName ? _self.senderName : senderName // ignore: cast_nullable_to_non_nullable
+as String?,senderNationalId: freezed == senderNationalId ? _self.senderNationalId : senderNationalId // ignore: cast_nullable_to_non_nullable
+as String?,senderPhone: freezed == senderPhone ? _self.senderPhone : senderPhone // ignore: cast_nullable_to_non_nullable
 as String?,receiverName: freezed == receiverName ? _self.receiverName : receiverName // ignore: cast_nullable_to_non_nullable
 as String?,customerPhone: freezed == customerPhone ? _self.customerPhone : customerPhone // ignore: cast_nullable_to_non_nullable
 as String?,city: freezed == city ? _self.city : city // ignore: cast_nullable_to_non_nullable
@@ -171,10 +173,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  int orderNumber,  int version,  String? senderName,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  int orderNumber,  int version,  String? senderName,  String? senderNationalId,  String? senderPhone,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _OrderModel() when $default != null:
-return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.senderNationalId,_that.senderPhone,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
   return orElse();
 
 }
@@ -192,10 +194,10 @@ return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  int orderNumber,  int version,  String? senderName,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  int orderNumber,  int version,  String? senderName,  String? senderNationalId,  String? senderPhone,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)  $default,) {final _that = this;
 switch (_that) {
 case _OrderModel():
-return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.senderNationalId,_that.senderPhone,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -212,10 +214,10 @@ return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  int orderNumber,  int version,  String? senderName,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  int orderNumber,  int version,  String? senderName,  String? senderNationalId,  String? senderPhone,  String? receiverName,  String? customerPhone,  String? city,  String? address,  String? postalCode,  String? shippingMethod,  String? carrier,  String? warehouseName,  String? driverName,  String? status,  String? deliveryStatus,  int? badgeCount,  String? createdAt,  String? deliveredAt,  List<OrderItemModel> items)?  $default,) {final _that = this;
 switch (_that) {
 case _OrderModel() when $default != null:
-return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
+return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.senderNationalId,_that.senderPhone,_that.receiverName,_that.customerPhone,_that.city,_that.address,_that.postalCode,_that.shippingMethod,_that.carrier,_that.warehouseName,_that.driverName,_that.status,_that.deliveryStatus,_that.badgeCount,_that.createdAt,_that.deliveredAt,_that.items);case _:
   return null;
 
 }
@@ -227,13 +229,15 @@ return $default(_that.id,_that.orderNumber,_that.version,_that.senderName,_that.
 @JsonSerializable()
 
 class _OrderModel implements OrderModel {
-  const _OrderModel({required this.id, this.orderNumber = 0, this.version = 0, this.senderName, this.receiverName, this.customerPhone, this.city, this.address, this.postalCode, this.shippingMethod, this.carrier, this.warehouseName, this.driverName, this.status, this.deliveryStatus, this.badgeCount, this.createdAt, this.deliveredAt, final  List<OrderItemModel> items = const <OrderItemModel>[]}): _items = items;
+  const _OrderModel({required this.id, this.orderNumber = 0, this.version = 0, this.senderName, this.senderNationalId, this.senderPhone, this.receiverName, this.customerPhone, this.city, this.address, this.postalCode, this.shippingMethod, this.carrier, this.warehouseName, this.driverName, this.status, this.deliveryStatus, this.badgeCount, this.createdAt, this.deliveredAt, final  List<OrderItemModel> items = const <OrderItemModel>[]}): _items = items;
   factory _OrderModel.fromJson(Map<String, dynamic> json) => _$OrderModelFromJson(json);
 
 @override final  String id;
 @override@JsonKey() final  int orderNumber;
 @override@JsonKey() final  int version;
 @override final  String? senderName;
+@override final  String? senderNationalId;
+@override final  String? senderPhone;
 @override final  String? receiverName;
 @override final  String? customerPhone;
 @override final  String? city;
@@ -269,16 +273,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.version, version) || other.version == version)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&(identical(other.city, city) || other.city == city)&&(identical(other.address, address) || other.address == address)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.driverName, driverName) || other.driverName == driverName)&&(identical(other.status, status) || other.status == status)&&(identical(other.deliveryStatus, deliveryStatus) || other.deliveryStatus == deliveryStatus)&&(identical(other.badgeCount, badgeCount) || other.badgeCount == badgeCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.deliveredAt, deliveredAt) || other.deliveredAt == deliveredAt)&&const DeepCollectionEquality().equals(other._items, _items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OrderModel&&(identical(other.id, id) || other.id == id)&&(identical(other.orderNumber, orderNumber) || other.orderNumber == orderNumber)&&(identical(other.version, version) || other.version == version)&&(identical(other.senderName, senderName) || other.senderName == senderName)&&(identical(other.senderNationalId, senderNationalId) || other.senderNationalId == senderNationalId)&&(identical(other.senderPhone, senderPhone) || other.senderPhone == senderPhone)&&(identical(other.receiverName, receiverName) || other.receiverName == receiverName)&&(identical(other.customerPhone, customerPhone) || other.customerPhone == customerPhone)&&(identical(other.city, city) || other.city == city)&&(identical(other.address, address) || other.address == address)&&(identical(other.postalCode, postalCode) || other.postalCode == postalCode)&&(identical(other.shippingMethod, shippingMethod) || other.shippingMethod == shippingMethod)&&(identical(other.carrier, carrier) || other.carrier == carrier)&&(identical(other.warehouseName, warehouseName) || other.warehouseName == warehouseName)&&(identical(other.driverName, driverName) || other.driverName == driverName)&&(identical(other.status, status) || other.status == status)&&(identical(other.deliveryStatus, deliveryStatus) || other.deliveryStatus == deliveryStatus)&&(identical(other.badgeCount, badgeCount) || other.badgeCount == badgeCount)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.deliveredAt, deliveredAt) || other.deliveredAt == deliveredAt)&&const DeepCollectionEquality().equals(other._items, _items));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hashAll([runtimeType,id,orderNumber,version,senderName,receiverName,customerPhone,city,address,postalCode,shippingMethod,carrier,warehouseName,driverName,status,deliveryStatus,badgeCount,createdAt,deliveredAt,const DeepCollectionEquality().hash(_items)]);
+int get hashCode => Object.hashAll([runtimeType,id,orderNumber,version,senderName,senderNationalId,senderPhone,receiverName,customerPhone,city,address,postalCode,shippingMethod,carrier,warehouseName,driverName,status,deliveryStatus,badgeCount,createdAt,deliveredAt,const DeepCollectionEquality().hash(_items)]);
 
 @override
 String toString() {
-  return 'OrderModel(id: $id, orderNumber: $orderNumber, version: $version, senderName: $senderName, receiverName: $receiverName, customerPhone: $customerPhone, city: $city, address: $address, postalCode: $postalCode, shippingMethod: $shippingMethod, carrier: $carrier, warehouseName: $warehouseName, driverName: $driverName, status: $status, deliveryStatus: $deliveryStatus, badgeCount: $badgeCount, createdAt: $createdAt, deliveredAt: $deliveredAt, items: $items)';
+  return 'OrderModel(id: $id, orderNumber: $orderNumber, version: $version, senderName: $senderName, senderNationalId: $senderNationalId, senderPhone: $senderPhone, receiverName: $receiverName, customerPhone: $customerPhone, city: $city, address: $address, postalCode: $postalCode, shippingMethod: $shippingMethod, carrier: $carrier, warehouseName: $warehouseName, driverName: $driverName, status: $status, deliveryStatus: $deliveryStatus, badgeCount: $badgeCount, createdAt: $createdAt, deliveredAt: $deliveredAt, items: $items)';
 }
 
 
@@ -289,7 +293,7 @@ abstract mixin class _$OrderModelCopyWith<$Res> implements $OrderModelCopyWith<$
   factory _$OrderModelCopyWith(_OrderModel value, $Res Function(_OrderModel) _then) = __$OrderModelCopyWithImpl;
 @override @useResult
 $Res call({
- String id, int orderNumber, int version, String? senderName, String? receiverName, String? customerPhone, String? city, String? address, String? postalCode, String? shippingMethod, String? carrier, String? warehouseName, String? driverName, String? status, String? deliveryStatus, int? badgeCount, String? createdAt, String? deliveredAt, List<OrderItemModel> items
+ String id, int orderNumber, int version, String? senderName, String? senderNationalId, String? senderPhone, String? receiverName, String? customerPhone, String? city, String? address, String? postalCode, String? shippingMethod, String? carrier, String? warehouseName, String? driverName, String? status, String? deliveryStatus, int? badgeCount, String? createdAt, String? deliveredAt, List<OrderItemModel> items
 });
 
 
@@ -306,12 +310,14 @@ class __$OrderModelCopyWithImpl<$Res>
 
 /// Create a copy of OrderModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? orderNumber = null,Object? version = null,Object? senderName = freezed,Object? receiverName = freezed,Object? customerPhone = freezed,Object? city = freezed,Object? address = freezed,Object? postalCode = freezed,Object? shippingMethod = freezed,Object? carrier = freezed,Object? warehouseName = freezed,Object? driverName = freezed,Object? status = freezed,Object? deliveryStatus = freezed,Object? badgeCount = freezed,Object? createdAt = freezed,Object? deliveredAt = freezed,Object? items = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? orderNumber = null,Object? version = null,Object? senderName = freezed,Object? senderNationalId = freezed,Object? senderPhone = freezed,Object? receiverName = freezed,Object? customerPhone = freezed,Object? city = freezed,Object? address = freezed,Object? postalCode = freezed,Object? shippingMethod = freezed,Object? carrier = freezed,Object? warehouseName = freezed,Object? driverName = freezed,Object? status = freezed,Object? deliveryStatus = freezed,Object? badgeCount = freezed,Object? createdAt = freezed,Object? deliveredAt = freezed,Object? items = null,}) {
   return _then(_OrderModel(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,orderNumber: null == orderNumber ? _self.orderNumber : orderNumber // ignore: cast_nullable_to_non_nullable
 as int,version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
 as int,senderName: freezed == senderName ? _self.senderName : senderName // ignore: cast_nullable_to_non_nullable
+as String?,senderNationalId: freezed == senderNationalId ? _self.senderNationalId : senderNationalId // ignore: cast_nullable_to_non_nullable
+as String?,senderPhone: freezed == senderPhone ? _self.senderPhone : senderPhone // ignore: cast_nullable_to_non_nullable
 as String?,receiverName: freezed == receiverName ? _self.receiverName : receiverName // ignore: cast_nullable_to_non_nullable
 as String?,customerPhone: freezed == customerPhone ? _self.customerPhone : customerPhone // ignore: cast_nullable_to_non_nullable
 as String?,city: freezed == city ? _self.city : city // ignore: cast_nullable_to_non_nullable

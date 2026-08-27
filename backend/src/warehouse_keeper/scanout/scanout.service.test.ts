@@ -3,7 +3,11 @@ import { scanOutService } from './scanout.service';
 
 const mocks = vi.hoisted(() => {
     const tx = {
-        carton: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), count: vi.fn().mockResolvedValue(0) },
+        carton: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            count: vi.fn().mockResolvedValue(0),
+            findMany: vi.fn().mockResolvedValue([]),
+        },
         order: {
             updateMany: vi.fn().mockResolvedValue({ count: 1 }),
             findUnique: vi.fn(),
@@ -31,6 +35,11 @@ const mocks = vi.hoisted(() => {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
         findMany: vi.fn(),
+        orderFindMany: vi.fn(),
+        transferFindMany: vi.fn(),
+        cartonCount: vi.fn().mockResolvedValue(0),
+        productFindUnique: vi.fn(),
+        productModelFindUnique: vi.fn(),
         activityLogCreate: vi.fn().mockResolvedValue({}),
     };
 });
@@ -38,7 +47,17 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../utils/prisma', () => ({
     prisma: {
         $transaction: mocks.transaction,
-        carton: { findUnique: mocks.findUnique, findFirst: mocks.findFirst, findMany: mocks.findMany },
+        carton: {
+            findUnique: mocks.findUnique,
+            findFirst: mocks.findFirst,
+            findMany: mocks.findMany,
+            count: mocks.cartonCount,
+        },
+        order: { findMany: mocks.orderFindMany },
+        transfer: { findMany: mocks.transferFindMany },
+        product: { findUnique: mocks.productFindUnique },
+        productModel: { findUnique: mocks.productModelFindUnique },
+        $queryRaw: mocks.tx.$queryRaw,
         activityLog: { create: mocks.activityLogCreate },
     },
 }));
@@ -74,6 +93,14 @@ beforeEach(() => {
     mocks.findUnique.mockReset();
     mocks.findFirst.mockReset();
     mocks.findMany.mockReset();
+    mocks.orderFindMany.mockReset();
+    mocks.transferFindMany.mockReset();
+    mocks.cartonCount.mockReset();
+    mocks.cartonCount.mockResolvedValue(0);
+    mocks.productFindUnique.mockReset();
+    mocks.productModelFindUnique.mockReset();
+    mocks.tx.carton.findMany.mockReset();
+    mocks.tx.carton.findMany.mockResolvedValue([]);
 });
 
 const orderRow = (overrides: any = {}) => ({
@@ -194,6 +221,79 @@ describe('scanOutService.scanOut - انتخاب صریح', () => {
         );
         expect(result.valid).toBe(false);
         expect(result.error).toContain('قبلاً خروج');
+    });
+});
+
+describe('scanOutService.scanOut - اتصال خودکار (بدون انتخاب صریح)', () => {
+    it('یک سفارش فعال منطبق (محصول+مدل) → اتصال خودکار و خروج موفق', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow());
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.orderFindMany).toHaveBeenCalledOnce();
+        // ملاک فقط محصول+مدل: findMany باید با محصول و مدل کارتن فیلتر شود
+        const where = mocks.orderFindMany.mock.calls[0][0].where;
+        expect(where.warehouseId).toBe('wh1');
+        expect(where.status.in).toEqual(['PENDING', 'SHIPPED']);
+        expect(where.items.some.productId).toBe('p1');
+        expect(where.items.some.modelId).toBe('m1');
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalled();
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledOnce();
+    });
+
+    it('چند سفارش فعال منطبق → خطای انتخاب صریح (بدون خروج)', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
+            { id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1' }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('چند سفارش');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('سفارش منطبق ولی ظرفیت تکمیل‌شده → بدون اتصال، خطای اجازهٔ خروج', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(2); // سقف قلم تکمیل شده
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1' }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('اجازهٔ خروج ندارد');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('بدون سفارش، یک دستور جابه‌جایی/خروج فعال منطبق → اتصال خودکار به دستور', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.orderFindMany.mockResolvedValue([]);
+        mocks.transferFindMany.mockResolvedValue([{ id: 't1', quantity: 10 }]);
+        mocks.tx.transfer.findUnique.mockResolvedValue({
+            id: 't1', fromWarehouseId: 'wh1', toWarehouseId: null,
+            productId: 'p1', modelId: 'm1', quantity: 10, status: 'PENDING',
+        });
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.transferFindMany).toHaveBeenCalledOnce();
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalled();
     });
 });
 
@@ -448,5 +548,95 @@ describe('scanOutService.listOrderCartons', () => {
                 where: expect.objectContaining({ orderId: 'order1', status: 'SHIPPED', warehouseId: 'wh1' }),
             })
         );
+    });
+});
+
+describe('scanOutService.manualExit - خروج دستی (بدون QR)', () => {
+    const product = { id: 'p1', name: 'پیچ مینی', unit: 'عدد', deletedAt: null };
+    const model = { id: 'm1', name: 'مدل ۲', productId: 'p1', deletedAt: null, unitsPerBox: 1, packageType: 'تکی' };
+
+    beforeEach(() => {
+        mocks.productFindUnique.mockResolvedValue(product);
+        mocks.productModelFindUnique.mockResolvedValue(model);
+        // موجودی: یک کارتن تکی IN_STOCK
+        mocks.tx.carton.findMany.mockResolvedValue([
+            { id: 'c1', isIndividual: true, model: { unitsPerBox: 1 } },
+        ]);
+    });
+
+    it('محصول+مدل+تعداد مطابق یک سفارش فعال → خروج موفق و اتصال به سفارش', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow({ items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] }));
+        mocks.tx.carton.updateMany.mockResolvedValue({ count: 1 });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1 }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalled();
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledOnce();
+        const outTx = mocks.tx.transaction.create.mock.calls.map((c: any[]) => c[0].data).filter((d: any) => d.type === 'OUT');
+        expect(outTx).toHaveLength(1);
+        expect(outTx[0].quantity).toBe(1);
+    });
+
+    it('مطابق یک دستور خروج/جابه‌جایی فعال → خروج موفق به دستور', async () => {
+        mocks.orderFindMany.mockResolvedValue([]);
+        mocks.transferFindMany.mockResolvedValue([{ id: 't1', quantity: 10 }]);
+        mocks.tx.transfer.findUnique.mockResolvedValue({
+            id: 't1', fromWarehouseId: 'wh1', toWarehouseId: null,
+            productId: 'p1', modelId: 'm1', quantity: 10, status: 'PENDING',
+        });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1 }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalled();
+    });
+
+    it('هیچ سفارش/دستور فعال منطبق → خطای اجازهٔ خروج ندارد', async () => {
+        mocks.orderFindMany.mockResolvedValue([]);
+        mocks.transferFindMany.mockResolvedValue([]);
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1 }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('اجازهٔ خروج ندارد');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('چند سفارش فعال منطبق → خطای انتخاب صریح', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+            { id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1 }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('چند سفارش');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('موجودی کافی نباشد → خطا', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.tx.carton.findMany.mockResolvedValue([]);
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 3 }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('موجودی کافی');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
     });
 });

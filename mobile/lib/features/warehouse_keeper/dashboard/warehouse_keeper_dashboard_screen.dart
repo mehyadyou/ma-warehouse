@@ -13,9 +13,13 @@ import 'home/home_screen.dart';
 import 'inventory/inventory_screen.dart';
 import 'orders/orders_screen.dart';
 import 'reports/reports_screen.dart';
+import '../scan_out/manual_exit_screen.dart';
 import '../scan_out/scan_out_screen.dart';
+import 'transfers/transfer_instructions_screen.dart';
 
 const _bg = Color(0xFF0F1114);
+const _green = Color(0xFF4ADE80);
+const _orange = Color(0xFFFB923C);
 
 class WarehouseKeeperDashboardScreen extends ConsumerStatefulWidget {
   const WarehouseKeeperDashboardScreen({super.key});
@@ -136,6 +140,101 @@ class _WarehouseKeeperDashboardScreenState
     super.dispose();
   }
 
+  /// منوی خروج از انبار — با لمس دکمه‌ی سبز مرکزی، دوربین مستقیم باز نمی‌شود
+  void _openExitMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'منوی خروج از انبار',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'محصولات بدون QR را دستی خروج بدهید یا کارتن را اسکن کنید',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ExitMenuTile(
+                icon: Icons.edit_note_rounded,
+                title: 'خروج دستی (بدون QR)',
+                subtitle: 'انتخاب محصول، مدل و تعداد — مناسب اقلام ریز بدون برچسب',
+                color: _green,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ManualExitScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _ExitMenuTile(
+                icon: Icons.qr_code_scanner_rounded,
+                title: 'اسکن QR کارتن',
+                subtitle: 'خروج با اسکن برچسب QR کارتن',
+                color: Colors.white70,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ScanOutScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _ExitMenuTile(
+                icon: Icons.swap_horizontal_circle_rounded,
+                title: 'دستورات خروج/جابه‌جایی',
+                subtitle: 'اجرای دستورهای صادرشده توسط مدیر',
+                color: _orange,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TransferInstructionsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -187,12 +286,80 @@ class _WarehouseKeeperDashboardScreenState
           _selectedIndex = i;
           _visited[i] = true;
         }),
-        onAddPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ScanOutScreen()),
-          );
-        },
+        onAddPressed: () => _openExitMenu(),
+      ),
+    );
+  }
+}
+
+class _ExitMenuTile extends StatelessWidget {
+  const _ExitMenuTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF1A1D22),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_left_rounded,
+                color: Colors.white38,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

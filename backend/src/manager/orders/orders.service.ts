@@ -38,6 +38,8 @@ function mapOrder(o: OrderWithRefs) {
         address: o.address,
         customerPhone: o.customerPhone,
         senderName: o.senderName,
+        senderNationalId: o.senderNationalId,
+        senderPhone: o.senderPhone,
         receiverName: o.receiverName,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
@@ -160,6 +162,64 @@ export const orderStatusWhere = (status: OrderStatusFilter): Prisma.OrderWhereIn
     }
 };
 
+// آیا این سفارش اصلاً بیجک دارد؟ فقط باربری/تیپاکس (یا هر carrier غیرخالی)
+// نه «شهری». برای برگه نیز برچسب باربری تعیین می‌شود.
+const BADGE_SHIPPING = new Set(['باربری', 'تیپاکس']);
+
+export function isBadgeEligible(shippingMethod: string | null | undefined, carrier?: string | null): boolean {
+    const method = (shippingMethod ?? '').trim();
+    if (BADGE_SHIPPING.has(method)) return true;
+    // fallback: اگر carrier ثبت شده (مثلاً روشی دستی) هم بیجک ساخته شود
+    return !!carrier?.trim();
+}
+
+/// نام باربری که روی برگهٔ بیجک می‌آید: تیپاکس → «تیپاکس»، باربری → carrier ثبت‌شده
+/// (برای باربری، carrier می‌تواند null → fallback همان روش)
+export function badgeCarrierLabel(shippingMethod: string | null | undefined, carrier?: string | null): string {
+    const method = (shippingMethod ?? '').trim();
+    if (method === 'تیپاکس') return 'تیپاکس';
+    if (method === 'باربری') return carrier?.trim() || 'باربری';
+    return carrier?.trim() || method || '—';
+}
+
+/// اعتبارسنجی فیلدهای اجباری تیپاکس — هم در ثبت و هم ویرایش اعمال می‌شود
+/// تا از پاسخ‌های دور زدن فرم (API مستقیم) جلوگیری شود.
+function validateTipax(shippingMethod: string | null | undefined, data: {
+    senderNationalId?: string | null;
+    senderPhone?: string | null;
+    receiverName?: string | null;
+    customerPhone?: string | null;
+    city?: string | null;
+    address?: string | null;
+    postalCode?: string | null;
+}): void {
+    const method = (shippingMethod ?? '').trim();
+    if (method !== 'تیپاکس') return;
+
+    const nationalId = (data.senderNationalId ?? '').trim();
+    if (!/^\d{10}$/.test(nationalId)) {
+        throw new AppError('برای تیپاکس، کد ملی فرستنده (۱۰ رقم) الزامی است', 400);
+    }
+    if (!(data.senderPhone ?? '').trim()) {
+        throw new AppError('برای تیپاکس، شمارهٔ تماس فرستنده الزامی است', 400);
+    }
+    if (!(data.receiverName ?? '').trim()) {
+        throw new AppError('برای تیپاکس، نام گیرنده الزامی است', 400);
+    }
+    if (!(data.customerPhone ?? '').trim()) {
+        throw new AppError('برای تیپاکس، شمارهٔ تماس گیرنده الزامی است', 400);
+    }
+    if (!(data.city ?? '').trim()) {
+        throw new AppError('برای تیپاکس، شهر گیرنده الزامی است', 400);
+    }
+    if (!(data.address ?? '').trim()) {
+        throw new AppError('برای تیپاکس، آدرس دقیق گیرنده الزامی است', 400);
+    }
+    if (!(data.postalCode ?? '').trim()) {
+        throw new AppError('برای تیپاکس، کد پستی الزامی است', 400);
+    }
+}
+
 export const ordersService = {
     //لیست کامل ارسالی‌ها برای مدیر — صفحه‌بندی با پیش‌فرض ۱۰۰ + شمارندهٔ وضعیت‌ها (هماهنگ با موبایل)
     listOrders: async (page = 1, pageSize = 100, status?: OrderStatusFilter) => {
@@ -213,11 +273,18 @@ export const ordersService = {
         address?: string,
         customerPhone?: string,
         senderName?: string,
-        receiverName?: string
+        receiverName?: string,
+        senderNationalId?: string,
+        senderPhone?: string
     ) => {
         const orderId = crypto.randomUUID();
         const normalizedCity = city?.trim() || null;
         const normalizedPostal = normalizedCity ? (postalCode?.trim() ?? '') : null;
+
+        // فیلدهای اجباری تیپاکس — قبل از هر عملیات تا از دور زدن فرم جلوگیری شود
+        validateTipax(shippingMethod, {
+            senderNationalId, senderPhone, receiverName, customerPhone, city, address, postalCode,
+        });
 
         // اعتبارسنجی پیشینی: انبار و همه‌ی محصولات باید واقعاً وجود داشته باشند —
         // به‌جای خطای FK مبهم (P2003) پیام مشخص بده
@@ -283,6 +350,8 @@ export const ordersService = {
                     address: address || null,
                     customerPhone: customerPhone || null,
                     senderName: senderName || null,
+                    senderNationalId: senderNationalId?.trim() || null,
+                    senderPhone: senderPhone?.trim() || null,
                     receiverName: receiverName || null,
                     items: {
                         create: items.map((item) => ({
@@ -295,7 +364,7 @@ export const ordersService = {
                             exchangeRate: item.exchangeRate ?? null,
                         })),
                     },
-                    badges: senderName && receiverName
+                    badges: isBadgeEligible(shippingMethod, carrier) && senderName && receiverName
                         ? { create: { count: totalUnits, senderName, receiverName } }
                         : undefined,
                 },
@@ -341,6 +410,8 @@ export const ordersService = {
             address?: string;
             customerPhone?: string;
             senderName?: string;
+            senderNationalId?: string;
+            senderPhone?: string;
             receiverName?: string;
             version?: number;
         }
@@ -350,6 +421,18 @@ export const ordersService = {
         if (data.version !== undefined && data.version !== existing.version) {
             throw new AppError('سفارش توسط کاربر دیگری تغییر کرده است — صفحه را تازه کنید', 409);
         }
+
+        // فیلدهای اجباری تیپاکس با مقادیر مؤثر (جدید یا موجود)
+        const effShipping = data.shippingMethod ?? existing.shippingMethod;
+        validateTipax(effShipping, {
+            senderNationalId: data.senderNationalId !== undefined ? data.senderNationalId : existing.senderNationalId,
+            senderPhone: data.senderPhone !== undefined ? data.senderPhone : existing.senderPhone,
+            receiverName: data.receiverName !== undefined ? data.receiverName : existing.receiverName,
+            customerPhone: data.customerPhone !== undefined ? data.customerPhone : existing.customerPhone,
+            city: data.city !== undefined ? data.city : existing.city,
+            address: data.address !== undefined ? data.address : existing.address,
+            postalCode: data.postalCode !== undefined ? data.postalCode : existing.postalCode,
+        });
 
         await runSerializable(async (tx) => {
             // قفل خوشبینانه: فقط اگر نسخه هنوز همان است، به‌روزرسانی می‌شود
@@ -367,6 +450,8 @@ export const ordersService = {
                     address: data.address !== undefined ? data.address : existing.address,
                     customerPhone: data.customerPhone !== undefined ? data.customerPhone : existing.customerPhone,
                     senderName: data.senderName !== undefined ? data.senderName : existing.senderName,
+                    senderNationalId: data.senderNationalId !== undefined ? (data.senderNationalId?.trim() || null) : existing.senderNationalId,
+                    senderPhone: data.senderPhone !== undefined ? (data.senderPhone?.trim() || null) : existing.senderPhone,
                     receiverName: data.receiverName !== undefined ? data.receiverName : existing.receiverName,
                     updatedAt: new Date(),
                     version: { increment: 1 },
@@ -433,10 +518,12 @@ export const ordersService = {
             }
 
             // بازتولید بیجک بر اساس داده جدید (یک ردیف با count)
+            // فقط باربری/تیپاکس بیجک می‌گیرد (نه «شهری»)
             const sender = data.senderName !== undefined ? data.senderName : existing.senderName;
             const receiver = data.receiverName !== undefined ? data.receiverName : existing.receiverName;
+            const effCarrier = data.carrier !== undefined ? data.carrier : existing.carrier;
             await tx.badge.deleteMany({ where: { orderId: id } });
-            if (sender && receiver) {
+            if (isBadgeEligible(effShipping, effCarrier) && sender && receiver) {
                 const currentItems = data.items && data.items.length > 0
                     ? data.items
                     : await tx.orderItem.findMany({ where: { orderId: id }, select: { quantity: true } });

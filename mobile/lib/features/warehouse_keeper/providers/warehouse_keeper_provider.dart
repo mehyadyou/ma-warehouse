@@ -13,10 +13,21 @@ final wkApiProvider = Provider((ref) => WarehouseKeeperApiService());
 final socketServiceProvider = Provider<SocketService>((ref) => SocketService());
 
 /// فیلترهای تب «موجودی» — جستجو و فقط-موجودی به‌همراه صفحه‌بندی سمت سرور
+/// نکته: کلید خانوادهٔ Riverpod با == مقایسه می‌شود؛ بدون پیاده‌سازی آن، هر build
+/// یک provider تازه با حالت loading می‌سازد و صفحه هیچ‌وقت داده را نشان نمی‌دهد.
 class KeeperInventoryQuery {
   final String query;
   final bool onlyInStock;
   const KeeperInventoryQuery({this.query = '', this.onlyInStock = false});
+
+  @override
+  bool operator ==(Object other) =>
+      other is KeeperInventoryQuery &&
+      other.query == query &&
+      other.onlyInStock == onlyInStock;
+
+  @override
+  int get hashCode => Object.hash(query, onlyInStock);
 }
 
 /// صفحهٔ اول فهرست موجودی با فیلترها — خطاها به‌جای بلیع، در AsyncError می‌آیند

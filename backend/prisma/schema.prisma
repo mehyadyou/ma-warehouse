@@ -202,6 +202,9 @@ model Carton {
   serialNumber String?         @unique
   status       CartonStatus    @default(IN_STOCK)
   scannedOutAt DateTime?
+  // لحظهٔ چاپ لیبل QR از پنل دسکتاپ — کارتن‌های چاپ‌شده از تب محصولات
+  // خارج و به تب «چاپ شده‌ها» منتقل می‌شوند (بدون تغییر موجودی فیزیکی)
+  printedAt    DateTime?
   createdById  String
   createdBy    User            @relation("CartonCreatedBy", fields: [createdById], references: [id])
   version      Int             @default(0)
@@ -211,6 +214,7 @@ model Carton {
   @@index([productId, modelId])
   @@index([entryType])
   @@index([scannedOutAt])
+  @@index([printedAt])
   @@index([orderId])
   @@index([serialNumber])
   @@index([serialNumber(ops: raw("extensions.gin_trgm_ops"))], type: Gin, map: "Carton_serialNumber_trgm_idx")
@@ -232,15 +236,17 @@ model Order {
   createdBy      User        @relation("CreatedBy", fields: [createdById], references: [id])
   items          OrderItem[]
   cartons        Carton[]
-  shippingMethod String      @default("باربری")
-  carrier        String?
-  city           String?
-  postalCode     String?
-  address        String?
-  customerPhone  String?
-  senderName     String?
-  receiverName   String?
-  delivery       Delivery?
+  shippingMethod   String      @default("باربری")
+  carrier          String?
+  city             String?
+  postalCode       String?
+  address          String?
+  customerPhone    String
+  senderName       String?
+  senderNationalId String?
+  senderPhone      String?
+  receiverName     String?
+  delivery         Delivery?
   badges         Badge[]
   version        Int         @default(0)
   createdAt      DateTime    @default(now())

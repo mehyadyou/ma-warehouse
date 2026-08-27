@@ -9,9 +9,16 @@ import 'package:printing/printing.dart';
 import 'package:qr/qr.dart';
 
 import '../core/label_data.dart';
+import '../core/printer_settings.dart';
 
-const double _labelWidthMm = 58;
-const double _labelHeightMm = 77;
+/// ابعاد لیبل فیزیکی از تنظیمات ذخیره‌شده‌ی چاپگر (پیش‌فرض ۱۰×۸ سانتی‌متر)
+double _labelWidthMm() => PrinterSettingsHolder.instance.current.labelWidthMm;
+double _labelHeightMm() => PrinterSettingsHolder.instance.current.labelHeightMm;
+double _labelMarginMm() => PrinterSettingsHolder.instance.current.labelMarginMm;
+
+/// ابعاد بیجک سفارش (ثابت)
+const double _badgeWidthMm = 58;
+const double _badgeHeightMm = 77;
 
 class PdfLabels {
   static pw.Font? _regular;
@@ -60,8 +67,8 @@ class PdfLabels {
     final document = await _buildLabelDocument(labels);
     if (document == null) return false;
     final pageFormat = PdfPageFormat(
-      _labelWidthMm * PdfPageFormat.mm,
-      _labelHeightMm * PdfPageFormat.mm,
+      _labelWidthMm() * PdfPageFormat.mm,
+      _labelHeightMm() * PdfPageFormat.mm,
       marginAll: 0,
     );
     return _showPrintDialog(document, pageFormat);
@@ -82,55 +89,109 @@ class PdfLabels {
     final courier = pw.Font.courierBold();
     final document = pw.Document();
     final pageFormat = PdfPageFormat(
-      _labelWidthMm * PdfPageFormat.mm,
-      _labelHeightMm * PdfPageFormat.mm,
+      _labelWidthMm() * PdfPageFormat.mm,
+      _labelHeightMm() * PdfPageFormat.mm,
       marginAll: 0,
     );
 
     for (final label in labels) {
       final qrBytes = await _qrPng(label.qrPayload, 200);
+      final s = PrinterSettingsHolder.instance.current;
       document.addPage(
         pw.Page(
           pageFormat: pageFormat,
-          margin: const pw.EdgeInsets.all(8),
+          margin: pw.EdgeInsets.all(_labelMarginMm() * PdfPageFormat.mm),
           build: (context) => pw.Directionality(
             textDirection: pw.TextDirection.rtl,
-            child: pw.Column(
+            child: pw.Transform.translate(
+              offset: PdfPoint(
+                s.offsetXmm * PdfPageFormat.mm,
+                s.offsetYmm * PdfPageFormat.mm,
+              ),
+              child: pw.Transform.scale(
+                scale: s.scalePercent / 100,
+                alignment: pw.Alignment.center,
+                child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
+                // سربرگ: PGG + زیرنویس ریز
                 pw.Container(
-                  height: 16,
+                  height: 34,
                   alignment: pw.Alignment.center,
                   decoration: const pw.BoxDecoration(
                     border: pw.Border(
                       bottom: pw.BorderSide(color: PdfColors.black, width: 2),
                     ),
                   ),
-                  child: pw.Text(
-                    'MA WAREHOUSE',
-                    style: pw.TextStyle(font: bold, fontSize: 8.5),
+                  child: pw.Column(
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      pw.Text(
+                        'PGG',
+                        style: pw.TextStyle(
+                          font: bold,
+                          fontSize: 16,
+                          letterSpacing: 4,
+                        ),
+                      ),
+                      pw.Text(
+                        'Pro Global Groups',
+                        style: pw.TextStyle(
+                          font: regular,
+                          fontSize: 6,
+                          letterSpacing: 1.2,
+                          color: PdfColor.fromHex('#4a4a4a'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                pw.SizedBox(height: 3),
-                pw.Center(
-                  child: pw.Image(
-                    pw.MemoryImage(qrBytes),
-                    width: 72,
-                    height: 72,
+                pw.SizedBox(height: 8),
+                // بدنه افقی: اطلاعات سمت راست، QR سمت چپ
+                pw.Expanded(
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                    children: [
+                      // اطلاعات دقیق محصول
+                      pw.Expanded(
+                        flex: 3,
+                        child: pw.Column(
+                          mainAxisAlignment:
+                              pw.MainAxisAlignment.spaceEvenly,
+                          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                          children: [
+                            _pdfInfoRow('محصول', label.productName, regular, bold),
+                            _pdfInfoRow('مدل', label.modelDisplay, regular, bold),
+                            _pdfInfoRow('تعداد', label.qtyText, regular, bold),
+                            _pdfInfoRow('سریال', label.serial, regular, bold),
+                          ],
+                        ),
+                      ),
+                      pw.SizedBox(width: 10),
+                      // QR
+                      pw.Expanded(
+                        flex: 2,
+                        child: pw.Align(
+                          alignment: pw.Alignment.center,
+                          child: pw.Image(
+                            pw.MemoryImage(qrBytes),
+                            width: 110,
+                            height: 110,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                pw.SizedBox(height: 6),
                 _pdfDivider(),
-                _pdfInfoRow('مدل', label.modelDisplay, regular, bold),
-                _pdfInfoRow('تعداد', label.qtyText, regular, bold),
-                _pdfInfoRow('سریال', label.serial, regular, bold),
-                _pdfInfoRow('تاریخ', label.date, regular, bold),
-                _pdfDivider(),
+                pw.SizedBox(height: 2),
                 pw.Container(
-                  height: 22,
+                  height: 24,
                   alignment: pw.Alignment.center,
                   child: pw.Text(
                     '*${label.barcode}*',
-                    style: pw.TextStyle(font: courier, fontSize: 12),
+                    style: pw.TextStyle(font: courier, fontSize: 14),
                   ),
                 ),
                 pw.Container(
@@ -141,12 +202,14 @@ class PdfLabels {
                     maxLines: 1,
                     style: pw.TextStyle(
                       font: regular,
-                      fontSize: 6.5,
+                      fontSize: 7,
                       color: PdfColor.fromHex('#4a4a4a'),
                     ),
                   ),
                 ),
               ],
+                ),
+              ),
             ),
           ),
         ),
@@ -161,8 +224,8 @@ class PdfLabels {
     final document = await _buildBadgeDocument(badges);
     if (document == null) return false;
     final pageFormat = PdfPageFormat(
-      _labelWidthMm * PdfPageFormat.mm,
-      _labelHeightMm * PdfPageFormat.mm,
+      _badgeWidthMm * PdfPageFormat.mm,
+      _badgeHeightMm * PdfPageFormat.mm,
       marginAll: 0,
     );
     return _showPrintDialog(document, pageFormat);
@@ -183,8 +246,8 @@ class PdfLabels {
     final courier = pw.Font.courierBold();
     final document = pw.Document();
     final pageFormat = PdfPageFormat(
-      _labelWidthMm * PdfPageFormat.mm,
-      _labelHeightMm * PdfPageFormat.mm,
+      _badgeWidthMm * PdfPageFormat.mm,
+      _badgeHeightMm * PdfPageFormat.mm,
       marginAll: 0,
     );
 
@@ -291,6 +354,8 @@ class PdfLabels {
       return await Printing.layoutPdf(
         name: 'warehouse_label.pdf',
         format: pageFormat,
+        // صفحه‌ی PDF دقیقاً به اندازه‌ی لیبل فیزیکی است تا چاپگر محتوا را وسط قرار دهد
+        forceCustomPrintPaper: true,
         onLayout: (format) async => document.save(),
       );
     } catch (_) {

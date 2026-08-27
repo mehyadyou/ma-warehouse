@@ -8,6 +8,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final label = LabelData(
+    productName: 'سینک ظرفشویی',
     modelDisplay: 'مدل ایکس',
     qtyText: '12 عدد / کارتن',
     serial: 'SER12345',
@@ -31,7 +32,7 @@ void main() {
     createdAt: '2026-08-20',
   );
 
-  test('label PDF builds with fonts, QR and 58x77mm pages', () async {
+  test('label PDF builds with fonts, QR and 100x100mm pages', () async {
     final bytes = await PdfLabels.buildLabelPdfBytes([label, label]);
     expect(bytes, isNotNull);
     expect(_isPdf(bytes!), isTrue);

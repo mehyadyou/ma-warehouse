@@ -4,7 +4,7 @@ import { notificationService } from '../../notification/notification.service';
 import { realtime } from '../../realtime/realtime';
 import { RealtimeEvents } from '../../realtime/events';
 import { asyncHandler } from '../../middleware/asyncHandler';
-import { ScanOutInput } from './scanout.schema';
+import { ScanOutInput, ManualExitInput } from './scanout.schema';
 
 export const scanOutController = {
   scan: asyncHandler(async (req: Request, res: Response) => {
@@ -22,6 +22,22 @@ export const scanOutController = {
     }
 
     // اعلان به مدیران و رویداد ریل‌تایم توسط دیسپچر اوتباکس (تراکنشی و بدون گم‌شدن پیام) ارسال می‌شود
+    res.json(result);
+  }),
+
+  //خروج دستی (بدون QR) — محصول + مدل + تعداد، اعتبارسنجی مطابق سفارش/دستور مدیر
+  manual: asyncHandler(async (req: Request, res: Response) => {
+    const { productId, modelId, quantity } = req.body as ManualExitInput;
+    const userId      = req.user!.id;
+    const warehouseId = req.user!.warehouseId;
+    if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
+
+    const result = await scanOutService.manualExit({ productId, modelId, quantity }, warehouseId, userId);
+    if (!result.valid) {
+      await notificationService.create(userId, 'خطای خروج', result.error, 'error', { type: 'SCAN_OUT_ERROR' });
+      realtime.toUser(userId, RealtimeEvents.QR_ERROR, { error: result.error });
+      return res.status(400).json(result);
+    }
     res.json(result);
   }),
 

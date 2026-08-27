@@ -18,6 +18,7 @@ class _Row {
   KeeperProductModel? product;
   String? modelId;
   String entryType = 'NEW';
+  bool withoutQr = false;
   int cartonCount = 0;
   int individualCount = 1;
   List<KeeperProductVariantModel> models = [];
@@ -41,6 +42,24 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
   @override
   void initState() {
     super.initState();
+  }
+
+  /// مدل انتخاب‌شدهٔ ردیف — null اگر هنوز مدلی انتخاب نشده
+  KeeperProductVariantModel? _selectedModel(_Row row) {
+    for (final m in row.models) {
+      if (m.id == row.modelId) return m;
+    }
+    return null;
+  }
+
+  /// اگر مدل تک‌عددی باشد (هر کارتن = یک عدد) شمارندهٔ «تکی» معنی ندارد —
+  /// تعدادش صفر می‌شود تا کاربر گیج نشود.
+  void _normalizeIndividual(_Row row) {
+    if (_selectedModel(row)?.unitsPerBox == 1) {
+      row.individualCount = 0;
+    } else if (row.individualCount == 0) {
+      row.individualCount = 1;
+    }
   }
 
   /// پیکر جستجوشوندهٔ محصولات — داده فقط صفحه به صفحه از سرور می‌آید
@@ -126,8 +145,8 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
         _snack('ردیف ${i + 1}: مدل انتخاب نشده');
         return;
       }
-      if (r.entryType == 'RETURNED' && r.serialCtrl.text.trim().isEmpty) {
-        _snack('ردیف ${i + 1}: سریال کالا برای مرجوعی الزامی است');
+      if (r.entryType == 'RETURNED' && r.serialCtrl.text.trim().isEmpty && !r.withoutQr) {
+        _snack('ردیف ${i + 1}: سریال کالا برای مرجوعی الزامی است یا تیک بدون QRcode را بزنید');
         return;
       }
       if (r.cartonCount + r.individualCount == 0) {
@@ -143,9 +162,10 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
               'productId': r.productId!,
               'modelId': r.modelId!,
               'entryType': r.entryType,
-              'serialNumber': r.entryType == 'RETURNED'
-                  ? r.serialCtrl.text.trim()
-                  : null,
+              if (r.entryType == 'RETURNED' && !r.withoutQr)
+                'serialNumber': r.serialCtrl.text.trim(),
+              if (r.entryType == 'RETURNED')
+                'withoutQr': r.withoutQr,
               'cartonCount': r.cartonCount,
               'individualCount': r.individualCount,
             },
@@ -390,6 +410,8 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                   row.individualCount = 1;
                 } else {
                   row.serialCtrl.clear();
+                  row.withoutQr = false;
+                  _normalizeIndividual(row);
                 }
               });
             },
@@ -416,39 +438,64 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
             }).toList(),
             onChanged: row.productId == null
                 ? null
-                : (v) => setState(() => row.modelId = v),
+                : (v) => setState(() {
+                    row.modelId = v;
+                    _normalizeIndividual(row);
+                  }),
           ),
           const SizedBox(height: 10),
           if (row.entryType == 'RETURNED') ...[
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _TextField(
-                    controller: row.serialCtrl,
-                    label: 'سریال کالا',
-                    hint: 'سریال یکتای کالا را وارد کنید',
-                  ),
+                Checkbox(
+                  value: row.withoutQr,
+                  activeColor: _green,
+                  onChanged: (v) =>
+                      setState(() => row.withoutQr = v ?? false),
+                ),
+                const Text(
+                  'بدون QRcode',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _scanReturnSerial(row),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: _green.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _green.withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: _green,
-                      size: 22,
-                    ),
-                  ),
+                const Text(
+                  '(بدون سریال و برچسب)',
+                  style: TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],
             ),
+            if (!row.withoutQr) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _TextField(
+                      controller: row.serialCtrl,
+                      label: 'سریال کالا',
+                      hint: 'سریال یکتای کالا را وارد کنید',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _scanReturnSerial(row),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: _green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: _green.withValues(alpha: 0.3)),
+                      ),
+                      child: const Icon(
+                        Icons.qr_code_scanner_rounded,
+                        color: _green,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
@@ -458,36 +505,45 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: _green.withValues(alpha: 0.18)),
               ),
-              child: const Text(
-                'مرجوعی به صورت یک عدد تکی با سریال یکتا ثبت می‌شود.',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+              child: Text(
+                row.withoutQr
+                    ? 'مرجوعی بدون QR: سریال جدید ساخته می‌شود و کالا به عنوان مرجوعی ثبت می‌گردد.'
+                    : 'مرجوعی به صورت یک عدد تکی با سریال یکتا ثبت می‌شود.',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
           ] else
-            Row(
-              children: [
-                Expanded(
-                  child: _Counter(
-                    label: 'کارتن',
-                    value: row.cartonCount,
-                    onDec: row.cartonCount > 0
-                        ? () => setState(() => row.cartonCount--)
-                        : null,
-                    onInc: () => setState(() => row.cartonCount++),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _Counter(
-                    label: 'تکی',
-                    value: row.individualCount,
-                    onDec: row.individualCount > 0
-                        ? () => setState(() => row.individualCount--)
-                        : null,
-                    onInc: () => setState(() => row.individualCount++),
-                  ),
-                ),
-              ],
+            Builder(
+              builder: (context) {
+                final isSingleUnit = _selectedModel(row)?.unitsPerBox == 1;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _Counter(
+                        label: 'کارتن',
+                        value: row.cartonCount,
+                        onDec: row.cartonCount > 0
+                            ? () => setState(() => row.cartonCount--)
+                            : null,
+                        onInc: () => setState(() => row.cartonCount++),
+                      ),
+                    ),
+                    if (!isSingleUnit) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _Counter(
+                          label: 'تکی',
+                          value: row.individualCount,
+                          onDec: row.individualCount > 0
+                              ? () => setState(() => row.individualCount--)
+                              : null,
+                          onInc: () => setState(() => row.individualCount++),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
         ],
       ),
@@ -656,8 +712,9 @@ class _Btn extends StatelessWidget {
 // استخراج سریال از QR جدید (MA|SN|<serial>|...)؛ null یعنی QR سریال ندارد
 String? serialFromQr(String raw) {
   final parts = raw.split('|');
-  if (parts.length >= 4 && parts[0] == 'MA' && parts[1] == 'SN')
+  if (parts.length >= 4 && parts[0] == 'MA' && parts[1] == 'SN') {
     return parts[2];
+  }
   return null;
 }
 

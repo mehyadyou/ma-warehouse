@@ -26,6 +26,8 @@ abstract class KeeperProductRowModel with _$KeeperProductRowModel {
     String? name,
     String? unit,
     @Default(0) num totalCount,
+    @Default(<KeeperProductModelStockModel>[])
+    List<KeeperProductModelStockModel> models,
   }) = _KeeperProductRowModel;
 
   factory KeeperProductRowModel.fromJson(Map<String, dynamic> json) =>

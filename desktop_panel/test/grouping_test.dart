@@ -35,6 +35,23 @@ void main() {
       expect(first.$2.length, 2);
     });
 
+    test('groupByDate=false merges duplicate models across dates', () {
+      final groups = groupCartonsByLabel(
+        [
+          carton('مدل آ', 'محصول ۱', '2026-08-20T10:00:00', serial: 'S1'),
+          carton('مدل آ', 'محصول ۱', '2026-08-21T09:00:00', serial: 'S2'),
+          carton('مدل ب', 'محصول ۱', '2026-08-20T10:00:00', serial: 'S3'),
+        ],
+        groupByDate: false,
+      );
+      expect(groups.length, 2);
+      final first = groups.first;
+      expect(first.$1.title, 'مدل آ');
+      expect(first.$1.subtitle, 'محصول ۱');
+      expect(first.$2.length, 2);
+      expect(first.$2.map((c) => c['serialNumber']).toList(), ['S1', 'S2']);
+    });
+
     test('preserves insertion order', () {
       final groups = groupCartonsByLabel([
         carton('مدل ز', 'محصول', '2026-08-20T10:00:00'),
@@ -72,6 +89,20 @@ void main() {
     });
   });
 
+  group('unitsOfCarton', () {
+    test('counts individuals as 1 and cartons as unitsPerBox', () {
+      expect(
+        unitsOfCarton({'isIndividual': true, 'model': {'unitsPerBox': 2}}),
+        1,
+      );
+      expect(
+        unitsOfCarton({'isIndividual': false, 'model': {'unitsPerBox': 2}}),
+        2,
+      );
+      expect(unitsOfCarton({'isIndividual': false, 'capacityPerBox': 5}), 5);
+    });
+  });
+
   group('CartonsTab widget', () {
     testWidgets('renders accordion items and summary', (tester) async {
       await tester.pumpWidget(
@@ -97,6 +128,51 @@ void main() {
       expect(find.text('1 گروه کالا | 2 برچسب آماده چاپ'), findsOneWidget);
       expect(find.byType(AccordionItem), findsOneWidget);
       expect(find.text('مدل آ'), findsOneWidget);
+    });
+
+    testWidgets('products tab (groupByDate=false) shows stock in units', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CartonsTab(
+              fetch: () async => [
+                {
+                  'model': {'name': 'SL116', 'unitsPerBox': 2},
+                  'product': {'name': 'سینک ظرفشویی', 'unit': 'عدد'},
+                  'createdAt': '2026-08-22T10:00:00',
+                  'serialNumber': 'S1',
+                  'isIndividual': false,
+                },
+                {
+                  'model': {'name': 'SL116', 'unitsPerBox': 2},
+                  'product': {'name': 'سینک ظرفشویی', 'unit': 'عدد'},
+                  'createdAt': '2026-08-22T11:00:00',
+                  'serialNumber': 'S2',
+                  'isIndividual': true,
+                },
+              ],
+              initialSummary: 'محصولات وارد شده به انبار',
+              emptySummary: 'هیچ محصولی وارد نشده است.',
+              emptyState: 'محصولی وارد نشده است.',
+              summary: (groups, total) =>
+                  '$groups گروه کالا | $total برچسب آماده چاپ',
+              errorSummary: 'خطا',
+              groupByDate: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 گروه کالا | 2 برچسب آماده چاپ'), findsOneWidget);
+      // ۱ کارتن (۲ عدد) + ۱ تکی (۱ عدد) = ۳ عدد — هماهنگ با پنل انباردار؛
+      // هر کارتن/تکی یک لیبل (QR) دارد پس تعداد لیبل با موجودیِ واحد فرق دارد
+      expect(
+        find.text('سینک ظرفشویی | موجودی: 3 عدد | 2 لیبل (QR)'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows empty state', (tester) async {

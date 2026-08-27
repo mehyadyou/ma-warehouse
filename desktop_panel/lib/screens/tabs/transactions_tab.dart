@@ -5,6 +5,20 @@ import '../../core/api_service.dart';
 import '../../core/palette.dart';
 import '../../widgets/app_widgets.dart';
 
+/// فیلترهای نوع تراکنش در تب تاریخچه — هر کدام به یک TransactionType سرور نگاشت می‌شود
+class TypeFilter {
+  const TypeFilter(this.label, this.value);
+  final String label;
+  final String? value; // null یعنی بدون فیلتر (همه)
+}
+
+const _typeFilters = <TypeFilter>[
+  TypeFilter('همه', null),
+  TypeFilter('ورودی‌ها', 'IN'),
+  TypeFilter('خروجی‌ها', 'OUT'),
+  TypeFilter('مرجوعی‌ها', 'RETURN'),
+];
+
 class TransactionsTab extends StatefulWidget {
   const TransactionsTab({super.key, required this.api});
 
@@ -18,6 +32,7 @@ class TransactionsTabState extends State<TransactionsTab> {
   int _year = Jalali.now().year;
   int _month = Jalali.now().month;
   int _day = Jalali.now().day;
+  String? _type; // مقدار TransactionType یا null
 
   String _status = '';
   final List<Map<String, dynamic>> _rows = [];
@@ -56,14 +71,19 @@ class TransactionsTabState extends State<TransactionsTab> {
       _rows.clear();
     });
     try {
-      final raw = await widget.api.getTransactions(date: dateFilter);
+      final raw = await widget.api.getTransactions(
+        date: dateFilter,
+        type: _type,
+      );
       if (!mounted) return;
       setState(() {
         _loading = false;
         _rows.addAll(raw.whereType<Map<String, dynamic>>());
+        final typeLabel =
+            _typeFilters.firstWhere((f) => f.value == _type).label;
         _status = dateFilter != null
-            ? '${_rows.length} تراکنش برای تاریخ $dateFilter نمایش داده شد.'
-            : '${_rows.length} تراکنش اخیر نمایش داده شد.';
+            ? '${_rows.length} تراکنش ${typeLabel} برای تاریخ $_selectedGregorianDate'
+            : '${_rows.length} تراکنش ${typeLabel} اخیر';
       });
     } catch (exc) {
       if (!mounted) return;
@@ -120,6 +140,24 @@ class TransactionsTabState extends State<TransactionsTab> {
                   variant: AppButtonVariant.secondary,
                   onPressed: reloadLatest,
                 ),
+                const SizedBox(width: 12),
+                Divider(
+                  height: 20,
+                  thickness: 1,
+                  color: Palette.border,
+                ),
+                const SizedBox(width: 8),
+                for (final f in _typeFilters) ...[
+                  _typeChip(
+                    label: f.label,
+                    active: _type == f.value,
+                    onTap: () {
+                      setState(() => _type = f.value);
+                      reloadLatest();
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                ],
               ],
             ),
           ),
@@ -145,6 +183,33 @@ class TransactionsTabState extends State<TransactionsTab> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _typeChip({
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: active ? Palette.primary : Palette.surfaceAlt,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: Palette.surfaceHover,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.black : Palette.textMuted,
+              fontSize: 12,
+              fontWeight: active ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -229,11 +294,11 @@ class TransactionsTabState extends State<TransactionsTab> {
                         : Colors.transparent,
                   ),
                   children: [
-                    _BodyCell(_rows[i]['type'] == 'IN' ? 'ورود' : 'خروج'),
+                    _BodyCell(_typeLabel(_rows[i]['type'])),
                     _BodyCell(_rows[i]['productName']?.toString() ?? '—'),
                     _BodyCell(_rows[i]['quantity']?.toString() ?? '0'),
                     _BodyCell(_rows[i]['userName']?.toString() ?? '—'),
-                    _BodyCell(_dateOnly(_rows[i]['createdAt'])),
+                    _BodyCell(_toJalali(_rows[i]['createdAt'])),
                   ],
                 ),
           ],
@@ -242,9 +307,44 @@ class TransactionsTabState extends State<TransactionsTab> {
     );
   }
 
-  String _dateOnly(dynamic value) {
+  String _typeLabel(dynamic type) {
+    switch (type?.toString()) {
+      case 'IN':
+        return 'ورودی';
+      case 'OUT':
+        return 'خروجی';
+      case 'RETURN':
+        return 'مرجوعی';
+      default:
+        return type?.toString() ?? '—';
+    }
+  }
+
+  /// تاریخ میلادی (ISO) را به شمسی تبدیل و با ارقام فارسی دو رقمِ اول را حذف نمی‌کند؛
+  /// در قالب «۱۴۰۴/۰۵/۲۵» نمایش می‌دهد
+  String _toJalali(dynamic value) {
     final raw = value?.toString() ?? '';
-    return raw.length > 10 ? raw.substring(0, 10) : (raw.isEmpty ? '—' : raw);
+    if (raw.isEmpty) return '—';
+    // createdAt اغلب ISO با میکروثانیه و Z است — بخش تاریخ را جدا می‌کنیم
+    final datePart = raw.contains('T') ? raw.substring(0, 10) : raw;
+    final parts = datePart.split('-');
+    if (parts.length != 3) return datePart;
+    final yr = int.tryParse(parts[0]);
+    final mo = int.tryParse(parts[1]);
+    final dy = int.tryParse(parts[2]);
+    if (yr == null || mo == null || dy == null) return datePart;
+    final j = Jalali.fromDateTime(DateTime(yr, mo, dy));
+    return '${_faDigits('${j.year}')}/${_faDigits(_two(j.month))}/${_faDigits(_two(j.day))}';
+  }
+
+  String _two(int v) => v.toString().padLeft(2, '0');
+
+  String _faDigits(String s) {
+    const fa = '۰۱۲۳۴۵۶۷۸۹';
+    return s.split('').map((c) {
+      final i = int.tryParse(c);
+      return i == null ? c : fa[i];
+    }).join();
   }
 }
 

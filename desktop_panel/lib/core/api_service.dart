@@ -120,11 +120,31 @@ class ApiService {
         [];
   }
 
-  Future<List<dynamic>> getTransactions({String? date}) async {
+  /// کارتن‌هایی که لیبل‌شان چاپ شده — تب «چاپ شده‌ها»
+  Future<List<dynamic>> getPrintedCartons() async {
+    final payload = await _request('GET', '/warehouse-keeper/cartons/printed');
+    return (payload is Map<String, dynamic> ? payload['cartons'] : null)
+            as List<dynamic>? ??
+        [];
+  }
+
+  /// ثبت لحظهٔ چاپ لیبل — کارتن‌ها از «محصولات» به «چاپ شده‌ها» منتقل می‌شوند
+  Future<void> markCartonsPrinted(List<String> cartonIds) async {
+    await _request(
+      'POST',
+      '/warehouse-keeper/cartons/printed',
+      data: {'cartonIds': cartonIds},
+    );
+  }
+
+  Future<List<dynamic>> getTransactions({String? date, String? type}) async {
     final payload = await _request(
       'GET',
       '/warehouse-keeper/transactions',
-      query: date != null ? {'date': date} : null,
+      query: {
+        if (date != null) 'date': date,
+        if (type != null) 'type': type,
+      },
     );
     return (payload is Map<String, dynamic> ? payload['transactions'] : null)
             as List<dynamic>? ??
@@ -133,6 +153,44 @@ class ApiService {
 
   Future<List<dynamic>> getLabels() async {
     final payload = await _request('GET', '/warehouse-keeper/labels');
+    return (payload is Map<String, dynamic> ? payload['cartons'] : null)
+            as List<dynamic>? ??
+        [];
+  }
+
+  /// محصولات تعریف‌شده توسط مدیر (با مدل‌ها و ظرفیت بسته) — برای ورود کالا
+  Future<({List<dynamic> products, int total})> getProducts({
+    String q = '',
+    int page = 1,
+    int pageSize = 50,
+  }) async {
+    final payload = await _request(
+      'GET',
+      '/warehouse-keeper/products',
+      query: {
+        if (q.trim().isNotEmpty) 'q': q.trim(),
+        'page': page,
+        'pageSize': pageSize,
+      },
+    );
+    final map = payload is Map<String, dynamic>
+        ? payload
+        : const <String, dynamic>{};
+    final products = (map['products'] as List<dynamic>?) ?? [];
+    final total = (map['total'] as num?)?.toInt() ?? products.length;
+    return (products: products, total: total);
+  }
+
+  /// ثبت ورود کالا — سرور برای هر کارتن/تکی QR و سریال می‌سازد
+  Future<List<dynamic>> submitCheckin(
+    List<Map<String, dynamic>> items, {
+    String? clientKey,
+  }) async {
+    final payload = await _request(
+      'POST',
+      '/warehouse-keeper/checkin',
+      data: {'items': items, 'clientKey': ?clientKey},
+    );
     return (payload is Map<String, dynamic> ? payload['cartons'] : null)
             as List<dynamic>? ??
         [];

@@ -12,6 +12,23 @@ vi.mock('../../utils/prisma', () => ({
 
 import { prisma } from '../../utils/prisma';
 
+/// تبدیل آرگومان‌های فراخوانیِ mock شدهٔ `$queryRaw` به متن کامل SQL.
+/// `strings` فقط تکه‌های ثابتِ قالب را دارد؛ هر مقدارِ درج‌شده (شامل قطعاتِ
+/// `Prisma.raw`) به‌صورت آرگومانِ مستقل در `call[1..]` می‌آید و وسط تکه‌ها قرار می‌گیرد.
+function renderCall(call: unknown[]): string {
+    const strings = call[0] as string[];
+    let out = strings[0];
+    for (let i = 1; i < call.length; i++) {
+        const v = call[i] as { strings?: string[] } | string | number | null;
+        const frag =
+            v && typeof v === 'object' && Array.isArray(v.strings)
+                ? v.strings.join('')
+                : String(v);
+        out += frag + (strings[i] ?? '');
+    }
+    return out;
+}
+
 function makeOrder(id: string) {
     return {
         id,
@@ -113,6 +130,32 @@ describe('warehouseService.getInventorySummary', () => {
         expect('models' in result.products[0]).toBe(false);
         expect(result.products[0].totalCount).toBe(15);
         expect(result.products[0].modelCount).toBe(2);
+    });
+
+    it('getTransactions با فیلتر type=OUT شرط نوع امن را به کوئری اضافه می‌کند', async () => {
+        mocks.queryRaw.mockResolvedValue([{ id: 't1', type: 'OUT' }]);
+
+        await warehouseService.getTransactions('wh1', undefined, 'OUT');
+
+        const call = mocks.queryRaw.mock.calls[0];
+        const queryText = renderCall(call);
+        expect(queryText).toContain('WHERE t."warehouseId"');
+        expect(queryText).toContain('t."type" = \'OUT\'');
+        // با فیلتر OUT، تاریخ نباید در کوئری بیاید
+        expect(queryText).not.toContain('"createdAt"::date');
+        expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('getTransactions با فیلتر نامعتبر، شرط نوع اضافه نمی‌شود', async () => {
+        mocks.queryRaw.mockResolvedValue([]);
+
+        await warehouseService.getTransactions('wh1', '2026-08-20', 'INJECT');
+
+        const call = mocks.queryRaw.mock.calls[0];
+        const queryText = renderCall(call);
+        // فیلتر نامعتبر نادیده گرفته می‌شود ولی تاریخ اعمال می‌شود
+        expect(queryText).not.toContain('INJECT');
+        expect(queryText).toContain('"createdAt"::date');
     });
 
     it('محصولات لِگاسی (بدون کارتن) هم شمارش می‌شوند و در سقف می‌مانند', async () => {

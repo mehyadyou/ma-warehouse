@@ -21,6 +21,8 @@ export const createOrderSchema = z.object({
     address:        z.string().trim().nullish(),
     customerPhone:  z.string().trim().nullish(),
     senderName:     z.string().trim().nullish(),
+    senderNationalId: z.string().trim().nullish(),
+    senderPhone:    z.string().trim().nullish(),
     receiverName:   z.string().trim().nullish(),
 });
 
@@ -36,6 +38,8 @@ export const updateOrderSchema = z.object({
     address:        z.string().trim().nullish(),
     customerPhone:  z.string().trim().nullish(),
     senderName:     z.string().trim().nullish(),
+    senderNationalId: z.string().trim().nullish(),
+    senderPhone:    z.string().trim().nullish(),
     receiverName:   z.string().trim().nullish(),
     // برای ویرایش هم‌زمان — با شمارهٔ نسخهٔ سفارش (409 اگر ناهماهنگ باشد)
     version:        z.coerce.number().int().min(0).optional(),

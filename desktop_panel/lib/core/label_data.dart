@@ -16,6 +16,7 @@ String shortOrderId(String orderId) {
 }
 
 class LabelData {
+  final String productName;
   final String modelDisplay;
   final String qtyText;
   final String serial;
@@ -25,6 +26,7 @@ class LabelData {
   final String qrPayload;
 
   LabelData({
+    required this.productName,
     required this.modelDisplay,
     required this.qtyText,
     required this.serial,
@@ -82,6 +84,7 @@ class LabelData {
         : tracking;
 
     return LabelData(
+      productName: productName,
       modelDisplay: modelDisplay,
       qtyText: qtyText,
       serial: serial,

@@ -87,6 +87,8 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
       _carriers.map((c) => (c.name ?? '').toString()).toList();
 
   final _senderCtrl = TextEditingController();
+  final _senderNationalIdCtrl = TextEditingController();
+  final _senderPhoneCtrl = TextEditingController();
   final _receiverCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
@@ -104,6 +106,8 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   @override
   void dispose() {
     _senderCtrl.dispose();
+    _senderNationalIdCtrl.dispose();
+    _senderPhoneCtrl.dispose();
     _receiverCtrl.dispose();
     _phoneCtrl.dispose();
     _cityCtrl.dispose();
@@ -287,10 +291,28 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
       _snack('کد پستی الزامی است');
       return;
     }
+    if (_shippingMethod == 'تیپاکس') {
+      final nationalId = _enDigits(_senderNationalIdCtrl.text.trim());
+      if (!RegExp(r'^\d{10}$').hasMatch(nationalId)) {
+        _snack('برای تیپاکس، کد ملی فرستنده (۱۰ رقم) الزامی است');
+        return;
+      }
+      if (_senderPhoneCtrl.text.trim().isEmpty) {
+        _snack('برای تیپاکس، شمارهٔ تماس فرستنده الزامی است');
+        return;
+      }
+    }
     if (_shippingMethod == 'باربری' && _selectedCarrier == null && _carriers.isNotEmpty) {
       _snack('باربری را انتخاب کنید');
       return;
     }
+
+    // رهنمای ارسالِ فیلدهای تیپاکس — فقط وقتی روش «تیپاکس» انتخاب شده
+    final isTipax = _shippingMethod == 'تیپاکس';
+    final senderNationalId =
+        isTipax ? _enDigits(_senderNationalIdCtrl.text.trim()) : null;
+    final senderPhone =
+        isTipax ? _enDigits(_senderPhoneCtrl.text.trim()) : null;
 
     final carrierName = _selectedCarrier != null && _carriers.isNotEmpty
         ? (_carriers
@@ -337,6 +359,8 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
         'senderName': _senderCtrl.text.trim().isEmpty
             ? null
             : _senderCtrl.text,
+        'senderNationalId': senderNationalId,
+        'senderPhone': senderPhone,
         'receiverName': _receiverCtrl.text.trim().isEmpty
             ? null
             : _receiverCtrl.text,
@@ -525,6 +549,42 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                     _carrierValues,
                     _carrierLabels,
                     (v) => setState(() => _selectedCarrier = v),
+                  ),
+                ],
+                if (_shippingMethod == 'تیپاکس') ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _surfaceAlt,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _warning.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'اطلاعات فرستنده (تیپاکس)',
+                          style: TextStyle(
+                            color: _warning,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _textField(
+                          _senderNationalIdCtrl,
+                          'کد ملی فرستنده (۱۰ رقم) *',
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 8),
+                        _textField(
+                          _senderPhoneCtrl,
+                          'شمارهٔ تماس فرستنده *',
+                          keyboardType: TextInputType.number,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],

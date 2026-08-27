@@ -11,10 +11,14 @@ class LabelCard extends StatefulWidget {
     super.key,
     required this.carton,
     required this.onSelectionChanged,
+    this.onPrinted,
   });
 
   final Map<String, dynamic> carton;
   final VoidCallback onSelectionChanged;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا کارتن به «چاپ شده‌ها» منتقل شود
+  final void Function(List<String> cartonIds)? onPrinted;
 
   @override
   State<LabelCard> createState() => _LabelCardState();
@@ -23,6 +27,13 @@ class LabelCard extends StatefulWidget {
 class _LabelCardState extends State<LabelCard> {
   bool _selected = false;
   late final LabelData _data = LabelData.fromCarton(widget.carton);
+
+  String get cartonId => widget.carton['id']?.toString() ?? '';
+
+  Future<void> _printSingle() async {
+    final ok = await PdfLabels.printLabels([_data]);
+    if (ok) widget.onPrinted?.call([cartonId]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +65,7 @@ class _LabelCardState extends State<LabelCard> {
                 label: 'چاپ تکی',
                 variant: AppButtonVariant.secondary,
                 compact: true,
-                onPressed: () => PdfLabels.printLabels([_data]),
+                onPressed: _printSingle,
               ),
             ],
           ),
@@ -80,11 +91,15 @@ class AccordionItem extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.cartons,
+    this.onPrinted,
   });
 
   final String title;
   final String subtitle;
   final List<Map<String, dynamic>> cartons;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا کارتن‌ها به «چاپ شده‌ها» منتقل شوند
+  final void Function(List<String> cartonIds)? onPrinted;
 
   @override
   State<AccordionItem> createState() => _AccordionItemState();
@@ -197,6 +212,7 @@ class _AccordionItemState extends State<AccordionItem> {
                           key: _cardKeyFor(i),
                           carton: widget.cartons[i],
                           onSelectionChanged: () => setState(() {}),
+                          onPrinted: widget.onPrinted,
                         ),
                     ],
                   ),
@@ -232,12 +248,11 @@ class _AccordionItemState extends State<AccordionItem> {
   int _selectedCount() =>
       _cardKeys.where((key) => key.currentState?.isSelected() ?? false).length;
 
-  void _printSelected() {
-    final selected = _cardKeys
+  Future<void> _printSelected() async {
+    final selectedCards = _cardKeys
         .where((key) => key.currentState?.isSelected() ?? false)
-        .map((key) => key.currentState!._data)
         .toList();
-    if (selected.isEmpty) {
+    if (selectedCards.isEmpty) {
       showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -263,6 +278,14 @@ class _AccordionItemState extends State<AccordionItem> {
       );
       return;
     }
-    PdfLabels.printLabels(selected);
+    final labels = selectedCards
+        .map((key) => key.currentState!._data)
+        .toList();
+    final ok = await PdfLabels.printLabels(labels);
+    if (ok) {
+      widget.onPrinted?.call(
+        selectedCards.map((key) => key.currentState!.cartonId).toList(),
+      );
+    }
   }
 }

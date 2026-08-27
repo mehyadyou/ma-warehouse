@@ -383,8 +383,64 @@ export const warehouseService = {
         const start = (page - 1) * pageSize;
         const products = all.slice(start, start + pageSize);
 
+        // ── مدل‌های هر محصول با موجودی همین انبار — یک کوئری برای کل صفحه (به‌جای N+1) ──
+        const productIds = products.map(p => p.productId);
+        const modelsByProduct = new Map<string, any[]>();
+        if (productIds.length > 0) {
+            const modelTotals = await prisma.$queryRaw<{
+                productId: string;
+                modelId: string;
+                name: string;
+                packageType: string | null;
+                unitsPerBox: number | null;
+                count: number;
+            }[]>`
+                SELECT
+                    c."productId" as "productId",
+                    pm.id as "modelId",
+                    pm.name,
+                    pm."packageType",
+                    pm."unitsPerBox",
+                    COALESCE(SUM(
+                        CASE
+                            WHEN c.status = 'IN_STOCK' THEN
+                                CASE
+                                    WHEN c."isIndividual" = true THEN 1
+                                    ELSE COALESCE(pm."unitsPerBox", 0)
+                                END
+                            ELSE 0
+                        END
+                    ), 0)::int as "count"
+                FROM "ProductModel" pm
+                LEFT JOIN "Carton" c
+                    ON c."modelId" = pm.id
+                    AND c."warehouseId" = ${warehouseId}
+                WHERE pm."productId" IN (${Prisma.join(productIds)})
+                AND pm."deletedAt" IS NULL
+                GROUP BY c."productId", pm.id, pm.name, pm."packageType", pm."unitsPerBox"
+                ORDER BY "count" DESC, pm.name ASC
+            `;
+            for (const row of modelTotals) {
+                const pid = row.productId;
+                if (!pid) continue;
+                const list = modelsByProduct.get(pid);
+                const model = {
+                    modelId: row.modelId,
+                    name: row.name,
+                    packageType: row.packageType?.trim() || null,
+                    unitsPerBox: row.unitsPerBox,
+                    count: Number(row.count || 0),
+                };
+                if (list) list.push(model);
+                else modelsByProduct.set(pid, [model]);
+            }
+        }
+
         return {
-            products,
+            products: products.map(p => ({
+                ...p,
+                models: modelsByProduct.get(p.productId) ?? [],
+            })),
             total,
             page,
             pageSize,
@@ -477,25 +533,20 @@ export const warehouseService = {
         };
     },
 
-    getTransactions: async (warehouseId: string, date?: string) => {
-        if (date) {
-            return await prisma.$queryRaw`
-                SELECT t.*, u.name as "userName"
-                FROM "Transaction" t
-                JOIN "User" u ON t."userId" = u.id
-                WHERE t."warehouseId" = ${warehouseId}
-                AND t."createdAt"::date = ${date}::date
-                ORDER BY t."createdAt" DESC LIMIT 50
-            `;
-        } else {
-            return await prisma.$queryRaw`
-                SELECT t.*, u.name as "userName"
-                FROM "Transaction" t
-                JOIN "User" u ON t."userId" = u.id
-                WHERE t."warehouseId" = ${warehouseId}
-                ORDER BY t."createdAt" DESC LIMIT 50
-            `;
-        }
+    getTransactions: async (warehouseId: string, date?: string, type?: string) => {
+        // فیلتر نوع فقط با مقادیر امن گزارش می‌شود تا امنیت queryRaw حفظ شود
+        const allowed = new Set(['IN', 'OUT', 'RETURN']);
+        const typeClause = type && allowed.has(type) ? ` AND t."type" = '${type}'` : '';
+        const dateClause = date ? ` AND t."createdAt"::date = ${date}::date` : '';
+        return await prisma.$queryRaw`
+            SELECT t.*, u.name as "userName"
+            FROM "Transaction" t
+            JOIN "User" u ON t."userId" = u.id
+            WHERE t."warehouseId" = ${warehouseId}
+            ${Prisma.raw(dateClause)}
+            ${Prisma.raw(typeClause)}
+            ORDER BY t."createdAt" DESC LIMIT 50
+        `;
     },
 
     //محصولات برای انباردار (فقط خواندنی + ظرفیت مدل‌ها) — بدون محصولات بایگانی‌شده

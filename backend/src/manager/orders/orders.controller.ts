@@ -18,7 +18,9 @@ export const ordersController = {
       body.address ?? undefined,
       body.customerPhone ?? undefined,
       body.senderName ?? undefined,
-      body.receiverName ?? undefined
+      body.receiverName ?? undefined,
+      body.senderNationalId ?? undefined,
+      body.senderPhone ?? undefined
     );
     res.status(201).json({ message: 'سفارش با موفقیت ثبت شد', order });
 
@@ -36,6 +38,8 @@ export const ordersController = {
       address: body.address ?? undefined,
       customerPhone: body.customerPhone ?? undefined,
       senderName: body.senderName ?? undefined,
+      senderNationalId: body.senderNationalId ?? undefined,
+      senderPhone: body.senderPhone ?? undefined,
       receiverName: body.receiverName ?? undefined,
       version: body.version,
     });
