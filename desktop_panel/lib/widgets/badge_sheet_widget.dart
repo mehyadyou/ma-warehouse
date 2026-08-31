@@ -66,12 +66,31 @@ class BadgeSheetWidget extends StatelessWidget {
               child: Column(
                 children: [
                   _InfoRow(label: 'فرستنده', value: data.senderName),
+                  if (data.isTipax) ...[
+                    _InfoRow(label: 'تلفن فرستنده', value: data.senderPhone),
+                    _InfoRow(
+                      label: 'کد ملی فرستنده',
+                      value: data.senderNationalId,
+                    ),
+                  ],
                   _InfoRow(label: 'گیرنده', value: data.receiverName),
-                  _InfoRow(label: 'شهر', value: data.city),
-                  _InfoRow(label: 'آدرس', value: data.address),
-                  _InfoRow(label: 'کد پستی', value: data.postalCode),
-                  _InfoRow(label: 'شیوه ارسال', value: data.shippingMethod),
-                  _InfoRow(label: 'باربری', value: data.carrier),
+                  _InfoRow(label: 'شهر گیرنده', value: data.receiverCity),
+                  if (data.isTipax) ...[
+                    _InfoRow(
+                      label: 'کد پستی گیرنده',
+                      value: data.receiverPostalCode,
+                    ),
+                    _InfoRow(
+                      label: 'آدرس گیرنده',
+                      value: data.receiverAddress,
+                    ),
+                  ],
+                  _InfoRow(label: 'تلفن گیرنده', value: data.receiverPhone),
+                  _InfoRow(label: 'مدل', value: data.modelDisplay),
+                  _InfoRow(
+                    label: 'تعداد ${data.packageLabel}',
+                    value: '${data.packageCount}',
+                  ),
                 ],
               ),
             ),

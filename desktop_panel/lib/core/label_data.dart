@@ -1,7 +1,30 @@
+import 'package:shamsi_date/shamsi_date.dart';
+
 String _asString(dynamic value) {
   if (value == null) return '';
   if (value is String) return value;
   return value.toString();
+}
+
+/// تاریخ میلادی (ISO) را به شمسی با ارقام فارسی تبدیل می‌کند — قالب «۱۴۰۴/۰۵/۲۵»
+String toJalaliDate(dynamic value) {
+  final raw = _asString(value);
+  if (raw.isEmpty) return '—';
+  // تاریخ‌ها معمولاً ISO با زمان (T...) هستند — فقط بخش تاریخ جدا می‌شود
+  final datePart = raw.contains('T') ? raw.substring(0, 10) : raw;
+  final parts = datePart.split('-');
+  if (parts.length != 3) return datePart;
+  final yr = int.tryParse(parts[0]);
+  final mo = int.tryParse(parts[1]);
+  final dy = int.tryParse(parts[2]);
+  if (yr == null || mo == null || dy == null) return datePart;
+  final j = Jalali.fromDateTime(DateTime(yr, mo, dy));
+  String two(int v) => v.toString().padLeft(2, '0');
+  String fa(String s) => s.split('').map((c) {
+    final i = int.tryParse(c);
+    return i == null ? c : '۰۱۲۳۴۵۶۷۸۹'[i];
+  }).join();
+  return '${fa('${j.year}')}/${fa(two(j.month))}/${fa(two(j.day))}';
 }
 
 String _first10(String value) {
@@ -103,14 +126,28 @@ const orderStatusLabels = {
   'CANCELLED': 'لغو شده',
 };
 
+/// اولویت با عکسِ لحظهٔ ثبت روی خودِ بیجک؛ برای بیجک‌های قدیمی‌تر از اطلاعات سفارش
+String _snapshotOr(String snapshot, String orderFallback) =>
+    snapshot.isNotEmpty ? snapshot : orderFallback;
+
 class BadgeData {
   final int sequence;
   final int total;
+  final int count;
+
+  /// عکسِ قلمِ اولِ سفارش (از پنل مدیریت): نام مدل + نحوهٔ بسته‌بندی و تعداد هر بسته
+  final String modelName;
+  final String packageType;
+  final int? unitsPerBox;
+
   final String senderName;
+  final String senderPhone;
+  final String senderNationalId;
   final String receiverName;
-  final String city;
-  final String address;
-  final String postalCode;
+  final String receiverCity;
+  final String receiverPostalCode;
+  final String receiverAddress;
+  final String receiverPhone;
   final String shippingMethod;
   final String carrier;
   final String orderRef;
@@ -119,11 +156,18 @@ class BadgeData {
   BadgeData({
     required this.sequence,
     required this.total,
+    required this.count,
+    required this.modelName,
+    required this.packageType,
+    required this.unitsPerBox,
     required this.senderName,
+    required this.senderPhone,
+    required this.senderNationalId,
     required this.receiverName,
-    required this.city,
-    required this.address,
-    required this.postalCode,
+    required this.receiverCity,
+    required this.receiverPostalCode,
+    required this.receiverAddress,
+    required this.receiverPhone,
     required this.shippingMethod,
     required this.carrier,
     required this.orderRef,
@@ -138,19 +182,64 @@ class BadgeData {
     return BadgeData(
       sequence: sequence,
       total: total ?? (badge['total'] as num?)?.toInt() ?? sequence,
+      count: (badge['count'] as num?)?.toInt() ?? 1,
+      modelName: _asString(badge['modelName']),
+      packageType: _asString(badge['packageType']),
+      unitsPerBox: (badge['unitsPerBox'] as num?)?.toInt(),
       senderName: _asString(badge['senderName']),
+      senderPhone: _snapshotOr(
+        _asString(badge['senderPhone']),
+        _asString(order['senderPhone']),
+      ),
+      senderNationalId: _snapshotOr(
+        _asString(badge['senderNationalId']),
+        _asString(order['senderNationalId']),
+      ),
       receiverName: _asString(badge['receiverName']),
-      city: _asString(order['city']),
-      address: _asString(order['address']),
-      postalCode: _asString(order['postalCode']),
+      receiverCity: _snapshotOr(
+        _asString(badge['receiverCity']),
+        _asString(order['city']),
+      ),
+      receiverPostalCode: _snapshotOr(
+        _asString(badge['receiverPostalCode']),
+        _asString(order['postalCode']),
+      ),
+      receiverAddress: _snapshotOr(
+        _asString(badge['receiverAddress']),
+        _asString(order['address']),
+      ),
+      receiverPhone: _snapshotOr(
+        _asString(badge['receiverPhone']),
+        _asString(order['customerPhone']),
+      ),
       shippingMethod: _asString(order['shippingMethod']),
       carrier: _asString(order['carrier']),
       orderRef: shortOrderId(_asString(badge['orderId'])),
-      createdAt: _asString(badge['createdAt']).isEmpty
-          ? '—'
-          : _first10(_asString(badge['createdAt'])),
+      createdAt: toJalaliDate(badge['createdAt']),
     );
   }
 
+  bool get isTipax => shippingMethod.trim() == 'تیپاکس';
+  bool get isBarebari => shippingMethod.trim() == 'باربری';
   bool get missingReceiver => receiverName.isEmpty;
+
+  /// برچسب نوع بسته از پنل مدیریت (کارتن/کیسه/…) — پیش‌فرض «کارتن»
+  String get packageLabel {
+    final t = packageType.trim();
+    return t.isEmpty ? 'کارتن' : t;
+  }
+
+  /// نام مدل برای نمایش روی برگه — اگر ثبت نشده باشد «—»
+  String get modelDisplay {
+    final t = modelName.trim();
+    return t.isEmpty ? '—' : t;
+  }
+
+  /// تعداد بسته‌ها = تعداد کل ÷ ظرفیت هر بسته (گردشده به بالا)؛
+  /// اگر ظرفیت ثبت نشده باشد همان تعداد کل
+  int get packageCount {
+    final cap = unitsPerBox;
+    if (cap == null || cap <= 0) return count;
+    return (count / cap).ceil();
+  }
 }

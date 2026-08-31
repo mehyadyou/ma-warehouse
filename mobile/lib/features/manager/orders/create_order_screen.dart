@@ -70,6 +70,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   bool _warehousesFailed = false;
   bool _carriersFailed = false;
   bool _dollarFailed = false;
+  bool _warehousesLoading = false;
 
   /// هر منبع به‌صورت مستقل ردیابی می‌شود تا خطای یکی، بقیه را گمراه نکند
   bool get _loadFailed => _warehousesFailed || _carriersFailed || _dollarFailed;
@@ -124,33 +125,55 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
       _warehousesFailed = false;
       _carriersFailed = false;
       _dollarFailed = false;
+      _warehousesLoading = true;
     });
-    final results = await Future.wait([
-      _api
-          .getWarehouses()
-          .then<List<WarehouseModel>>((v) => v)
-          .catchError((_) {
-        _warehousesFailed = true;
-        return <WarehouseModel>[];
-      }),
-      _api
-          .getCarriers()
-          .then<List<CarrierModel>>((v) => v)
-          .catchError((_) {
-        _carriersFailed = true;
-        return <CarrierModel>[];
-      }),
-      _api.getDollarRate().then<double?>((v) => v).catchError((_) {
-        _dollarFailed = true;
-        return null;
-      }),
+    // هر منبع مستقلاً لود و به محض رسیدن render می‌شود؛ اگر با Future.wait
+    // منتظر همه می‌ماندیم، dropdown انبار تا پایان کندترین درخواست (معمولاً نرخ دلار)
+    // خالی می‌ماند و پیام گمراه‌کنندهٔ «هنوز انباری ساخته نشده» نشان داده می‌شد
+    await Future.wait([
+      _loadWarehouses(),
+      _loadCarriers(),
+      _loadDollarRate(),
     ]);
-    if (!mounted) return;
-    setState(() {
-      _warehouses = results[0] as List<WarehouseModel>;
-      _carriers = results[1] as List<CarrierModel>;
-      _dollarRate = results[2] as double?;
-    });
+  }
+
+  Future<void> _loadWarehouses() async {
+    try {
+      final list = await _api.getWarehouses();
+      if (!mounted) return;
+      setState(() {
+        _warehouses = list;
+        _warehousesLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _warehousesFailed = true;
+        _warehousesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadCarriers() async {
+    try {
+      final list = await _api.getCarriers();
+      if (!mounted) return;
+      setState(() => _carriers = list);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _carriersFailed = true);
+    }
+  }
+
+  Future<void> _loadDollarRate() async {
+    try {
+      final rate = await _api.getDollarRate();
+      if (!mounted) return;
+      setState(() => _dollarRate = rate);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _dollarFailed = true);
+    }
   }
 
   /// موجودی ردیف‌ها در انبار انتخاب‌شده — بعد از انتخاب انبار یا محصول
@@ -457,6 +480,28 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ] else if (_warehousesLoading) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.6,
+                          color: _green,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'در حال بارگذاری انبارها...',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ] else if (_warehouses.isEmpty) ...[
                   const SizedBox(height: 10),

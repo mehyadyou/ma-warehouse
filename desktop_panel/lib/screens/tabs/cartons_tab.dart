@@ -98,6 +98,7 @@ class CartonsTab extends StatefulWidget {
     required this.summary,
     required this.errorSummary,
     this.groupByDate = true,
+    this.showExitedBadge = false,
     this.onAddProduct,
     this.onPrinted,
   });
@@ -112,6 +113,10 @@ class CartonsTab extends StatefulWidget {
   /// false یعنی گروه‌بندی فقط بر اساس (محصول، مدل) و بدون تاریخ —
   /// مدل تکراریِ همان محصول در همان ستون جمع می‌شود
   final bool groupByDate;
+
+  /// در تب خروجی‌ها (groupByDate=false): به‌جای «موجودی»، تعداد کل
+  /// واحدِ خارج‌شدهٔ هر گروه نمایش داده می‌شود
+  final bool showExitedBadge;
 
   /// اگر ست باشد، دکمه «افزودن محصول» بالای تب نمایش داده می‌شود
   final VoidCallback? onAddProduct;
@@ -174,8 +179,9 @@ class CartonsTabState extends State<CartonsTab> {
                   0,
                   (sum, carton) => sum + unitsOfCarton(carton),
                 );
-                subtitle =
-                    '$subtitle | موجودی: $units ${unitOfCartons(entry.$2)} | ${entry.$2.length} لیبل (QR)';
+                subtitle = widget.showExitedBadge
+                    ? '$subtitle | $units ${unitOfCartons(entry.$2)} خارج شده'
+                    : '$subtitle | موجودی: $units ${unitOfCartons(entry.$2)} | ${entry.$2.length} لیبل (QR)';
               }
               _items.add(
                 AccordionItem(

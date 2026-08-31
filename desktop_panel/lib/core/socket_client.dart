@@ -8,6 +8,9 @@ class SocketClient {
 
   void Function(Map<String, dynamic> data)? onScanoutDone;
   void Function(Map<String, dynamic> data)? onCheckinCompleted;
+  void Function(Map<String, dynamic> data)? onOrderCreated;
+  void Function(Map<String, dynamic> data)? onOrderUpdated;
+  void Function(Map<String, dynamic> data)? onOrderDeleted;
 
   void connect(String token) {
     try {
@@ -28,6 +31,16 @@ class SocketClient {
       });
       _socket!.on('checkin:completed', (data) {
         onCheckinCompleted?.call(_asMap(data));
+      });
+      // سفارش جدید/ویرایش/حذف توسط مدیریت — بیجکِ منوی «بیجک» فوراً به‌روز می‌شود
+      _socket!.on('order:created', (data) {
+        onOrderCreated?.call(_asMap(data));
+      });
+      _socket!.on('order:updated', (data) {
+        onOrderUpdated?.call(_asMap(data));
+      });
+      _socket!.on('order:deleted', (data) {
+        onOrderDeleted?.call(_asMap(data));
       });
       _socket!.connect();
     } catch (_) {

@@ -7,5 +7,6 @@ router.use(authenticate);
 
 router.get('/',               badgeController.list);
 router.get('/orders/:orderId', badgeController.listByOrder);
+router.post('/printed',        badgeController.markPrinted);
 
 export const badgeRoutes = router;

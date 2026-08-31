@@ -173,6 +173,33 @@ export function isBadgeEligible(shippingMethod: string | null | undefined, carri
     return !!carrier?.trim();
 }
 
+/// عکسِ قلمِ اولِ سفارش برای برگهٔ بیجک: نام مدل + نحوهٔ بسته‌بندی و تعداد هر بسته.
+/// (هر سفارش یک بیجک دارد؛ برای سفارش‌های چندقلمی، قلم اول مبنای نمایش است)
+/// اگر مدل انتخاب نشده باشد (متن دستی قدیمی) فقط نام مدلِ متنی ثبت می‌شود.
+async function badgeItemSnapshot(
+    tx: Prisma.TransactionClient | PrismaClient,
+    items: Array<{ model?: string | null; modelId?: string | null }>,
+): Promise<{ modelName: string | null; packageType: string | null; unitsPerBox: number | null }> {
+    const first = items[0];
+    if (!first) return { modelName: null, packageType: null, unitsPerBox: null };
+    const fallbackModel = first.model?.trim() || null;
+    if (!first.modelId) {
+        return { modelName: fallbackModel, packageType: null, unitsPerBox: null };
+    }
+    const model = await tx.productModel.findUnique({
+        where: { id: first.modelId },
+        select: { name: true, packageType: true, unitsPerBox: true },
+    });
+    if (!model) {
+        return { modelName: fallbackModel, packageType: null, unitsPerBox: null };
+    }
+    return {
+        modelName: model.name,
+        packageType: model.packageType?.trim() || null,
+        unitsPerBox: model.unitsPerBox ?? null,
+    };
+}
+
 /// نام باربری که روی برگهٔ بیجک می‌آید: تیپاکس → «تیپاکس»، باربری → carrier ثبت‌شده
 /// (برای باربری، carrier می‌تواند null → fallback همان روش)
 export function badgeCarrierLabel(shippingMethod: string | null | undefined, carrier?: string | null): string {
@@ -336,6 +363,7 @@ export const ordersService = {
             }
 
             const totalUnits = items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0);
+            const itemSnapshot = await badgeItemSnapshot(tx, items);
 
             await tx.order.create({
                 data: {
@@ -365,7 +393,22 @@ export const ordersService = {
                         })),
                     },
                     badges: isBadgeEligible(shippingMethod, carrier) && senderName && receiverName
-                        ? { create: { count: totalUnits, senderName, receiverName } }
+                        ? {
+                            create: {
+                                count: totalUnits,
+                                modelName: itemSnapshot.modelName,
+                                packageType: itemSnapshot.packageType,
+                                unitsPerBox: itemSnapshot.unitsPerBox,
+                                senderName,
+                                senderPhone: senderPhone?.trim() || null,
+                                senderNationalId: senderNationalId?.trim() || null,
+                                receiverName,
+                                receiverCity: normalizedCity,
+                                receiverPostalCode: normalizedPostal,
+                                receiverAddress: address || null,
+                                receiverPhone: customerPhone || null,
+                            },
+                        }
                         : undefined,
                 },
             });
@@ -522,14 +565,40 @@ export const ordersService = {
             const sender = data.senderName !== undefined ? data.senderName : existing.senderName;
             const receiver = data.receiverName !== undefined ? data.receiverName : existing.receiverName;
             const effCarrier = data.carrier !== undefined ? data.carrier : existing.carrier;
+            const effCity = data.city !== undefined ? (data.city?.trim() || null) : existing.city;
+            const effPostal = (() => {
+                const newCity = data.city !== undefined ? (data.city?.trim() || null) : existing.city;
+                const newPostal = data.postalCode !== undefined ? data.postalCode : existing.postalCode;
+                return newCity ? (newPostal?.trim() ?? '') : null;
+            })();
+            const effSenderPhone = data.senderPhone !== undefined ? (data.senderPhone?.trim() || null) : existing.senderPhone;
+            const effSenderNationalId = data.senderNationalId !== undefined ? (data.senderNationalId?.trim() || null) : existing.senderNationalId;
             await tx.badge.deleteMany({ where: { orderId: id } });
             if (isBadgeEligible(effShipping, effCarrier) && sender && receiver) {
                 const currentItems = data.items && data.items.length > 0
                     ? data.items
-                    : await tx.orderItem.findMany({ where: { orderId: id }, select: { quantity: true } });
+                    : await tx.orderItem.findMany({
+                        where: { orderId: id },
+                        select: { quantity: true, model: true, modelId: true },
+                    });
                 const totalUnits = currentItems.reduce((sum: number, item: any) => sum + Math.max(1, item.quantity || 1), 0);
+                const itemSnapshot = await badgeItemSnapshot(tx, currentItems);
                 await tx.badge.create({
-                    data: { orderId: id, count: totalUnits, senderName: sender, receiverName: receiver },
+                    data: {
+                        orderId: id,
+                        count: totalUnits,
+                        modelName: itemSnapshot.modelName,
+                        packageType: itemSnapshot.packageType,
+                        unitsPerBox: itemSnapshot.unitsPerBox,
+                        senderName: sender,
+                        senderPhone: effSenderPhone,
+                        senderNationalId: effSenderNationalId,
+                        receiverName: receiver,
+                        receiverCity: effCity,
+                        receiverPostalCode: effPostal,
+                        receiverAddress: data.address !== undefined ? data.address : existing.address,
+                        receiverPhone: data.customerPhone !== undefined ? data.customerPhone : existing.customerPhone,
+                    },
                 });
             }
 

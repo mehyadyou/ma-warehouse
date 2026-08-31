@@ -84,8 +84,9 @@ void main() {
       expect(data.sequence, 2);
       expect(data.total, 5);
       expect(data.orderRef, 'MA-ABCD1234');
-      expect(data.city, 'تهران');
-      expect(data.createdAt, '2026-08-20');
+      expect(data.receiverCity, 'تهران');
+      // تاریخ روی بیجک شمسی است (۲۰۲۶-۰۸-۲۰ → ۱۴۰۵/۰۵/۲۹)
+      expect(data.createdAt, '۱۴۰۵/۰۵/۲۹');
       expect(data.missingReceiver, isFalse);
     });
 
@@ -106,6 +107,33 @@ void main() {
         'total': 9,
       });
       expect(data.total, 9);
+    });
+
+    test('badge reads model/package snapshot and computes package count', () {
+      final data = BadgeData.fromBadge({
+        'orderId': 'x',
+        'sequence': 1,
+        'count': 10,
+        'modelName': 'مدل آ',
+        'packageType': 'کیسه',
+        'unitsPerBox': 4,
+      }, total: 1);
+      expect(data.modelName, 'مدل آ');
+      expect(data.packageLabel, 'کیسه');
+      expect(data.modelDisplay, 'مدل آ');
+      // ۱۰ ÷ ۴ → ۳ بسته (گرد به بالا)
+      expect(data.packageCount, 3);
+    });
+
+    test('badge falls back to کارتن label and total count without snapshot', () {
+      final data = BadgeData.fromBadge({
+        'orderId': 'x',
+        'sequence': 1,
+        'count': 7,
+      });
+      expect(data.packageLabel, 'کارتن');
+      expect(data.modelDisplay, '—');
+      expect(data.packageCount, 7);
     });
   });
 

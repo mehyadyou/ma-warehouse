@@ -196,9 +196,20 @@ class ApiService {
         [];
   }
 
-  Future<List<dynamic>> getBadges() async {
-    final payload = await _request('GET', '/badges');
+  /// بیجک‌ها — با فیلتر چاپ: true → فقط چاپ‌شده، false → فقط چاپ‌نشده، null → همه
+  Future<List<dynamic>> getBadges({bool? printed}) async {
+    final payload = await _request(
+      'GET',
+      '/badges',
+      query: {'printed': ?printed},
+    );
     return payload as List<dynamic>? ?? [];
+  }
+
+  /// ثبت لحظهٔ چاپ برگهٔ بیجک — بیجک‌ها از منوی «بیجک» حذف و در
+  /// تب «چاپ شده‌ها» (فیلتر بیجک) نمایش داده می‌شوند
+  Future<void> markBadgesPrinted(List<String> badgeIds) async {
+    await _request('POST', '/badges/printed', data: {'badgeIds': badgeIds});
   }
 
   void logout() {

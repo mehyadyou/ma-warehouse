@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/prisma', () => ({
     prisma: {
-        badge: { findMany: vi.fn() },
+        badge: { findMany: vi.fn(), updateMany: vi.fn() },
     },
 }));
 
@@ -31,6 +31,47 @@ describe('badgeService - فیلتر انبار (امنیت)', () => {
         expect(prisma.badge.findMany).toHaveBeenCalledWith(
             expect.objectContaining({
                 where: { orderId: 'o1', order: { is: { warehouseId: 'wh1' } } },
+            })
+        );
+    });
+
+    it('listForWarehouse با printed=true فقط چاپ‌شده‌ها را برمی‌گرداند', async () => {
+        (prisma.badge.findMany as any).mockResolvedValue([]);
+        await badgeService.listForWarehouse('wh1', undefined, 200, true);
+        expect(prisma.badge.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: {
+                    printedAt: { not: null },
+                    order: { is: { warehouseId: 'wh1' } },
+                },
+            })
+        );
+    });
+
+    it('listForWarehouse با printed=false فقط چاپ‌نشده‌ها را برمی‌گرداند', async () => {
+        (prisma.badge.findMany as any).mockResolvedValue([]);
+        await badgeService.listForWarehouse('wh1', undefined, 200, false);
+        expect(prisma.badge.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: {
+                    printedAt: null,
+                    order: { is: { warehouseId: 'wh1' } },
+                },
+            })
+        );
+    });
+
+    it('markPrinted فقط بیجک‌های انبارِ خودش را چاپ‌شده علامت می‌زند', async () => {
+        (prisma.badge.updateMany as any).mockResolvedValue({ count: 2 });
+        const res = await badgeService.markPrinted(['b1', 'b2'], 'wh1');
+        expect(res).toEqual({ updated: 2 });
+        expect(prisma.badge.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: {
+                    id: { in: ['b1', 'b2'] },
+                    order: { is: { warehouseId: 'wh1' } },
+                },
+                data: { printedAt: expect.any(Date) },
             })
         );
     });

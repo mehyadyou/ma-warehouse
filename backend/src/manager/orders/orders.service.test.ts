@@ -32,6 +32,7 @@ function makeTx(overrides: Record<string, any> = {}) {
             findMany: vi.fn().mockResolvedValue([]),
         },
         badge: { deleteMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
+        productModel: { findUnique: vi.fn().mockResolvedValue(null) },
         carton: {
             updateMany: vi.fn().mockResolvedValue({}),
             count: vi.fn().mockResolvedValue(0),
@@ -127,12 +128,12 @@ describe('ordersService.createCarrier', () => {
 });
 
 describe('ordersService.createOrder', () => {
-    const runCreate = async (tx: any, args: any[]) => {
+    const runCreate = async (tx: any, args: any[], modelRows: any[] = []) => {
         (prisma.$transaction as any).mockImplementation(async (cb: any) => cb(tx));
         (prisma.order.findUniqueOrThrow as any).mockResolvedValue(mockMappedOrder());
         (prisma.warehouse.findUnique as any).mockResolvedValue({ id: 'wh1', name: 'انبار تست' });
         (prisma.product.findMany as any).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
-        (prisma.productModel.findMany as any).mockResolvedValue([]);
+        (prisma.productModel.findMany as any).mockResolvedValue(modelRows);
         // getProductStock داخل تراکنش با tx.$queryRaw اجرا می‌شود:
         // ۱) محصولات دارای کارتن ۲) کارتن‌های IN_STOCK ۳) تراکنش‌های لِگاسی
         (tx.$queryRaw as any)
@@ -162,11 +163,91 @@ describe('ordersService.createOrder', () => {
         expect(createData.badges.create.count).toBe(5);
         expect(createData.items.create).toHaveLength(2);
         expect(createData.status).toBe('PENDING');
+        // بدون modelId: نام مدلِ متنیِ قلم اول عکس می‌شود، بسته‌بندی null
+        expect(createData.badges.create.modelName).toBe('M1');
+        expect(createData.badges.create.packageType).toBeNull();
+        expect(createData.badges.create.unitsPerBox).toBeNull();
         // چک موجودی + ثبت داخل تراکنش Serializable است (ضد oversell هم‌زمان)
         expect(prisma.$transaction).toHaveBeenCalledWith(
             expect.any(Function),
             expect.objectContaining({ isolationLevel: 'Serializable' }),
         );
+    });
+
+    it('badge عکسِ اطلاعات ارسال را نگه می‌دارد (تیپاکس با همهٔ فیلدها)', async () => {
+        const tx = await runCreate(makeTx(), [
+            'wh1', 'user1', [{ productId: 'p1', quantity: 2 }], 'تیپاکس',
+            undefined, 'تهران', '1234567890', 'خیابان آزادی، پلاک ۱', '09120000000',
+            'فرستنده', 'گیرنده', '0012345678', '02111111111',
+        ]);
+
+        const createData = tx.order.create.mock.calls[0][0].data;
+        expect(createData.badges.create).toEqual(expect.objectContaining({
+            count: 2,
+            senderName: 'فرستنده',
+            senderPhone: '02111111111',
+            senderNationalId: '0012345678',
+            receiverName: 'گیرنده',
+            receiverCity: 'تهران',
+            receiverPostalCode: '1234567890',
+            receiverAddress: 'خیابان آزادی، پلاک ۱',
+            receiverPhone: '09120000000',
+        }));
+    });
+
+    it('badge باربری فقط فیلدهای موجود را نگه می‌دارد (شهری/تلفن/کد ملی null)', async () => {
+        const tx = await runCreate(makeTx(), [
+            'wh1', 'user1', [{ productId: 'p1', quantity: 3 }], 'باربری',
+            undefined, 'اصفهان', undefined, undefined, '09131111111',
+            'فرستنده', 'گیرنده',
+        ]);
+
+        const createData = tx.order.create.mock.calls[0][0].data;
+        expect(createData.badges.create).toEqual(expect.objectContaining({
+            count: 3,
+            senderName: 'فرستنده',
+            senderPhone: null,
+            senderNationalId: null,
+            receiverName: 'گیرنده',
+            receiverCity: 'اصفهان',
+            receiverPostalCode: '',
+            receiverAddress: null,
+            receiverPhone: '09131111111',
+        }));
+    });
+
+    it('badge عکسِ مدل و بسته‌بندیِ قلم اول (از پنل مدیریت) را نگه می‌دارد', async () => {
+        const tx = await runCreate(makeTx({
+            productModel: {
+                findUnique: vi.fn().mockResolvedValue({
+                    id: 'm1',
+                    name: 'مدل آ',
+                    packageType: 'کیسه',
+                    unitsPerBox: 10,
+                }),
+            },
+        }), [
+            'wh1', 'user1',
+            [
+                { productId: 'p1', quantity: 3, modelId: 'm1', model: 'مدل آ' },
+                { productId: 'p2', quantity: 2 },
+            ],
+            'باربری', undefined, undefined, undefined, undefined, undefined,
+            'فرستنده', 'گیرنده',
+        ], [{ id: 'm1', productId: 'p1' }]);
+
+        const createData = tx.order.create.mock.calls[0][0].data;
+        expect(createData.badges.create).toEqual(expect.objectContaining({
+            count: 5,
+            modelName: 'مدل آ',
+            packageType: 'کیسه',
+            unitsPerBox: 10,
+        }));
+        // مدل قلم اول از DB خوانده می‌شود نه متن ارسالی
+        expect(tx.productModel.findUnique).toHaveBeenCalledWith({
+            where: { id: 'm1' },
+            select: { name: true, packageType: true, unitsPerBox: true },
+        });
     });
 
     it('وقتی فرستنده/گیرنده نباشد badge ساخته نمیشود', async () => {
@@ -277,6 +358,8 @@ describe('ordersService.updateOrder', () => {
         customerPhone: null,
         senderName: 'فرستنده',
         receiverName: 'گیرنده',
+        senderNationalId: null,
+        senderPhone: null,
         ...overrides,
     });
 
@@ -321,9 +404,53 @@ describe('ordersService.updateOrder', () => {
         expect(tx.badge.create).toHaveBeenCalled();
         const badgeData = tx.badge.create.mock.calls[0][0].data;
         expect(badgeData.count).toBe(2);
+        expect(badgeData).toEqual(expect.objectContaining({
+            senderName: 'فرستنده',
+            receiverName: 'گیرنده',
+            senderPhone: null,
+            senderNationalId: null,
+            receiverCity: null,
+            receiverPostalCode: null,
+            receiverAddress: null,
+            receiverPhone: null,
+        }));
+        // مدل/بسته‌بندی قلم اول هنگام بازتولید نیز عکس می‌شود (مدل در DB نیست → متن ارسالی)
+        expect(badgeData.modelName).toBe('مدل ۱');
+        expect(badgeData.packageType).toBeNull();
+        expect(badgeData.unitsPerBox).toBeNull();
         expect(tx.outboxEvent.create).toHaveBeenCalledWith(
             expect.objectContaining({ data: expect.objectContaining({ type: 'order:updated' }) })
         );
+    });
+
+    it('ویرایش به تیپاکس: badge با اطلاعات کامل بازتولید می‌شود', async () => {
+        (prisma.order.findUnique as any).mockResolvedValue(existingOrder({
+            shippingMethod: 'تیپاکس',
+            city: 'تهران',
+            postalCode: '1234567890',
+            address: 'آدرس گیرنده',
+            customerPhone: '09120000000',
+            senderPhone: '02111111111',
+            senderNationalId: '0012345678',
+        }));
+        const tx = makeTx();
+        tx.order.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+        (prisma.$transaction as any).mockImplementation(async (cb: any) => cb(tx));
+        (prisma.order.findUniqueOrThrow as any).mockResolvedValue(mockMappedOrder());
+
+        await ordersService.updateOrder('o1', { version: 2 });
+
+        const badgeData = tx.badge.create.mock.calls[0][0].data;
+        expect(badgeData).toEqual(expect.objectContaining({
+            senderName: 'فرستنده',
+            senderPhone: '02111111111',
+            senderNationalId: '0012345678',
+            receiverName: 'گیرنده',
+            receiverCity: 'تهران',
+            receiverPostalCode: '1234567890',
+            receiverAddress: 'آدرس گیرنده',
+            receiverPhone: '09120000000',
+        }));
     });
 
     it('N5: وجود کارتن خروجخورده → ویرایش اقلام ممنوع است (AppError 400)', async () => {

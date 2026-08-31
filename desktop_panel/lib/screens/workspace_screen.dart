@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_service.dart';
+import '../core/badge_print_settings.dart';
 import '../core/palette.dart';
 import '../core/printer_settings.dart';
 import '../core/socket_client.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/badge_print_settings_dialog.dart';
 import '../widgets/checkin_dialog.dart';
 import '../widgets/printer_settings_dialog.dart';
 import 'tabs/badges_tab.dart';
 import 'tabs/cartons_tab.dart';
+import 'tabs/printed_tab.dart';
 import 'tabs/transactions_tab.dart';
 
 class WorkspaceScreen extends StatefulWidget {
@@ -40,6 +43,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final GlobalKey<CartonsTabState> _shippedKey = GlobalKey();
   final GlobalKey<TransactionsTabState> _transactionsKey = GlobalKey();
   final GlobalKey<BadgesTabState> _badgesKey = GlobalKey();
+  final GlobalKey<BadgesTabState> _printedBadgesKey = GlobalKey();
 
   late final CartonsTab _recentTab = CartonsTab(
     key: _recentKey,
@@ -55,7 +59,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     onPrinted: _handlePrinted,
   );
 
-  late final CartonsTab _printedTab = CartonsTab(
+  late final CartonsTab _printedLabelsTab = CartonsTab(
     key: _printedKey,
     fetch: widget.api.getPrintedCartons,
     initialSummary: 'لیبل‌های چاپ‌شده',
@@ -68,21 +72,42 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     onPrinted: _handlePrinted,
   );
 
+  // بیجک‌های چاپ‌شده در تب «چاپ شده‌ها» (فیلتر بیجک)
+  late final BadgesTab _printedBadgesTab = BadgesTab(
+    key: _printedBadgesKey,
+    api: widget.api,
+    printed: true,
+    onPrinted: _handleBadgesPrinted,
+  );
+
+  // تب «چاپ شده‌ها»: فیلتر لیبل / بیجک
+  late final PrintedTab _printedTab = PrintedTab(
+    labelsTab: _printedLabelsTab,
+    badgesTab: _printedBadgesTab,
+  );
+
   late final CartonsTab _shippedTab = CartonsTab(
     key: _shippedKey,
     fetch: widget.api.getShippedCartons,
-    initialSummary: 'کارتن‌های تکمیل شده و ارسال شده',
-    emptySummary: 'هیچ کارتن ارسال شده‌ای موجود نیست.',
-    emptyState: 'هیچ کارتن ارسالی ثبت نشده است.',
-    summary: (groups, total) => '$groups گروه کالا | $total کارتن ارسال شده',
+    initialSummary: 'محصولات خارج‌شده از انبار',
+    emptySummary: 'هنوز محصولی از انبار خارج نشده است.',
+    emptyState: 'هر محصولی که با خروج (اسکن یا دستی) از انبار خارج شود اینجا نمایش داده می‌شود.',
+    summary: (groups, total) => '$groups گروه کالا | $total خروجی',
     errorSummary: 'خطا در دریافت اطلاعات',
+    // بدون تاریخ: محصول تکراری در همان ستون جمع می‌شود و کل خروجی‌هایش نمایش داده می‌شود
+    groupByDate: false,
+    showExitedBadge: true,
   );
 
   late final TransactionsTab _transactionsTab = TransactionsTab(
     key: _transactionsKey,
     api: widget.api,
   );
-  late final BadgesTab _badgesTab = BadgesTab(key: _badgesKey, api: widget.api);
+  late final BadgesTab _badgesTab = BadgesTab(
+    key: _badgesKey,
+    api: widget.api,
+    onPrinted: _handleBadgesPrinted,
+  );
 
   @override
   void initState() {
@@ -94,8 +119,22 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     widget.socket.onCheckinCompleted = (data) {
       _recentKey.currentState?.reload();
     };
+    // ثبت/ویرایش/حذف سفارش توسط مدیریت → بیجکِ همان انبار فوراً در منوی «بیجک» می‌آید
+    widget.socket.onOrderCreated = (data) {
+      _badgesKey.currentState?.load();
+      _printedBadgesKey.currentState?.load();
+    };
+    widget.socket.onOrderUpdated = (data) {
+      _badgesKey.currentState?.load();
+      _printedBadgesKey.currentState?.load();
+    };
+    widget.socket.onOrderDeleted = (data) {
+      _badgesKey.currentState?.load();
+      _printedBadgesKey.currentState?.load();
+    };
     // بارگذاری تنظیمات چاپ قبل از اولین دستور چاپ
     PrinterSettingsHolder.instance.load();
+    BadgePrintSettingsHolder.instance.load();
     loadData();
   }
 
@@ -103,6 +142,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   void dispose() {
     widget.socket.onScanoutDone = null;
     widget.socket.onCheckinCompleted = null;
+    widget.socket.onOrderCreated = null;
+    widget.socket.onOrderUpdated = null;
+    widget.socket.onOrderDeleted = null;
     super.dispose();
   }
 
@@ -113,6 +155,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _shippedKey.currentState?.reload();
     _transactionsKey.currentState?.reloadLatest();
     _badgesKey.currentState?.load();
+    _printedBadgesKey.currentState?.load();
   }
 
   /// بعد از موفقیت چاپ: کارتن‌ها سمت سرور علامت چاپ می‌خورند و هر دو تب
@@ -135,8 +178,32 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _printedKey.currentState?.reload();
   }
 
-  Future<void> _openSettings() async {
+  /// بعد از موفقیت چاپ بیجک: سرور علامت چاپ می‌زند و بیجک از منوی «بیجک»
+  /// حذف و در تب «چاپ شده‌ها» (فیلتر بیجک) نمایش داده می‌شود
+  Future<void> _handleBadgesPrinted(List<String> badgeIds) async {
+    if (badgeIds.isEmpty) return;
+    try {
+      await widget.api.markBadgesPrinted(badgeIds);
+    } catch (exc) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ثبت چاپ بیجک روی سرور ناموفق بود: $exc'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+    _badgesKey.currentState?.load();
+    _printedBadgesKey.currentState?.load();
+  }
+
+  Future<void> _openPrinterSettings() async {
     await showPrinterSettingsDialog(context);
+  }
+
+  Future<void> _openBadgeSettings() async {
+    await showBadgePrintSettingsDialog(context);
   }
 
   Future<void> _openCheckIn() async {
@@ -229,22 +296,49 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         onPressed: loadData,
                       ),
                       const SizedBox(width: 8),
-                      Tooltip(
-                        message: 'تنظیمات چاپگر',
+                      PopupMenuButton<String>(
+                        tooltip: 'تنظیمات',
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'printer':
+                              _openPrinterSettings();
+                            case 'badge':
+                              _openBadgeSettings();
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'printer',
+                            child: Row(
+                              children: [
+                                Icon(Icons.print_outlined,
+                                    size: 18, color: Palette.textMuted),
+                                SizedBox(width: 8),
+                                Text('تنظیمات چاپگر (لیبل)'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'badge',
+                            child: Row(
+                              children: [
+                                Icon(Icons.badge_outlined,
+                                    size: 18, color: Palette.textMuted),
+                                SizedBox(width: 8),
+                                Text('تنظیمات چاپ بیجک'),
+                              ],
+                            ),
+                          ),
+                        ],
                         child: Material(
                           color: Palette.surfaceHover,
                           borderRadius: BorderRadius.circular(10),
-                          child: InkWell(
-                            onTap: _openSettings,
-                            borderRadius: BorderRadius.circular(10),
-                            hoverColor: Palette.surfaceAlt,
-                            child: const Padding(
-                              padding: EdgeInsets.all(9),
-                              child: Icon(
-                                Icons.settings_rounded,
-                                color: Palette.text,
-                                size: 18,
-                              ),
+                          child: const Padding(
+                            padding: EdgeInsets.all(9),
+                            child: Icon(
+                              Icons.settings_rounded,
+                              color: Palette.text,
+                              size: 18,
                             ),
                           ),
                         ),
@@ -284,7 +378,7 @@ class _Sidebar extends StatelessWidget {
   static const _navItems = [
     'محصولات',
     'چاپ شده‌ها',
-    'تکمیل شده‌ها',
+    'خروجی‌ها',
     'تاریخچه تراکنش‌ها',
     'بیجک',
   ];

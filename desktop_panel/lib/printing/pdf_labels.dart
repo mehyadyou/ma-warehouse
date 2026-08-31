@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:qr/qr.dart';
 
+import '../core/badge_print_settings.dart';
 import '../core/label_data.dart';
 import '../core/printer_settings.dart';
 
@@ -16,9 +17,13 @@ double _labelWidthMm() => PrinterSettingsHolder.instance.current.labelWidthMm;
 double _labelHeightMm() => PrinterSettingsHolder.instance.current.labelHeightMm;
 double _labelMarginMm() => PrinterSettingsHolder.instance.current.labelMarginMm;
 
-/// ابعاد بیجک سفارش (ثابت)
-const double _badgeWidthMm = 58;
-const double _badgeHeightMm = 77;
+/// چاپ بیجک:
+/// - حالت دوتایی (پیش‌فرض): دو بیجک A6 کنار هم روی یک برگهٔ A5 افقی (۲۱۰×۱۴۸)
+///   تا با برش وسط، دو برگهٔ A6 جدا شود
+/// - حالت تکی: هر بیجک روی یک برگهٔ A6 عمودی (۱۰۵×۱۴۸) جداگانه
+const double _badgePageWidthMm = 210;
+const double _badgePageHeightMm = 148;
+const double _badgeSingleWidthMm = 105;
 
 class PdfLabels {
   static pw.Font? _regular;
@@ -223,9 +228,11 @@ class PdfLabels {
     if (badges.isEmpty) return false;
     final document = await _buildBadgeDocument(badges);
     if (document == null) return false;
+    final s = BadgePrintSettingsHolder.instance.current;
     final pageFormat = PdfPageFormat(
-      _badgeWidthMm * PdfPageFormat.mm,
-      _badgeHeightMm * PdfPageFormat.mm,
+      (s.dualMode ? _badgePageWidthMm : _badgeSingleWidthMm) *
+          PdfPageFormat.mm,
+      _badgePageHeightMm * PdfPageFormat.mm,
       marginAll: 0,
     );
     return _showPrintDialog(document, pageFormat);
@@ -245,18 +252,114 @@ class PdfLabels {
     final bold = await _font(bold: true);
     final courier = pw.Font.courierBold();
     final document = pw.Document();
+    final s = BadgePrintSettingsHolder.instance.current;
     final pageFormat = PdfPageFormat(
-      _badgeWidthMm * PdfPageFormat.mm,
-      _badgeHeightMm * PdfPageFormat.mm,
+      (s.dualMode ? _badgePageWidthMm : _badgeSingleWidthMm) *
+          PdfPageFormat.mm,
+      _badgePageHeightMm * PdfPageFormat.mm,
       marginAll: 0,
     );
 
-    for (final badge in badges) {
+    if (!s.dualMode) {
+      // حالت تکی: هر بیجک روی یک برگهٔ A6 جداگانه
+      for (final badge in badges) {
+        document.addPage(
+          pw.Page(
+            pageFormat: pageFormat,
+            margin: const pw.EdgeInsets.all(0),
+            build: (context) => _buildBadgeHalf(
+              badge,
+              regular,
+              bold,
+              courier,
+              scalePercent: s.singleScalePercent,
+              offsetXmm: s.singleOffsetXmm,
+              offsetYmm: s.singleOffsetYmm,
+            ),
+          ),
+        );
+      }
+      return document;
+    }
+
+    // حالت دوتایی: جفت‌جفت روی برگهٔ A5 افقی (بیجک تکی آخر در نیمهٔ چپ)
+    for (var i = 0; i < badges.length; i += 2) {
+      final left = badges[i];
+      final right = i + 1 < badges.length ? badges[i + 1] : null;
       document.addPage(
         pw.Page(
           pageFormat: pageFormat,
-          margin: const pw.EdgeInsets.all(8),
-          build: (context) => pw.Directionality(
+          margin: const pw.EdgeInsets.all(0),
+          build: (context) => pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Expanded(
+                child: _buildBadgeHalf(
+                  left,
+                  regular,
+                  bold,
+                  courier,
+                  scalePercent: s.dualScalePercent,
+                  offsetXmm: s.dualOffsetXmm,
+                  offsetYmm: s.dualOffsetYmm,
+                ),
+              ),
+              // راهنمای برش وسط — خط باریک عمودی
+              pw.Container(
+                width: 0.6,
+                color: PdfColor.fromHex('#b0b0b0'),
+              ),
+              pw.Expanded(
+                child: right != null
+                    ? _buildBadgeHalf(
+                        right,
+                        regular,
+                        bold,
+                        courier,
+                        scalePercent: s.dualScalePercent,
+                        offsetXmm: s.dualOffsetXmm,
+                        offsetYmm: s.dualOffsetYmm,
+                      )
+                    : pw.SizedBox(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return document;
+  }
+
+  /// نیمهٔ A6 یک بیجک — کادر دورش تا بعد از برش، هر برگهٔ A6 کامل دیده شود.
+  /// مقیاس و جابه‌جایی طبق تنظیمات حالتِ فعال اعمال می‌شود (مثل چاپ لیبل).
+  static pw.Widget _buildBadgeHalf(
+    BadgeData badge,
+    pw.Font regular,
+    pw.Font bold,
+    pw.Font courier, {
+    double scalePercent = 100,
+    double offsetXmm = 0,
+    double offsetYmm = 0,
+  }) {
+    return pw.Transform.translate(
+      offset: PdfPoint(
+        offsetXmm * PdfPageFormat.mm,
+        offsetYmm * PdfPageFormat.mm,
+      ),
+      child: pw.Transform.scale(
+        scale: scalePercent / 100,
+        alignment: pw.Alignment.center,
+        child: pw.Container(
+          margin: const pw.EdgeInsets.all(3),
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(
+              color: PdfColor.fromHex('#d0d0d0'),
+              width: 0.7,
+            ),
+          ),
+          child: pw.Directionality(
             textDirection: pw.TextDirection.rtl,
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -301,17 +404,54 @@ class PdfLabels {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                     children: [
                       _pdfBadgeRow('فرستنده', badge.senderName, regular, bold),
+                      if (badge.isTipax) ...[
+                        _pdfBadgeRow(
+                          'تلفن فرستنده',
+                          badge.senderPhone,
+                          regular,
+                          bold,
+                        ),
+                        _pdfBadgeRow(
+                          'کد ملی فرستنده',
+                          badge.senderNationalId,
+                          regular,
+                          bold,
+                        ),
+                      ],
                       _pdfBadgeRow('گیرنده', badge.receiverName, regular, bold),
-                      _pdfBadgeRow('شهر', badge.city, regular, bold),
-                      _pdfBadgeRow('آدرس', badge.address, regular, bold),
-                      _pdfBadgeRow('کد پستی', badge.postalCode, regular, bold),
                       _pdfBadgeRow(
-                        'شیوه ارسال',
-                        badge.shippingMethod,
+                        'شهر گیرنده',
+                        badge.receiverCity,
                         regular,
                         bold,
                       ),
-                      _pdfBadgeRow('باربری', badge.carrier, regular, bold),
+                      if (badge.isTipax) ...[
+                        _pdfBadgeRow(
+                          'کد پستی گیرنده',
+                          badge.receiverPostalCode,
+                          regular,
+                          bold,
+                        ),
+                        _pdfBadgeRow(
+                          'آدرس گیرنده',
+                          badge.receiverAddress,
+                          regular,
+                          bold,
+                        ),
+                      ],
+                  _pdfBadgeRow(
+                    'تلفن گیرنده',
+                    badge.receiverPhone,
+                    regular,
+                    bold,
+                  ),
+                  _pdfBadgeRow('مدل', badge.modelDisplay, regular, bold),
+                  _pdfBadgeRow(
+                    'تعداد ${badge.packageLabel}',
+                    '${badge.packageCount}',
+                    regular,
+                    bold,
+                  ),
                     ],
                   ),
                 ),
@@ -340,10 +480,8 @@ class PdfLabels {
             ),
           ),
         ),
-      );
-    }
-
-    return document;
+      ),
+    );
   }
 
   static Future<bool> _showPrintDialog(
@@ -413,17 +551,17 @@ class PdfLabels {
           '▸ $label',
           style: pw.TextStyle(
             font: regular,
-            fontSize: 7,
+            fontSize: 10,
             color: PdfColor.fromHex('#4a4a4a'),
           ),
         ),
-        pw.SizedBox(width: 4),
+        pw.SizedBox(width: 6),
         pw.Expanded(
           child: pw.Text(
             value.isEmpty ? '—' : value,
             textAlign: pw.TextAlign.right,
             maxLines: 2,
-            style: pw.TextStyle(font: bold, fontSize: 7),
+            style: pw.TextStyle(font: bold, fontSize: 10),
           ),
         ),
       ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +27,9 @@ class _FakeApi extends ManagerApiService {
     ProductModel(id: 'p2', name: 'کولر گازی', unit: 'دستگاه'),
   ];
 
+  /// برای تست لود مستقل: می‌شود یک Future معلق (Completer) به آن داد
+  Future<double?> dollarRateFuture = Future.value(60000.0);
+
   @override
   Future<List<WarehouseModel>> getWarehouses() async => _warehouses;
 
@@ -32,7 +37,7 @@ class _FakeApi extends ManagerApiService {
   Future<List<CarrierModel>> getCarriers() async => _carriers;
 
   @override
-  Future<double?> getDollarRate() async => 60000;
+  Future<double?> getDollarRate() => dollarRateFuture;
 
   @override
   Future<({List<ProductModel> products, int total})> getProductsPage({
@@ -91,7 +96,7 @@ class _Home extends StatelessWidget {
   }
 }
 
-Widget _app() {
+Widget _app({ManagerApiService? api}) {
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -107,7 +112,9 @@ Widget _app() {
     ],
   );
   return ProviderScope(
-    overrides: [managerApiServiceProvider.overrideWithValue(_FakeApi())],
+    overrides: [
+      managerApiServiceProvider.overrideWithValue(api ?? _FakeApi()),
+    ],
     child: MaterialApp.router(routerConfig: router),
   );
 }
@@ -217,6 +224,41 @@ void main() {
     expect((items[1] as Map)['quantity'], 5);
     expect((items[1] as Map)['productId'], 'p2');
     expect((items[1] as Map)['price'], 12000000);
+  });
+
+  testWidgets('انبارها مستقل از نرخ دلار لود میشوند (بدون پیام گمراه‌کننده)', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // نرخ دلار معلق می‌ماند تا مطمئن شویم انبارها منتظر آن نمی‌مانند
+    final rateCompleter = Completer<double?>();
+    final api = _FakeApi()..dollarRateFuture = rateCompleter.future;
+
+    await tester.pumpWidget(_app(api: api));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('رفتن'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // نرخ دلار هنوز پاسخ نداده ولی انبارها باید لود شده باشند
+    expect(find.text('هنوز انباری ساخته نشده است'), findsNothing,
+        reason: 'انبارها نباید منتظر نرخ دلار بمانند');
+    expect(find.text('در حال بارگذاری انبارها...'), findsNothing);
+
+    // dropdown انبار آیتم دارد
+    await tester.tap(find.byType(DropdownButton<String>).at(0));
+    await tester.pumpAndSettle();
+    expect(find.text('انبار مرکزی'), findsOneWidget);
+    await tester.tap(find.text('انبار مرکزی').last);
+    await tester.pumpAndSettle();
+
+    // حالا نرخ دلار هم می‌رسد — صفحه باید بدون خطا بنشیند
+    rateCompleter.complete(60000);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('تعداد بیشتر از موجودی انبار قبل از ارسال بلاک میشود', (tester) async {

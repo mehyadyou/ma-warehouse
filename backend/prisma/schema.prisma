@@ -274,14 +274,30 @@ model ActivityLog {
   @@index([type])
 }
 
+/// برگهٔ بیجک سفارش — عکسِ لحظهٔ ثبت از اطلاعات ارسال (بی‌تأثیر از ویرایش بعدی سفارش)
+/// محتوای هر ردیف به «نحوه ارسال» بستگی دارد: باربری / تیپاکس (شهری بیجک نمی‌گیرد)
 model Badge {
-  id           String   @id @default(uuid())
-  orderId      String
-  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  count        Int      @default(1)
-  senderName   String?
-  receiverName String?
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(uuid())
+  orderId            String
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  count              Int      @default(1)
+  // عکسِ قلمِ اولِ سفارش: نام مدل + نحوهٔ بسته‌بندی و تعداد هر بسته (از پنل مدیریت) —
+  // روی برگهٔ بیجک «تعداد {نوع بسته}» (مثلاً «تعداد کیسه») نمایش داده می‌شود
+  modelName          String?
+  packageType        String?
+  unitsPerBox        Int?
+  // لحظهٔ چاپ برگه از پنل دسکتاپ — بیجک‌های چاپ‌شده از منوی «بیجک» حذف و
+  // در تب «چاپ شده‌ها» (فیلتر بیجک) نمایش داده می‌شوند
+  printedAt          DateTime?
+  senderName         String?
+  senderPhone        String?
+  senderNationalId   String?
+  receiverName       String?
+  receiverCity       String?
+  receiverPostalCode String?
+  receiverAddress    String?
+  receiverPhone      String?
+  createdAt          DateTime @default(now())
 
   @@index([orderId])
 }

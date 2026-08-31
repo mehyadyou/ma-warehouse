@@ -32,7 +32,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('محصولات'), findsWidgets);
       expect(find.text('چاپ شده‌ها'), findsWidgets);
-      expect(find.text('تکمیل شده‌ها'), findsWidgets);
+      expect(find.text('خروجی‌ها'), findsWidgets);
       expect(find.text('تاریخچه تراکنش‌ها'), findsWidgets);
       expect(find.text('بیجک'), findsWidgets);
       expect(find.text('خروج از حساب'), findsOneWidget);
@@ -69,7 +69,7 @@ void main() {
     final labels = [
       'محصولات',
       'چاپ شده‌ها',
-      'تکمیل شده‌ها',
+      'خروجی‌ها',
       'تاریخچه تراکنش‌ها',
       'بیجک',
     ];

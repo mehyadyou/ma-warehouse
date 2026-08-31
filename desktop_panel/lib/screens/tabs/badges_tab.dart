@@ -28,9 +28,16 @@ List<(String, List<Map<String, dynamic>>)> groupBadgesByOrder(
 }
 
 class BadgesTab extends StatefulWidget {
-  const BadgesTab({super.key, required this.api});
+  const BadgesTab({super.key, required this.api, this.printed = false, this.onPrinted});
 
   final ApiService api;
+
+  /// false = فقط بیجک‌های چاپ‌نشده (منوی «بیجک») |
+  /// true = فقط بیجک‌های چاپ‌شده (تب «چاپ شده‌ها»)
+  final bool printed;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا بیجک‌ها به «چاپ شده‌ها» منتقل شوند
+  final void Function(List<String> badgeIds)? onPrinted;
 
   @override
   State<BadgesTab> createState() => BadgesTabState();
@@ -53,7 +60,7 @@ class BadgesTabState extends State<BadgesTab> {
       _summary = 'در حال بارگذاری...';
     });
     try {
-      final raw = await widget.api.getBadges();
+      final raw = await widget.api.getBadges(printed: widget.printed);
       final badges = raw.whereType<Map<String, dynamic>>().toList();
       final groups = groupBadgesByOrder(badges);
       if (!mounted) return;
@@ -61,18 +68,32 @@ class BadgesTabState extends State<BadgesTab> {
         _loading = false;
         _groups.clear();
         if (groups.isEmpty) {
-          _summary = 'هیچ بیجکی ثبت نشده است.';
+          _summary = widget.printed
+              ? 'هیچ بیجکی چاپ نشده است.'
+              : 'هیچ بیجکی ثبت نشده است.';
           _groups.add(
-            const StateLabel('هنوز بیجکی برای سفارش‌ها ساخته نشده است.'),
+            StateLabel(
+              widget.printed
+                  ? 'بیجک‌های چاپ‌شده اینجا نمایش داده می‌شوند.'
+                  : 'هنوز بیجکی برای سفارش‌ها ساخته نشده است.',
+            ),
           );
         } else {
           final total = groups.fold<int>(
             0,
             (sum, entry) => sum + entry.$2.length,
           );
-          _summary = '${groups.length} سفارش | $total بیجک آماده چاپ';
+          _summary = widget.printed
+              ? '${groups.length} سفارش | $total بیجک چاپ‌شده'
+              : '${groups.length} سفارش | $total بیجک آماده چاپ';
           for (final entry in groups) {
-            _groups.add(BadgeGroupCard(orderId: entry.$1, badges: entry.$2));
+            _groups.add(
+              BadgeGroupCard(
+                orderId: entry.$1,
+                badges: entry.$2,
+                onPrinted: widget.onPrinted,
+              ),
+            );
           }
         }
       });

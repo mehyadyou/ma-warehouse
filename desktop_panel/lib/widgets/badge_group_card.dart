@@ -12,11 +12,15 @@ class BadgeSheetCard extends StatefulWidget {
     required this.badge,
     required this.groupTotal,
     required this.onSelectionChanged,
+    this.onPrinted,
   });
 
   final Map<String, dynamic> badge;
   final int groupTotal;
   final VoidCallback onSelectionChanged;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا بیجک به «چاپ شده‌ها» منتقل شود
+  final void Function(List<String> badgeIds)? onPrinted;
 
   @override
   State<BadgeSheetCard> createState() => _BadgeSheetCardState();
@@ -28,6 +32,8 @@ class _BadgeSheetCardState extends State<BadgeSheetCard> {
     widget.badge,
     total: widget.groupTotal,
   );
+
+  String get badgeId => widget.badge['id']?.toString() ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +76,7 @@ class _BadgeSheetCardState extends State<BadgeSheetCard> {
     );
   }
 
-  void _printSingle() {
+  Future<void> _printSingle() async {
     if (_data.missingReceiver) {
       showDialog<void>(
         context: context,
@@ -97,7 +103,8 @@ class _BadgeSheetCardState extends State<BadgeSheetCard> {
       );
       return;
     }
-    PdfLabels.printBadges([_data]);
+    final ok = await PdfLabels.printBadges([_data]);
+    if (ok) widget.onPrinted?.call([badgeId]);
   }
 
   void setSelected(bool selected) {
@@ -114,10 +121,14 @@ class BadgeGroupCard extends StatefulWidget {
     super.key,
     required this.orderId,
     required this.badges,
+    this.onPrinted,
   });
 
   final String orderId;
   final List<Map<String, dynamic>> badges;
+
+  /// بعد از موفقیت چاپ صدا زده می‌شود تا بیجک‌ها به «چاپ شده‌ها» منتقل شوند
+  final void Function(List<String> badgeIds)? onPrinted;
 
   @override
   State<BadgeGroupCard> createState() => _BadgeGroupCardState();
@@ -144,7 +155,7 @@ class _BadgeGroupCardState extends State<BadgeGroupCard> {
         : 'PENDING';
     final statusLabel = orderStatusLabels[status] ?? status;
     final createdAt = widget.badges.isNotEmpty
-        ? _first10String(widget.badges.first['createdAt'])
+        ? toJalaliDate(widget.badges.first['createdAt'])
         : 'نامشخص';
 
     return Container(
@@ -219,18 +230,13 @@ class _BadgeGroupCardState extends State<BadgeGroupCard> {
                   badge: widget.badges[i],
                   groupTotal: widget.badges.length,
                   onSelectionChanged: () => setState(() {}),
+                  onPrinted: widget.onPrinted,
                 ),
             ],
           ),
         ],
       ),
     );
-  }
-
-  String _first10String(dynamic value) {
-    final str = value is String ? value : (value?.toString() ?? '');
-    if (str.isEmpty) return 'نامشخص';
-    return str.length > 10 ? str.substring(0, 10) : str;
   }
 
   GlobalKey<_BadgeSheetCardState> _cardKeyFor(int index) {
@@ -250,12 +256,11 @@ class _BadgeGroupCardState extends State<BadgeGroupCard> {
   int _selectedCount() =>
       _cardKeys.where((key) => key.currentState?.isSelected() ?? false).length;
 
-  void _printSelected() {
-    final selected = _cardKeys
+  Future<void> _printSelected() async {
+    final selectedCards = _cardKeys
         .where((key) => key.currentState?.isSelected() ?? false)
-        .map((key) => key.currentState!._data)
         .toList();
-    if (selected.isEmpty) {
+    if (selectedCards.isEmpty) {
       showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -281,6 +286,14 @@ class _BadgeGroupCardState extends State<BadgeGroupCard> {
       );
       return;
     }
-    PdfLabels.printBadges(selected);
+    final selected = selectedCards
+        .map((key) => key.currentState!._data)
+        .toList();
+    final ok = await PdfLabels.printBadges(selected);
+    if (ok) {
+      widget.onPrinted?.call(
+        selectedCards.map((key) => key.currentState!.badgeId).toList(),
+      );
+    }
   }
 }
