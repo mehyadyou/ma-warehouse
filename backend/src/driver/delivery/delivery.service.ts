@@ -3,9 +3,19 @@ import { AppError } from '../../common/exceptions/AppError';
 import type { Prisma } from '@prisma/client';
 
 export const deliveryService = {
-  deliverOrder: async (orderId: string, driverId: string, notes?: string) => {
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+  deliverOrder: async (orderId: string, driverId: string, notes?: string, receiptUrl?: string) => {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { warehouse: { select: { name: true } } },
+    });
     if (!order) throw new AppError('سفارش یافت نشد', 404);
+    // بیجک باربری پیش‌شرط تحویل است — بدون عکس، سفارش تحویل نمی‌شود
+    if (!receiptUrl) throw new AppError('عکس بیجک باربری الزامی است', 400);
+
+    const driver = await prisma.user.findUnique({
+      where: { id: driverId },
+      select: { name: true },
+    });
 
     const now = new Date();
     await prisma.$transaction(async (tx) => {
@@ -27,12 +37,14 @@ export const deliveryService = {
           status: 'DELIVERED',
           deliveredAt: now,
           notes: notes ?? null,
+          receiptUrl,
         },
         update: {
           driverId,
           status: 'DELIVERED',
           deliveredAt: now,
           notes: notes ?? null,
+          receiptUrl,
         },
       });
 
@@ -49,7 +61,20 @@ export const deliveryService = {
         data: {
           aggregate: 'delivery',
           type: 'delivery:completed',
-          payload: { orderId, driverId, notes: notes ?? null, deliveredAt: now.toISOString() },
+          payload: {
+            orderId,
+            orderNumber: order.orderNumber,
+            driverId,
+            driverName: driver?.name ?? null,
+            receiverName: order.receiverName,
+            city: order.city,
+            carrier: order.carrier,
+            warehouseId: order.warehouseId,
+            warehouseName: order.warehouse?.name ?? null,
+            receiptUrl,
+            notes: notes ?? null,
+            deliveredAt: now.toISOString(),
+          },
         },
       });
     });

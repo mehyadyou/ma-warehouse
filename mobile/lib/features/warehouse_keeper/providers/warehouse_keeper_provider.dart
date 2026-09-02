@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/warehouse_keeper_api_service.dart';
+import '../models/keeper_carrier_model.dart';
+import '../models/keeper_driver_model.dart';
 import '../models/keeper_inventory_model.dart';
 import '../models/keeper_inventory_summary_model.dart';
 import '../models/keeper_order_model.dart';
@@ -62,4 +64,63 @@ final transactionsProvider = FutureProvider<List<KeeperTransactionModel>>((
   ref,
 ) async {
   return ref.read(wkApiProvider).getTransactions();
+});
+
+/// رانندگان تعریف‌شده توسط مدیریت — بخش «مدیریت رانندگان» پنل انباردار
+final driversProvider = FutureProvider<List<KeeperDriverModel>>((ref) async {
+  return ref.read(wkApiProvider).getDrivers();
+});
+
+/// تیک زدن/برداشتن تیک راننده — پس از موفقیت، لیست رانندگان رفرش می‌شود
+final driverAssignmentProvider = FutureProvider.family<void, ({String driverId, bool assigned})>((
+  ref,
+  args,
+) async {
+  final api = ref.read(wkApiProvider);
+  await api.assignDriver(args.driverId, args.assigned);
+  ref.invalidate(driversProvider);
+});
+
+/// باربری‌ها — منوی «باربری» پنل انباردار
+final carriersProvider = FutureProvider<List<KeeperCarrierModel>>((ref) async {
+  return ref.read(wkApiProvider).getCarriers();
+});
+
+/// ذخیرهٔ باربری (افزودن/ویرایش) — بعد از موفقیت لیست رفرش می‌شود
+final carrierSaveProvider = FutureProvider.family<
+    KeeperCarrierModel, ({String? id, String name, int priority, String? phone, String? address})>((
+  ref,
+  args,
+) async {
+  final api = ref.read(wkApiProvider);
+  final carrier = args.id == null || args.id!.isEmpty
+      ? await api.createCarrier(
+          name: args.name,
+          priority: args.priority,
+          phone: args.phone,
+          address: args.address,
+        )
+      : await api.updateCarrier(
+          args.id!,
+          name: args.name,
+          priority: args.priority,
+          phone: args.phone,
+          address: args.address,
+        );
+  ref.invalidate(carriersProvider);
+  return carrier;
+});
+
+/// حذف باربری — بعد از موفقیت لیست رفرش می‌شود
+final carrierDeleteProvider = FutureProvider.family<void, String>((ref, id) async {
+  final api = ref.read(wkApiProvider);
+  await api.deleteCarrier(id);
+  ref.invalidate(carriersProvider);
+});
+
+/// بازچینی صف بارگیری (درگ‌انددراپ) — لیست مرتب‌شدهٔ تازه از سرور برمی‌گردد؛
+/// صفحه با همان لیست، UI خودش را به‌روز می‌کند (نیازی به invalidate نیست)
+final carrierReorderProvider =
+    FutureProvider.family<List<KeeperCarrierModel>, List<String>>((ref, ids) async {
+  return ref.read(wkApiProvider).reorderCarriers(ids);
 });

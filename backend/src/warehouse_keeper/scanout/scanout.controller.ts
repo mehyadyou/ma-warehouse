@@ -4,7 +4,7 @@ import { notificationService } from '../../notification/notification.service';
 import { realtime } from '../../realtime/realtime';
 import { RealtimeEvents } from '../../realtime/events';
 import { asyncHandler } from '../../middleware/asyncHandler';
-import { ScanOutInput, ManualExitInput } from './scanout.schema';
+import { ScanOutInput, ManualExitInput, AssignDriverInput } from './scanout.schema';
 
 export const scanOutController = {
   scan: asyncHandler(async (req: Request, res: Response) => {
@@ -25,14 +25,32 @@ export const scanOutController = {
     res.json(result);
   }),
 
-  //خروج دستی (بدون QR) — محصول + مدل + تعداد، اعتبارسنجی مطابق سفارش/دستور مدیر
-  manual: asyncHandler(async (req: Request, res: Response) => {
-    const { productId, modelId, quantity } = req.body as ManualExitInput;
+  //تخصیص بار (سفارش خروج‌داده‌شده) به رانندهٔ تیک‌خورده — بعد از اسکن، انباردار راننده را انتخاب می‌کند
+  assignDriver: asyncHandler(async (req: Request, res: Response) => {
+    const { orderId, driverId } = req.body as AssignDriverInput;
     const userId      = req.user!.id;
     const warehouseId = req.user!.warehouseId;
     if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
 
-    const result = await scanOutService.manualExit({ productId, modelId, quantity }, warehouseId, userId);
+    const result = await scanOutService.assignDriver({ orderId, driverId }, warehouseId, userId);
+    if (!result.valid) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json(result.assignment);
+  }),
+
+  //خروج دستی (بدون QR) — محصول + مدل + تعداد، اعتبارسنجی مطابق سفارش/دستور مدیر
+  manual: asyncHandler(async (req: Request, res: Response) => {
+    const { productId, modelId, quantity, driverId, orderId, transferId } = req.body as ManualExitInput;
+    const userId      = req.user!.id;
+    const warehouseId = req.user!.warehouseId;
+    if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
+
+    const result = await scanOutService.manualExit(
+      { productId, modelId, quantity, driverId, orderId, transferId },
+      warehouseId,
+      userId,
+    );
     if (!result.valid) {
       await notificationService.create(userId, 'خطای خروج', result.error, 'error', { type: 'SCAN_OUT_ERROR' });
       realtime.toUser(userId, RealtimeEvents.QR_ERROR, { error: result.error });

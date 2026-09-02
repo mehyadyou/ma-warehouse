@@ -1,8 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { AppError } from '../../common/exceptions/AppError';
 import { writeAudit } from '../../utils/audit';
 import { runSerializable } from '../../utils/serializableTx';
@@ -701,50 +699,29 @@ export const ordersService = {
         }));
     },
 
-    //لیست باربری‌ها
+    //لیست باربری‌ها — از جدول دیتابیس (مدیریت با پنل انباردار)
     getCarriers: async () => {
-        const filePath = resolveCarriersFile();
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        return JSON.parse(raw);
-    },
-
-    //افزودن باربری جدید — با قفل داخل‌فرایندی دور read-modify-write
-    //(برای چند نمونه، این قفل کافی نیست و باید قفل توزیع‌شده/دیتابیسی جایگزین شود)
-    createCarrier: async (name: string, priority: number, phone?: string, address?: string) => {
-        const filePath = resolveCarriersFile();
-        return carrierFileLock.withLock(async () => {
-            const carriers = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
-            if (carriers.find((c: any) => c.name === name)) {
-                throw new AppError('این باربری قبلاً ثبت شده است', 409);
-            }
-
-            carriers.push({ name, priority, phone, address });
-            fs.writeFileSync(filePath, JSON.stringify(carriers, null, 2), 'utf-8');
-            return { name, priority, phone, address };
+        return prisma.carrier.findMany({
+            orderBy: [{ priority: 'asc' }, { name: 'asc' }],
         });
     },
-};
 
-// قفل سریال داخل‌فرایندی: دو درخواست هم‌زمان به فایل دسترسی هم‌زمان ندارند
-const carrierFileLock = {
-    _chain: Promise.resolve(),
-    withLock<T>(fn: () => Promise<T>): Promise<T> {
-        const next = this._chain.then(fn, fn);
-        this._chain = next.then(() => undefined, () => undefined);
-        return next;
+    //افزودن باربری جدید — نام یکتا است؛ تداخل → 409 دوستانه
+    createCarrier: async (name: string, priority: number, phone?: string, address?: string) => {
+        try {
+            return await prisma.carrier.create({
+                data: {
+                    name,
+                    priority,
+                    phone: phone?.trim() || null,
+                    address: address?.trim() || null,
+                },
+            });
+        } catch (e: any) {
+            if (e?.code === 'P2002') {
+                throw new AppError('این باربری قبلاً ثبت شده است', 409);
+            }
+            throw e;
+        }
     },
 };
-
-// مسیر فایل باربری‌ها: اول نسخهٔ اجرایی (dist)، بعد منبع (src) — در dev و prod کار می‌کند
-function resolveCarriersFile(): string {
-    const candidates = [
-        path.join(__dirname, '..', '..', 'config', 'carriers.json'),
-        path.join(process.cwd(), 'src', 'config', 'carriers.json'),
-    ];
-    const found = candidates.find((p) => fs.existsSync(p));
-    if (!found) {
-        throw new AppError('فایل باربری‌ها یافت نشد', 500);
-    }
-    return found;
-}

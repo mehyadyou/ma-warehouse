@@ -203,9 +203,103 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
       break;
     }
 
-    case 'delivery:completed':
-      realtime.toRole('MANAGER', RealtimeEvents.DELIVERY_COMPLETED, payload);
+    // تعریف بار برای راننده توسط انباردار (بعد از اسکن خروج) — اعلان به راننده + رفرش زنده
+    case 'order:driver:assigned': {
+      const warehouseName = payload.warehouseName ?? '';
+      const orderLabel = payload.orderNumber
+        ? `سفارش شماره ${payload.orderNumber}`
+        : 'یک سفارش';
+      await notificationService.create(
+        payload.driverId,
+        'بار جدید',
+        `${orderLabel} برای شما تعریف شد${warehouseName ? ` (${warehouseName})` : ''}`,
+        'info',
+        {
+          type: 'DRIVER_ORDER_ASSIGNED',
+          orderId: payload.orderId ?? null,
+          driverId: payload.driverId ?? null,
+          driverName: payload.driverName ?? null,
+          warehouseId: payload.warehouseId ?? null,
+          warehouseName,
+        },
+        `${eventId}:${payload.driverId}`,
+      );
+      // پنل راننده همان‌لحظه بار را نشان می‌دهد + مدیر لیست زندهٔ سفارش‌ها را رفرش می‌کند
+      realtime.toUser(payload.driverId, RealtimeEvents.ORDER_ASSIGNED, payload);
+      realtime.toRole('MANAGER', RealtimeEvents.ORDER_ASSIGNED, payload);
       break;
+    }
+
+    // تحویل سفارش توسط راننده — اطلاع به مدیر و انباردارِ همان انبار:
+    // چه سفارشی تحویل داده شد و به چه باربری
+    case 'delivery:completed': {
+      const orderRef = payload.orderNumber ? `سفارش ${payload.orderNumber}` : 'یک سفارش';
+      const label = `${orderRef}${payload.receiverName ? ` (${payload.receiverName})` : ''} با باربری ${payload.carrier ?? 'نامشخص'} تحویل داده شد`;
+      const data = {
+        type: 'DELIVERY_COMPLETED',
+        orderId: payload.orderId ?? null,
+        orderNumber: payload.orderNumber ?? null,
+        receiverName: payload.receiverName ?? null,
+        city: payload.city ?? null,
+        carrier: payload.carrier ?? null,
+        warehouseId: payload.warehouseId ?? null,
+        warehouseName: payload.warehouseName ?? null,
+        driverName: payload.driverName ?? null,
+        receiptUrl: payload.receiptUrl ?? null,
+      };
+      const managers = await findManagers();
+      for (const mgr of managers) {
+        await notificationService.create(
+          mgr.id,
+          'تحویل سفارش',
+          label,
+          'success',
+          data,
+          `${eventId}:${mgr.id}`,
+        );
+      }
+      const keepers = await findWarehouseKeepers(payload.warehouseId);
+      for (const keeper of keepers) {
+        await notificationService.create(
+          keeper.id,
+          'تحویل سفارش',
+          label,
+          'success',
+          data,
+          `${eventId}:${keeper.id}`,
+        );
+      }
+      realtime.toRole('MANAGER', RealtimeEvents.DELIVERY_COMPLETED, payload);
+      realtime.toWarehouse(payload.warehouseId, RealtimeEvents.DELIVERY_COMPLETED, payload);
+      break;
+    }
+
+    // اتصال/قطع راننده به انبار توسط انباردار — نوتیفیکیشن به راننده + تازه‌سازی زندهٔ همهٔ انباردارها
+    case 'driver:assigned':
+    case 'driver:unassigned': {
+      const assigned = type === 'driver:assigned';
+      const warehouseName = payload.warehouseName ?? '';
+      await notificationService.create(
+        payload.driverId,
+        assigned ? 'اتصال به انبار' : 'قطع اتصال از انبار',
+        assigned
+          ? `شما به انبار ${warehouseName} متصل شدید`
+          : `اتصال شما به انبار ${warehouseName} قطع شد`,
+        assigned ? 'info' : 'warning',
+        {
+          type: assigned ? 'DRIVER_ASSIGNED' : 'DRIVER_UNASSIGNED',
+          driverId: payload.driverId ?? null,
+          driverName: payload.driverName ?? null,
+          warehouseId: payload.warehouseId ?? null,
+          warehouseName,
+        },
+        `${eventId}:${payload.driverId}`,
+      );
+      // پنل راننده همان‌لحظه خالی/پر می‌شود + لیست انباردارها زنده رفرش می‌شود
+      realtime.toUser(payload.driverId, RealtimeEvents.DRIVER_ASSIGNED, payload);
+      realtime.toRole('WAREHOUSE_KEEPER', RealtimeEvents.DRIVER_ASSIGNED, payload);
+      break;
+    }
 
     default:
       realtime.toRole('MANAGER', type, payload);

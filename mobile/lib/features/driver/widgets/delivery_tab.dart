@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../data/driver_api_service.dart';
 import '../providers/driver_provider.dart';
 import '../../../core/network/api_error.dart';
 
-const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
 const _surfaceAlt = Color(0xFF22262D);
 const _green = Color(0xFF4ADE80);
@@ -23,7 +23,81 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
   final _api = DriverApiService();
   String? _deliveringOrderId;
 
-  Future<void> _confirmDelivery(String orderId, String carrier) async {
+  /// جریان تحویل: سیستم اول عکس بیجک باربری را می‌خواهد (گالری یا دوربین)،
+  /// بعد از آپلود، سفارش تحویل می‌شود.
+  Future<void> _startDelivery(String orderId, String carrier) async {
+    // ۱) انتخاب عکس بیجک: گالری یا دوربین
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: _surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Text(
+                'عکس بیجک باربری',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'برای ثبت تحویل، عکس بیجکی که باربری هنگام تحویل بار به شما داده است را پیوست کنید',
+                style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: _green),
+              title: const Text('انتخاب از گالری', style: TextStyle(color: Colors.white, fontSize: 14)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded, color: _green),
+              title: const Text('دوربین', style: TextStyle(color: Colors.white, fontSize: 14)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('انصراف', style: TextStyle(color: Colors.white38)),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    // ۲) گرفتن عکس
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 80,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('باز کردن دوربین/گالری ممکن نشد؛ دوباره تلاش کنید'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+
+    // ۳) پیش‌نمایش + تأیید نهایی — بعد از آپلود، سفارش تحویل می‌شود
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -34,6 +108,14 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+            ),
+            const SizedBox(height: 12),
             Text('آیا این سفارش به $carrier تحویل داده شد؟',
                 style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 12),
@@ -65,7 +147,7 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
               backgroundColor: _green,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const Text('بله، تحویل شد', style: TextStyle(color: Colors.white)),
+            child: const Text('آپلود و ثبت تحویل', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -73,9 +155,10 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
 
     if (confirm != true || !mounted) return;
 
+    // ۴) آپلود بیجک + ثبت تحویل
     setState(() => _deliveringOrderId = orderId);
     try {
-      await _api.deliverOrder(orderId);
+      await _api.deliverOrder(orderId, receiptBytes: bytes);
       ref.invalidate(readyOrdersProvider);
       ref.invalidate(myDeliveriesProvider(null));
       if (mounted) {
@@ -115,17 +198,19 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
     return ordersAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: _green)),
       error: (err, _) => _buildError(friendlyError(err)),
-      data: (orders) {
-        if (orders.isEmpty) return _buildEmpty();
+      data: (result) {
+        // راننده‌ای که تیکش توسط انباردار برداشته شده → پنل خالی با پیام راهنما
+        if (!result.hasWarehouse) return _buildNotConnected();
+        if (result.orders.isEmpty) return _buildEmpty();
 
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(readyOrdersProvider),
           color: _green,
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: orders.length,
+            itemCount: result.orders.length,
             itemBuilder: (_, i) {
-              final order = orders[i] as Map<String, dynamic>;
+              final order = result.orders[i] as Map<String, dynamic>;
               return _buildDeliveryCard(order);
             },
           ),
@@ -142,6 +227,8 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
     final address = order['address'] ?? '';
     final phone = order['customerPhone'] ?? '';
     final items = order['items'] as List<dynamic>? ?? [];
+    // سفارش تازه‌ثبت‌شده (PENDING) هنوز از انبار خارج نشده — قابل تحویل نیست
+    final isPending = (order['status'] as String?) == 'PENDING';
     final isDelivering = _deliveringOrderId == id;
 
     return Container(
@@ -165,12 +252,16 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: _info.withOpacity(0.12),
+              color: (isPending ? _orange : _info).withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _info.withOpacity(0.2)),
+              border: Border.all(color: (isPending ? _orange : _info).withOpacity(0.2)),
             ),
-            child: const Text('آماده تحویل',
-                style: TextStyle(color: _info, fontSize: 11, fontWeight: FontWeight.w700)),
+            child: Text(isPending ? 'در انتظار خروج از انبار' : 'آماده تحویل',
+                style: TextStyle(
+                  color: isPending ? _orange : _info,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                )),
           ),
         ]),
         const SizedBox(height: 10),
@@ -216,18 +307,26 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
           ),
         ],
         const SizedBox(height: 14),
-        // Deliver button
+        // Deliver button — سفارش‌های تازه‌ثبت‌شده تا خروج از انبار غیرفعال‌اند
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: isDelivering ? null : () => _confirmDelivery(id, carrier),
+            onPressed: isDelivering || isPending
+                ? null
+                : () => _startDelivery(id, carrier),
             icon: isDelivering
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.check_rounded, size: 20),
-            label: Text(isDelivering ? 'در حال ثبت...' : 'تحویل به مشتری',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                : Icon(isPending ? Icons.hourglass_empty_rounded : Icons.check_rounded, size: 20),
+            label: Text(
+              isDelivering
+                  ? 'در حال ثبت...'
+                  : isPending
+                      ? 'منتظر خروج از انبار'
+                      : 'تحویل به مشتری',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _green,
+              backgroundColor: isPending ? _surfaceAlt : _green,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -251,12 +350,28 @@ class _DeliveryTabState extends ConsumerState<DeliveryTab> {
   Widget _buildEmpty() {
     return const Center(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.check_circle_outline_rounded, size: 64, color: Colors.white12),
+        Icon(Icons.local_shipping_rounded, size: 64, color: Colors.white12),
         SizedBox(height: 16),
-        Text('همه سفارش‌ها تحویل شدن!',
+        Text('باری برای شما تعریف نشده',
             style: TextStyle(color: Colors.white38, fontSize: 15)),
         SizedBox(height: 6),
-        Text('منتظر سفارش‌های جدید باشید',
+        Text('منتظر باشید انباردار هنگام خروج محصول، بار را به شما تخصیص دهد',
+            style: TextStyle(color: Colors.white24, fontSize: 12),
+            textAlign: TextAlign.center),
+      ]),
+    );
+  }
+
+  /// راننده به انباری متصل نیست (تیک توسط انباردار برداشته شده) — پنل خالی با پیام راهنما
+  Widget _buildNotConnected() {
+    return const Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.link_off_rounded, size: 64, color: Colors.white12),
+        SizedBox(height: 16),
+        Text('به انباری متصل نیستید',
+            style: TextStyle(color: Colors.white38, fontSize: 15)),
+        SizedBox(height: 6),
+        Text('با انباردار هماهنگ کنید تا شما را متصل کند',
             style: TextStyle(color: Colors.white24, fontSize: 12)),
       ]),
     );

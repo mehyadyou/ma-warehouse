@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/driver_provider.dart';
 import '../../../core/network/api_error.dart';
 
-const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
 const _surfaceAlt = Color(0xFF22262D);
 const _green = Color(0xFF4ADE80);
@@ -64,7 +63,6 @@ class HistoryTab extends ConsumerWidget {
     final id = delivery['id'] ?? '';
     final orderNumber = delivery['orderNumber'];
     final carrier = delivery['carrier'] ?? (delivery['order']?['carrier'] ?? 'نامشخص');
-    final city = delivery['city'] ?? (delivery['order']?['city'] ?? '');
     final updatedAt = delivery['updatedAt'] ?? delivery['deliveredAt'] ?? '';
     final items = (delivery['order']?['items'] ?? delivery['items'] ?? []) as List<dynamic>;
 

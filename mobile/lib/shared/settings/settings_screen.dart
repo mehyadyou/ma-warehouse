@@ -400,6 +400,7 @@ class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet> 
     ('RETURN_ENTRY', 'ورود مرجوعی', 'اعلان وقتی کالای مرجوعی به انبار برمی‌گردد'),
     ('SCAN_OUT', 'خروج کالا', 'اعلان وقتی کالایی از انبار خارج می‌شود'),
     ('SCAN_OUT_ERROR', 'خطاها', 'اعلان خطاهای خروج کالا'),
+    ('DELIVERY_COMPLETED', 'تحویل سفارش', 'اعلان وقتی سفارشی توسط راننده تحویل داده می‌شود'),
   ];
 
   final _api = SettingsApiService();

@@ -292,6 +292,9 @@ export const usersService = {
                 where: { userId: id, revokedAt: null },
                 data: { revokedAt: new Date() },
             });
+            // سوکت‌های زندهٔ کاربر به اتاق انبار جدید منتقل شوند تا رویدادهای
+            // سفارش (order:created و ...) را از انبار درست دریافت کند
+            realtime.moveUserToWarehouse(id, (data.warehouseId ?? null) as string | null);
         }
 
         //ثبت در تاریخچه + ممیزی (تغییر نقش / تغییر انبار)

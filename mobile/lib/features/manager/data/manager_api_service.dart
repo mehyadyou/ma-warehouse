@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import '../../../core/network/api_constants.dart';
 import '../../../core/network/dio_client.dart';
@@ -19,6 +21,7 @@ import '../models/transaction_entry_model.dart';
 import '../models/user_report_model.dart';
 import '../models/shipment_report_model.dart';
 import '../models/transfer_model.dart';
+import '../models/delivery_inbox_item.dart';
 
 class ManagerApiService {
   final Dio _dio = DioClient().dio;
@@ -464,6 +467,45 @@ class ManagerApiService {
     return (response.data['transfers'] as List)
         .map((json) => TransferModel.fromJson(json as Map<String, dynamic>))
         .toList();
+  }
+
+  /// صندوق تحویل: عکس‌های بیجک باربری — فیلتر راننده و روز/ماه/سال شمسی
+  /// [year] و [month] و [day] همه شمسی‌اند؛ برای ماه/روز باید سال هم داده شود
+  Future<List<DeliveryInboxItem>> getDeliveryInbox({
+    String? driverId,
+    int? year,
+    int? month,
+    int? day,
+  }) async {
+    final response = await _dio.get(
+      '/manager/delivery-inbox',
+      queryParameters: {
+        if (driverId != null && driverId.isNotEmpty) 'driverId': driverId,
+        if (year != null) 'year': year,
+        if (month != null) 'month': month,
+        if (day != null) 'day': day,
+      },
+    );
+    return (response.data['deliveries'] as List? ?? [])
+        .map((e) => DeliveryInboxItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// راننده‌هایی که حداقل یک بیجک در صندوق ثبت کرده‌اند (برای فیلتر راننده)
+  Future<List<DeliveryInboxDriver>> getDeliveryInboxDrivers() async {
+    final response = await _dio.get('/manager/delivery-inbox/drivers');
+    return (response.data['drivers'] as List? ?? [])
+        .map((e) => DeliveryInboxDriver.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// دانلود بایت‌های یک فایل (مثلاً عکس بیجک) — برای اشتراک‌گذاری تصویر
+  Future<Uint8List> downloadFileBytes(String url) async {
+    final response = await _dio.get<List<int>>(
+      url,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data ?? const []);
   }
 }
 

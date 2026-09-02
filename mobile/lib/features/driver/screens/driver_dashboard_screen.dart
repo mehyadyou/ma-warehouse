@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/widgets/app_drawer.dart';
 import '../../../shared/widgets/dashboard_header.dart';
+import '../providers/driver_provider.dart';
 import '../widgets/loading_plan_tab.dart';
 import '../widgets/delivery_tab.dart';
 import '../widgets/history_tab.dart';
 import '../widgets/driver_bottom_nav.dart';
+import '../../../shared/settings/settings_screen.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
@@ -22,6 +26,58 @@ class DriverDashboardScreen extends ConsumerStatefulWidget {
 class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
   int _currentTab = 0;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  /// لیست هندلرهای سوکت — برای حذف کامل در dispose نگه داشته می‌شود
+  final Map<String, Function(dynamic)> _socketHandlers = {};
+
+  /// رفرش دوره‌ای به‌عنوان پشتیبان سوکت: اگر رویداد زنده از دست برود،
+  /// پنل راننده حداکثر ظرف ۳۰ ثانیه به‌روز می‌شود
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_registerSocketListeners);
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _onOrdersChanged(null),
+    );
+  }
+
+  /// رویدادهای زندهٔ انبار: سفارش جدید/ویرایش/حذف + خروج کالا — پنل راننده همان‌لحظه به‌روز می‌شود
+  void _registerSocketListeners() {
+    final socket = ref.read(socketServiceProvider);
+    socket.on('driver:assigned', _onOrdersChanged);
+    socket.on('order:created', _onOrdersChanged);
+    socket.on('order:updated', _onOrdersChanged);
+    socket.on('order:deleted', _onOrdersChanged);
+    socket.on('scanout:done', _onOrdersChanged);
+    // انباردار بار را به این راننده تخصیص داد (بعد از اسکن خروج) — همان لحظه در پنل بیاید
+    socket.on('order:assigned', _onOrdersChanged);
+    _socketHandlers['driver:assigned'] = _onOrdersChanged;
+    _socketHandlers['order:created'] = _onOrdersChanged;
+    _socketHandlers['order:updated'] = _onOrdersChanged;
+    _socketHandlers['order:deleted'] = _onOrdersChanged;
+    _socketHandlers['scanout:done'] = _onOrdersChanged;
+    _socketHandlers['order:assigned'] = _onOrdersChanged;
+  }
+
+  void _onOrdersChanged(dynamic data) {
+    if (!mounted) return;
+    ref.invalidate(readyOrdersProvider);
+    ref.invalidate(loadingPlanProvider);
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    final socket = ref.read(socketServiceProvider);
+    _socketHandlers.forEach(
+      (event, handler) => socket.offEvent(event, handler),
+    );
+    _socketHandlers.clear();
+    super.dispose();
+  }
 
   void _logout() {
     _scaffoldKey.currentState?.closeDrawer();
@@ -73,6 +129,12 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
         greenColor: _green,
         surfaceColor: _surface,
         bgColor: _bg,
+        onSettingsTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          );
+        },
       ),
       body: SafeArea(
         child: Column(children: [

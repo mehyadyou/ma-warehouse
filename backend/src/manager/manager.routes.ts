@@ -14,6 +14,7 @@ import { rateController } from './rate/rate.controller';
 import { shipmentsController } from './shipments/shipments.controller';
 import { transfersController } from './transfers/transfers.controller';
 import { createTransferSchema } from './transfers/transfers.schema';
+import { deliveryInboxController } from './delivery_inbox/delivery_inbox.controller';
 import { assistantController } from './assistant/assistant.controller';
 import { assistantChatSchema } from './assistant/assistant.schema';
 
@@ -88,6 +89,10 @@ router.get('/shipments-report', userRateLimit({ windowMs: 60_000, max: 60, keyPr
 router.post('/transfers', validate(createTransferSchema), transfersController.createTransfer);
 router.get('/transfers', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:tr' }), transfersController.listTransfers);
 router.post('/transfers/:id/cancel', userRateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'm:trc' }), transfersController.cancelTransfer);
+
+// ── Delivery Inbox (صندوق تحویل — عکس بیجک باربری) ──
+router.get('/delivery-inbox/drivers', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:dinb' }), deliveryInboxController.drivers);
+router.get('/delivery-inbox', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:dinb' }), deliveryInboxController.list);
 
 // ── Assistant (دستیار هوش مصنوعی — فقط‌خواندنی) ──
 router.post(

@@ -16,6 +16,8 @@ import 'reports/reports_screen.dart';
 import '../scan_out/manual_exit_screen.dart';
 import '../scan_out/scan_out_screen.dart';
 import 'transfers/transfer_instructions_screen.dart';
+import '../drivers/drivers_screen.dart';
+import '../carriers/carriers_screen.dart';
 
 const _bg = Color(0xFF0F1114);
 const _green = Color(0xFF4ADE80);
@@ -245,6 +247,18 @@ class _WarehouseKeeperDashboardScreenState
         userName: auth.name ?? 'کاربر',
         userRole: 'انباردار',
         avatarUrl: auth.avatarUrl,
+        onDriversTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const DriversScreen()),
+          );
+        },
+        onCarriersTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CarriersScreen()),
+          );
+        },
         onSettingsTap: () {
           Navigator.push(
             context,

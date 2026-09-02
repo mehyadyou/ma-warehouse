@@ -2,8 +2,10 @@ import { prisma } from '../../utils/prisma';
 import { verifyPayload, verifySerialPayload } from '../../utils/qr';
 import { runSerializable } from '../../utils/serializableTx';
 import { AppError } from '../../common/exceptions/AppError';
+import { writeAudit } from '../../utils/audit';
 import { transferExecutedUnits, completeTransferIfDone } from '../../manager/transfers/transfers.service';
-import type { CartonStatus } from '@prisma/client';
+import type { CartonStatus, DeliveryStatus } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 const cartonInclude = {
   product: { select: { id: true, name: true, unit: true } },
@@ -27,15 +29,42 @@ interface CartonWithRefs {
   order: { id: string; customerPhone: string | null; city: string | null; address: string | null } | null;
 }
 
+/** اطلاعات هر هدفِ منطبق برای نمایش در پیکر انتخاب (اسکن/خروج دستی) */
+type TargetOrderInfo = {
+  kind: 'order';
+  id: string;
+  orderNumber: number;
+  city: string | null;
+  receiverName: string | null;
+  carrier: string | null;
+  customerPhone: string | null;
+};
+
+type TargetTransferInfo = {
+  kind: 'transfer';
+  id: string;
+  productName: string;
+  modelName: string | null;
+  quantity: number;
+  toWarehouseName: string | null;
+};
+
+type TargetInfo = TargetOrderInfo | TargetTransferInfo;
+
+type TargetMatch =
+  | { kind: 'order' | 'transfer'; id: string }
+  | 'none'
+  | { multiple: TargetInfo[] };
+
 /**
  * پیدا کردن تنها هدف فعالِ منطبق (سفارش یا دستور جابه‌جایی/خروج) برای اتصال خودکار خروج.
  * ملاک تطابق فقط «محصول + مدل» است؛ سریال/QR در مجوز خروج هیچ نقشی ندارد.
- * برمی‌گرداند: {kind, id} یا 'none' (هیچ) یا 'multiple' (بیش از یکی — انتخاب صریح لازم است).
+ * برمی‌گرداند: {kind, id} یا 'none' یا {multiple: [اطلاعات هر هدف]} برای انتخاب صریح توسط انباردار.
  */
 async function findSingleMatchingTarget(
   carton: CartonWithRefs,
   warehouseId: string,
-): Promise<{ kind: 'order' | 'transfer'; id: string } | 'none' | 'multiple'> {
+): Promise<TargetMatch> {
   // اگر کارتن از قبل به سفارشی متصل است، همان را استفاده کن
   if (carton.orderId) return { kind: 'order', id: carton.orderId };
 
@@ -54,11 +83,16 @@ async function findSingleMatchingTarget(
       },
       select: {
         id: true,
+        orderNumber: true,
+        city: true,
+        receiverName: true,
+        carrier: true,
+        customerPhone: true,
         items: { select: { productId: true, modelId: true, quantity: true } },
       },
     })) ?? [];
 
-  const orderIds: string[] = [];
+  const orderCandidates: TargetOrderInfo[] = [];
   for (const o of orders) {
     const item = o.items.find(
       (i) =>
@@ -74,11 +108,21 @@ async function findSingleMatchingTarget(
         scannedOutAt: { not: null },
       },
     });
-    if (attached < item.quantity) orderIds.push(o.id);
+    if (attached < item.quantity) {
+      orderCandidates.push({
+        kind: 'order' as const,
+        id: o.id,
+        orderNumber: o.orderNumber ?? 0,
+        city: o.city ?? null,
+        receiverName: o.receiverName ?? null,
+        carrier: o.carrier ?? null,
+        customerPhone: o.customerPhone ?? null,
+      });
+    }
   }
 
-  if (orderIds.length === 1) return { kind: 'order', id: orderIds[0] };
-  if (orderIds.length > 1) return 'multiple';
+  if (orderCandidates.length === 1) return { kind: 'order', id: orderCandidates[0].id };
+  if (orderCandidates.length > 1) return { multiple: orderCandidates };
 
   // دستور جابه‌جایی/خروج مدیر (دوفازی) — فقط وقتی سفارشی منطبق نبود
   const transfers =
@@ -89,18 +133,33 @@ async function findSingleMatchingTarget(
         productId: carton.productId,
         modelId: carton.modelId ?? null,
       },
-      select: { id: true, quantity: true },
+      select: {
+        id: true,
+        quantity: true,
+        product: { select: { name: true } },
+        model: { select: { name: true } },
+        toWarehouse: { select: { name: true } },
+      },
     })) ?? [];
 
-  const transferIds: string[] = [];
+  const transferCandidates: TargetTransferInfo[] = [];
   for (const t of transfers) {
     const executed = await transferExecutedUnits(prisma, t.id);
     const unit = carton.isIndividual ? 1 : carton.model?.unitsPerBox ?? 1;
-    if (executed + unit <= t.quantity) transferIds.push(t.id);
+    if (executed + unit <= t.quantity) {
+      transferCandidates.push({
+        kind: 'transfer' as const,
+        id: t.id,
+        productName: t.product?.name ?? '',
+        modelName: t.model?.name ?? null,
+        quantity: t.quantity,
+        toWarehouseName: t.toWarehouse?.name ?? null,
+      });
+    }
   }
 
-  if (transferIds.length === 1) return { kind: 'transfer', id: transferIds[0] };
-  if (transferIds.length > 1) return 'multiple';
+  if (transferCandidates.length === 1) return { kind: 'transfer', id: transferCandidates[0].id };
+  if (transferCandidates.length > 1) return { multiple: transferCandidates };
   return 'none';
 }
 
@@ -113,7 +172,7 @@ async function findSingleManualTarget(
   modelId: string | null,
   quantity: number,
   warehouseId: string,
-): Promise<{ kind: 'order' | 'transfer'; id: string } | 'none' | 'multiple'> {
+): Promise<TargetMatch> {
   // سفارش‌های فعال (PENDING/SHIPPED) همان انبار با قلمِ منطبق
   const orders =
     (await prisma.order.findMany({
@@ -126,11 +185,16 @@ async function findSingleManualTarget(
       },
       select: {
         id: true,
+        orderNumber: true,
+        city: true,
+        receiverName: true,
+        carrier: true,
+        customerPhone: true,
         items: { select: { productId: true, modelId: true, quantity: true } },
       },
     })) ?? [];
 
-  const orderIds: string[] = [];
+  const orderCandidates: TargetOrderInfo[] = [];
   for (const o of orders) {
     const item = o.items.find(
       (i) => i.productId === productId && (i.modelId ?? null) === (modelId ?? null),
@@ -144,11 +208,21 @@ async function findSingleManualTarget(
         scannedOutAt: { not: null },
       },
     });
-    if (attached + quantity <= item.quantity) orderIds.push(o.id);
+    if (attached + quantity <= item.quantity) {
+      orderCandidates.push({
+        kind: 'order' as const,
+        id: o.id,
+        orderNumber: o.orderNumber ?? 0,
+        city: o.city ?? null,
+        receiverName: o.receiverName ?? null,
+        carrier: o.carrier ?? null,
+        customerPhone: o.customerPhone ?? null,
+      });
+    }
   }
 
-  if (orderIds.length === 1) return { kind: 'order', id: orderIds[0] };
-  if (orderIds.length > 1) return 'multiple';
+  if (orderCandidates.length === 1) return { kind: 'order', id: orderCandidates[0].id };
+  if (orderCandidates.length > 1) return { multiple: orderCandidates };
 
   // دستور جابه‌جایی/خروج مدیر (دوفازی) — فقط وقتی سفارشی منطبق نبود
   const transfers =
@@ -159,18 +233,127 @@ async function findSingleManualTarget(
         productId,
         modelId: modelId ?? null,
       },
-      select: { id: true, quantity: true },
+      select: {
+        id: true,
+        quantity: true,
+        product: { select: { name: true } },
+        model: { select: { name: true } },
+        toWarehouse: { select: { name: true } },
+      },
     })) ?? [];
 
-  const transferIds: string[] = [];
+  const transferCandidates: TargetTransferInfo[] = [];
   for (const t of transfers) {
     const executed = await transferExecutedUnits(prisma, t.id);
-    if (executed + quantity <= t.quantity) transferIds.push(t.id);
+    if (executed + quantity <= t.quantity) {
+      transferCandidates.push({
+        kind: 'transfer' as const,
+        id: t.id,
+        productName: t.product?.name ?? '',
+        modelName: t.model?.name ?? null,
+        quantity: t.quantity,
+        toWarehouseName: t.toWarehouse?.name ?? null,
+      });
+    }
   }
 
-  if (transferIds.length === 1) return { kind: 'transfer', id: transferIds[0] };
-  if (transferIds.length > 1) return 'multiple';
+  if (transferCandidates.length === 1) return { kind: 'transfer', id: transferCandidates[0].id };
+  if (transferCandidates.length > 1) return { multiple: transferCandidates };
   return 'none';
+}
+
+/**
+ * راننده‌ای که انباردار برایش تیک زده (به همین انبار متصل است) — مبنای لیست انتخاب راننده.
+ */
+async function findTickedDriver(
+    client: Prisma.TransactionClient | PrismaClient,
+    driverId: string,
+    warehouseId: string,
+) {
+    const driver = await client.user.findUnique({
+        where: { id: driverId },
+        select: { id: true, name: true, phone: true, role: true, isActive: true, deletedAt: true, warehouseId: true },
+    });
+    if (!driver || driver.role !== 'DRIVER' || !driver.isActive || driver.deletedAt) {
+        throw new AppError('راننده یافت نشد', 404);
+    }
+    if (driver.warehouseId !== warehouseId) {
+        throw new AppError('این راننده برای انبار شما تیک نخورده است', 400);
+    }
+    return driver;
+}
+
+/**
+ * تعریف «بار» برای راننده: ساخت/به‌روزرسانی رکورد تحویل سفارش با وضعیت IN_TRANSIT.
+ * تا قبل از تحویل، انباردار می‌تواند راننده را عوض کند (re-assign).
+ */
+async function assignDriverToOrder(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    driverId: string,
+    warehouseId: string,
+    actorId: string,
+): Promise<{ orderId: string; orderNumber: number; driverId: string; driverName: string }> {
+    const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+            id: true, orderNumber: true, warehouseId: true, status: true,
+            delivery: { select: { status: true, driverId: true } },
+        },
+    });
+    if (!order) throw new AppError('سفارش یافت نشد', 404);
+    if (order.warehouseId !== warehouseId)
+        throw new AppError('این سفارش متعلق به انبار شما نیست', 400);
+    if (order.status === 'DELIVERED' || order.status === 'CANCELED')
+        throw new AppError('این سفارش وارد مرحلهٔ تحویل شده و قابل تخصیص نیست', 400);
+    if (order.delivery?.status === 'DELIVERED')
+        throw new AppError('این بار قبلاً تحویل شده و قابل تغییر نیست', 400);
+
+    const driver = await findTickedDriver(tx, driverId, warehouseId);
+
+    // ساخت/به‌روزرسانی رکورد تحویل — وضعیت IN_TRANSIT تا زمان تحویل توسط راننده
+    await tx.delivery.upsert({
+        where: { orderId },
+        create: { orderId, driverId, status: 'IN_TRANSIT' as DeliveryStatus },
+        update: { driverId, status: 'IN_TRANSIT' as DeliveryStatus },
+    });
+
+    const prevDriverId = order.delivery?.driverId ?? null;
+    const isChange = prevDriverId !== null && prevDriverId !== driverId;
+    await tx.activityLog.create({
+        data: {
+            type: 'order_updated',
+            label: `سفارش #${order.orderNumber} به راننده «${driver.name}» ${isChange ? 'منتقل' : 'تخصیص'} یافت`,
+            orderId,
+            userId: actorId,
+        },
+    });
+    await writeAudit(tx, {
+        actorId, action: 'order.assign_driver', entity: 'Order', entityId: orderId,
+        before: { driverId: prevDriverId }, after: { driverId, status: 'IN_TRANSIT' },
+    });
+
+    const warehouse = await tx.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { name: true },
+    });
+    await tx.outboxEvent.create({
+        data: {
+            aggregate: 'order',
+            type: 'order:driver:assigned',
+            payload: {
+                orderId,
+                orderNumber: order.orderNumber,
+                driverId,
+                driverName: driver.name,
+                warehouseId,
+                warehouseName: warehouse?.name ?? '',
+                assignedAt: new Date().toISOString(),
+            },
+        },
+    });
+
+    return { orderId, orderNumber: order.orderNumber, driverId, driverName: driver.name };
 }
 
 export const scanOutService = {
@@ -246,8 +429,13 @@ export const scanOutService = {
       if (auto === 'none') {
         return { valid: false as const, error: 'این محصول اجازهٔ خروج ندارد — سفارش یا دستور فعالی با همین کالا/مدل یافت نشد' };
       }
-      if (auto === 'multiple') {
-        return { valid: false as const, error: 'چند سفارش/دستور فعال برای این کالا/مدل وجود دارد — از داخل سفارش یا دستور موردنظر اسکن کنید' };
+      if ('multiple' in auto) {
+        // چند هدف فعال — لیست هدف‌های ممکن برای انتخاب صریح انباردار
+        return {
+          valid: false as const,
+          error: 'چند سفارش/دستور فعال برای این کالا/مدل وجود دارد — هدف موردنظر را انتخاب کنید',
+          candidates: auto.multiple,
+        };
       }
       if (auto.kind === 'order') explicitOrderId = auto.id;
       else explicitTransferId = auto.id;
@@ -489,6 +677,15 @@ export const scanOutService = {
       return { valid: false as const, error: 'این کارتن قبلاً خروج داده شده' };
     }
 
+    // اطلاعات تازهٔ سفارش برای نمایش در کارت موفقیت موبایل (شمارهٔ سفارش و ...)
+    let orderSnapshot: { id: string; orderNumber: number; customerPhone: string | null; city: string | null; address: string | null } | null = null;
+    if (attachOrderId) {
+      orderSnapshot = await prisma.order.findUnique({
+        where: { id: attachOrderId },
+        select: { id: true, orderNumber: true, customerPhone: true, city: true, address: true },
+      });
+    }
+
     return {
       valid: true as const,
       carton: {
@@ -500,12 +697,13 @@ export const scanOutService = {
         packageType: carton.model?.packageType ?? 'کارتن',
         capacityPerBox: carton.model?.unitsPerBox ?? 1,
         isIndividualUnit: carton.isIndividual,
-        order: attachOrderId
+        order: orderSnapshot
           ? {
-              id: attachOrderId,
-              customerPhone: carton.order?.customerPhone,
-              city: carton.order?.city,
-              address: carton.order?.address,
+              id: orderSnapshot.id,
+              orderNumber: orderSnapshot.orderNumber,
+              customerPhone: orderSnapshot.customerPhone,
+              city: orderSnapshot.city,
+              address: orderSnapshot.address,
             }
           : null,
         transfer: transferContext,
@@ -514,12 +712,43 @@ export const scanOutService = {
   },
 
   /**
+   * تخصیص بار (سفارش) به رانندهٔ تیک‌خورده — بعد از اسکن خروج، انباردار راننده را انتخاب می‌کند.
+   * کل عملیات داخل تراکنش Serializable است (تعارض هم‌زمان با تحویل → retry خودکار).
+   */
+  assignDriver: async (
+    input: { orderId: string; driverId: string },
+    warehouseId: string,
+    actorId: string,
+  ): Promise<{ valid: boolean; error?: string; assignment?: { orderId: string; orderNumber: number; driverId: string; driverName: string } }> => {
+    try {
+      let assignment: { orderId: string; orderNumber: number; driverId: string; driverName: string } | undefined;
+      await runSerializable(async (tx) => {
+        assignment = await assignDriverToOrder(tx, input.orderId.trim(), input.driverId.trim(), warehouseId, actorId);
+      });
+      return { valid: true, assignment };
+    } catch (e) {
+      if (e instanceof AppError) {
+        return { valid: false, error: e.message };
+      }
+      throw e;
+    }
+  },
+
+  /**
    * خروج دستی (بدون QR) برای محصولاتی که برچسب/QR ندارند.
    * انتخاب محصول + مدل + تعداد → یافتن تنها هدف فعالِ منطبق (سفارش یا دستور خروج/جابه‌جایی
    * مدیر) با ملاک «محصول + مدل» → خروجِ همان تعداد از کارتن‌های IN_STOCKِ منطبق.
    */
   manualExit: async (
-    input: { productId: string; modelId?: string | null; quantity: number },
+    input: {
+      productId: string;
+      modelId?: string | null;
+      quantity: number;
+      driverId?: string | null;
+      // انتخاب صریح هدف (از پیکر وقتی چند هدف فعال است) — سفارش یا دستور خروج/جابه‌جایی
+      orderId?: string | null;
+      transferId?: string | null;
+    },
     warehouseId: string,
     userId?: string,
   ) => {
@@ -548,13 +777,49 @@ export const scanOutService = {
       return { valid: false as const, error: 'تعداد باید عددی مثبت باشد' };
     }
 
-    // پیدا کردن تنها هدف فعالِ منطبق (ملاک: محصول + مدل)
-    const target = await findSingleManualTarget(product.id, modelId, quantity, warehouseId);
+    const driverId = input.driverId?.trim() || null;
+    const explicitOrderId = input.orderId?.trim() || null;
+    const explicitTransferId = input.transferId?.trim() || null;
+    if (explicitOrderId && explicitTransferId) {
+      return { valid: false as const, error: 'فقط یکی از سفارش یا دستور جابه‌جایی/خروج را انتخاب کنید' };
+    }
+    let driverName: string | null = null;
+
+    // هدف صریحِ انتخاب‌شده توسط انباردار (پیکر) یا پیدا کردن تنها هدف فعالِ منطبق
+    let target: TargetMatch;
+    if (explicitOrderId || explicitTransferId) {
+      target = { kind: explicitOrderId ? 'order' : 'transfer', id: (explicitOrderId ?? explicitTransferId) as string };
+    } else {
+      target = await findSingleManualTarget(product.id, modelId, quantity, warehouseId);
+    }
     if (target === 'none') {
       return { valid: false as const, error: 'این محصول اجازهٔ خروج ندارد — سفارش یا دستور خروج فعالی با همین کالا/مدل یافت نشد' };
     }
-    if (target === 'multiple') {
-      return { valid: false as const, error: 'چند سفارش/دستور فعال برای این کالا/مدل وجود دارد — از داخل سفارش یا دستور موردنظر اقدام کنید' };
+    if ('multiple' in target) {
+      // چند هدف فعال — لیست هدف‌های ممکن برای انتخاب صریح انباردار
+      return {
+        valid: false as const,
+        error: 'چند سفارش/دستور فعال برای این کالا/مدل وجود دارد — هدف موردنظر را انتخاب کنید',
+        candidates: target.multiple,
+      };
+    }
+
+    // راننده فقط برای خروجِ مطابق سفارش انتخاب می‌شود — نه برای دستور جابه‌جایی/خروج مدیر
+    if (driverId && target.kind === 'transfer') {
+      return { valid: false as const, error: 'خروج موردنظر دستور جابه‌جایی/خروج مدیر است — راننده فقط برای سفارش انتخاب می‌شود' };
+    }
+
+    // اگر راننده انتخاب شده، بررسی شود که تیک‌خوردهٔ همین انبار است (خطای نامعتبر → پاسخ ۴۰۰، نه پرتاب)
+    if (driverId) {
+      try {
+        const driver = await findTickedDriver(prisma, driverId, warehouseId);
+        driverName = driver.name;
+      } catch (e) {
+        if (e instanceof AppError) {
+          return { valid: false as const, error: e.message };
+        }
+        throw e;
+      }
     }
 
     let conflicted = false;
@@ -643,8 +908,64 @@ export const scanOutService = {
             });
           }
           completedTransfer = await completeTransferIfDone(tx, transfer.id, executed + quantity);
+        } else if (driverId) {
+          // ── سفارش + رانندهٔ انتخاب‌شده: این بار برای همان راننده تعریف می‌شود ──
+          const order = await tx.order.findUnique({
+            where: { id: target.id },
+            select: {
+              id: true, warehouseId: true, status: true,
+              customerPhone: true, city: true, address: true,
+              items: { select: { productId: true, modelId: true, quantity: true } },
+            },
+          });
+          if (!order) throw new AppError('سفارش یافت نشد', 404);
+          if (order.warehouseId !== warehouseId)
+            throw new AppError('این سفارش متعلق به انبار دیگری است', 400);
+          if (order.status === 'DELIVERED' || order.status === 'CANCELED')
+            throw new AppError('این سفارش وارد مرحلهٔ تحویل شده و قابل خروج نیست', 400);
+          const item = order.items.find(
+            (i) => i.productId === product.id && (i.modelId ?? null) === (modelId ?? null),
+          );
+          if (!item) throw new AppError('این کالا/مدل با اقلام سفارش همخوانی ندارد', 400);
+          const attached = await tx.carton.count({
+            where: { orderId: order.id, productId: product.id, modelId: modelId ?? null, scannedOutAt: { not: null } },
+          });
+          if (attached + quantity > item.quantity)
+            throw new AppError('تعداد این قلم سفارش تکمیل شده است', 400);
+
+          const updated = await tx.carton.updateMany({
+            where: { id: { in: picked }, status: 'IN_STOCK', scannedOutAt: null },
+            data: {
+              status: 'SHIPPED',
+              scannedOutAt: new Date(),
+              orderId: order.id,
+              version: { increment: 1 },
+            },
+          });
+          if (updated.count !== picked.length) {
+            conflicted = true;
+            return;
+          }
+
+          const flipped = await tx.order.updateMany({
+            where: { id: order.id, status: 'PENDING' },
+            data: { status: 'SHIPPED', updatedAt: new Date(), version: { increment: 1 } },
+          });
+          if (flipped.count === 1 && userId) {
+            await tx.activityLog.create({
+              data: {
+                type: 'order_shipped',
+                label: `${productLabel} — سفارش ${order.city ?? ''} از انبار خارج شد`,
+                orderId: order.id,
+                userId,
+              },
+            });
+          }
+
+          // تعریف بار برای راننده — همان upsert تراکنشی (ساخت/تغییر راننده)
+          await assignDriverToOrder(tx, order.id, driverId, warehouseId, userId ?? 'system');
         } else {
-          // ── سفارش ──
+          // ── سفارش بدون راننده ──
           const order = await tx.order.findUnique({
             where: { id: target.id },
             select: {
@@ -742,6 +1063,15 @@ export const scanOutService = {
       return { valid: false as const, error: 'برخی از واحدها قبلاً خروج داده شده‌اند — دوباره تلاش کنید' };
     }
 
+    // اطلاعات تازهٔ سفارش (شمارهٔ سفارش و ...) برای نمایش در دیالوگ موفقیت موبایل
+    let orderSnapshot: { id: string; orderNumber: number; customerPhone: string | null; city: string | null; address: string | null } | null = null;
+    if (target.kind === 'order') {
+      orderSnapshot = await prisma.order.findUnique({
+        where: { id: target.id },
+        select: { id: true, orderNumber: true, customerPhone: true, city: true, address: true },
+      });
+    }
+
     return {
       valid: true as const,
       quantity,
@@ -754,11 +1084,21 @@ export const scanOutService = {
         packageType: model?.packageType ?? 'کارتن',
         capacityPerBox: model?.unitsPerBox ?? 1,
         isIndividualUnit: true,
-        order: target.kind === 'order'
-          ? { id: target.id, customerPhone: null, city: null, address: null }
+        order: orderSnapshot
+          ? {
+              id: orderSnapshot.id,
+              orderNumber: orderSnapshot.orderNumber,
+              customerPhone: orderSnapshot.customerPhone,
+              city: orderSnapshot.city,
+              address: orderSnapshot.address,
+            }
           : null,
         transfer: target.kind === 'transfer'
           ? { id: target.id, toWarehouseId: null, toWarehouseName: null }
+          : null,
+        // راننده‌ای که این بار برایش تعریف شد
+        driver: driverId
+          ? { id: driverId, name: driverName ?? '' }
           : null,
       },
     };

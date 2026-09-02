@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
 import '../../../shared/widgets/search_picker.dart';
+import '../models/keeper_driver_model.dart';
 import '../models/keeper_product_model.dart';
+import '../models/scan_out_result_model.dart';
 import '../providers/warehouse_keeper_provider.dart';
+import 'target_picker_sheet.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
@@ -28,6 +31,8 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
   KeeperProductModel? _product;
   KeeperProductVariantModel? _model;
   int _quantity = 1;
+  /// راننده‌ای که این بار (سفارش) برایش تعریف می‌شود — اختیاری
+  KeeperDriverModel? _driver;
   bool _submitting = false;
 
   Future<void> _pickProduct() async {
@@ -51,6 +56,89 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
     });
   }
 
+  /// انتخاب راننده از بین رانندگان تیک‌خوردهٔ همین انبار
+  Future<void> _pickDriver() async {
+    List<KeeperDriverModel> drivers;
+    try {
+      ref.invalidate(driversProvider);
+      drivers = await ref.read(driversProvider.future);
+    } catch (_) {
+      if (mounted) _snack('خطا در دریافت رانندگان');
+      return;
+    }
+    if (!mounted) return;
+    final ticked = drivers.where((d) => d.assignedToMe && !d.assignedToOther).toList();
+    if (ticked.isEmpty) {
+      _snack('راننده‌ای تیک نخورده — از منوی مدیریت رانندگان انتخاب کنید');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<KeeperDriverModel>(
+      context: context,
+      backgroundColor: _surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('انتخاب راننده',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text('فقط رانندگانی که تیک خورده‌اند نمایش داده می‌شوند',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11)),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: ticked.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final d = ticked[i];
+                    return Material(
+                      color: _surfaceAlt,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.pop(sheetContext, d),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          child: Row(children: [
+                            const Icon(Icons.local_shipping_rounded, color: _green, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(d.name,
+                                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                                  if (d.phone.isNotEmpty)
+                                    Text(d.phone,
+                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.check_circle_outline_rounded, color: _green, size: 20),
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => _driver = picked);
+  }
+
   Future<void> _submit() async {
     if (_product == null) {
       _snack('محصول را انتخاب کنید');
@@ -66,75 +154,134 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
     }
     setState(() => _submitting = true);
     try {
-      final result = await ref.read(wkApiProvider).manualExit(
-            productId: _product!.id,
-            modelId: _model?.id,
-            quantity: _quantity,
+      await _sendExitRequest();
+    } on DioException catch (e) {
+      // چند هدف فعال — لیست هدف‌های ممکن برای انتخاب صریح انباردار
+      final body = e.response?.data;
+      final candidates = (body is Map && body['candidates'] is List)
+          ? (body['candidates'] as List)
+              .whereType<Map>()
+              .map((m) => ScanOutTargetModel.fromJson(Map<String, dynamic>.from(m)))
+              .toList()
+          : <ScanOutTargetModel>[];
+      if (candidates.isNotEmpty && mounted) {
+        String productLabel = '';
+        final transfer = candidates.where((c) => c.kind == 'transfer').firstOrNull;
+        if (transfer != null) {
+          final modelName = transfer.modelName;
+          productLabel = [
+            if (transfer.productName.isNotEmpty) transfer.productName,
+            if ((modelName ?? '').isNotEmpty) '($modelName)',
+          ].join(' ');
+        }
+        final picked = await showModalBottomSheet<ScanOutTargetModel>(
+          context: context,
+          backgroundColor: _surface,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => TargetPickerSheet(
+            candidates: candidates,
+            productLabel: productLabel.isNotEmpty ? productLabel : 'این کالا',
+          ),
+        );
+        if (picked != null && mounted) {
+          await _sendExitRequest(
+            orderId: picked.kind == 'order' ? picked.id : null,
+            transferId: picked.kind == 'transfer' ? picked.id : null,
           );
-      if (!mounted) return;
-      if (!result.valid) {
-        _snack(result.error.isEmpty ? 'خروج ثبت نشد' : result.error);
+        }
         return;
       }
-      final transfer = result.carton?.transfer;
-      final isTransfer = transfer != null;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: _surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            'خروج ثبت شد',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${_product!.name}${_model != null ? ' — ${_model!.name}' : ''}',
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'تعداد: $_quantity ${(_product!.unit ?? '').trim().isNotEmpty ? _product!.unit! : 'عدد'}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                isTransfer
-                    ? (transfer.toWarehouseName != null
-                        ? 'مطابق دستور جابه‌جایی — انتقال به ${transfer.toWarehouseName}'
-                        : 'مطابق دستور خروج مدیر')
-                    : 'مطابق سفارش ثبت شد',
-                style: TextStyle(
-                  color: isTransfer ? _orange : _green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: const Text('باشه', style: TextStyle(color: _green)),
-            ),
-          ],
-        ),
-      );
-    } on DioException catch (e) {
       _snack(friendlyError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  /// ارسال درخواست خروج دستی — [orderId]/[transferId] وقتی انباردار از پیکر
+  /// «کدام هدف؟» انتخاب کرده باشد (چند سفارش/دستور فعال برای همین کالا/مدل).
+  Future<void> _sendExitRequest({String? orderId, String? transferId}) async {
+    final result = await ref.read(wkApiProvider).manualExit(
+          productId: _product!.id,
+          modelId: _model?.id,
+          quantity: _quantity,
+          driverId: _driver?.id,
+          orderId: orderId,
+          transferId: transferId,
+        );
+    if (!mounted) return;
+    final transfer = result.carton?.transfer;
+    final isTransfer = transfer != null;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'خروج ثبت شد',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_product!.name}${_model != null ? ' — ${_model!.name}' : ''}',
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'تعداد: $_quantity ${(_product!.unit ?? '').trim().isNotEmpty ? _product!.unit! : 'عدد'}',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isTransfer
+                  ? (transfer.toWarehouseName != null
+                      ? 'مطابق دستور جابه‌جایی — انتقال به ${transfer.toWarehouseName}'
+                      : 'مطابق دستور خروج مدیر')
+                  : 'مطابق سفارش ثبت شد',
+              style: TextStyle(
+                color: isTransfer ? _orange : _green,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (!isTransfer && _driver != null) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.local_shipping_rounded, color: _green, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('راننده: ${_driver!.name}',
+                      style: const TextStyle(color: _green, fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+            ],
+            if (!isTransfer && _driver == null) ...[
+              const SizedBox(height: 8),
+              Text('راننده‌ای انتخاب نشد — بار بدون راننده ثبت شد',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('باشه', style: TextStyle(color: _green)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _snack(String msg) {
@@ -195,6 +342,27 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
           _fieldLabel('۳. تعداد خروج'),
           const SizedBox(height: 6),
           _quantityField(),
+
+          // ─── راننده بار (اختیاری) ───
+          _fieldLabel('۴. راننده بار (اختیاری)'),
+          const SizedBox(height: 6),
+          _pickerField(
+            value: _driver?.name,
+            placeholder: 'انتخاب راننده...',
+            icon: Icons.local_shipping_rounded,
+            onTap: _pickDriver,
+          ),
+          if (_driver != null) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => setState(() => _driver = null),
+                child: Text('حذف انتخاب راننده',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11)),
+              ),
+            ),
+          ],
 
           const SizedBox(height: 20),
           Text(

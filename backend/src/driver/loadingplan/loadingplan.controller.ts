@@ -5,10 +5,11 @@ import { asyncHandler } from '../../middleware/asyncHandler';
 export const loadingPlanController = {
   getLoadingPlan: asyncHandler(async (req: Request, res: Response) => {
     const warehouseId = req.user!.warehouseId;
-    if (!warehouseId) return res.status(403).json({ error: 'راننده به انباری متصل نیست' });
+    // راننده‌ای که تیکش توسط انباردار برداشته شده → پنل خالی است، نه خطا
+    if (!warehouseId) return res.json({ plan: [], hasWarehouse: false });
 
-    const plan = await loadingPlanService.getLoadingPlan(warehouseId);
-    res.json(plan);
+    const plan = await loadingPlanService.getLoadingPlan(req.user!.id, warehouseId);
+    res.json({ ...plan, hasWarehouse: true });
 
   }),
 };

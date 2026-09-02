@@ -4,13 +4,17 @@ import { requireActiveWarehouse } from '../middleware/requireActiveWarehouse';
 import { userRateLimit } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { submitCheckinSchema, markPrintedSchema } from './checkin/checkin.schema';
-import { scanOutSchema, manualExitSchema } from './scanout/scanout.schema';
+import { scanOutSchema, manualExitSchema, assignDriverSchema as scanoutAssignDriverSchema } from './scanout/scanout.schema';
+import { assignDriverSchema } from './drivers/drivers.schema';
+import { createCarrierSchema, updateCarrierSchema, reorderCarriersSchema } from './carriers/carriers.schema';
 import { warehouseController } from './warehouse/warehouse.controller';
 import { checkinController } from './checkin/checkin.controller';
 import { scanOutController } from './scanout/scanout.controller';
 import { loadingPlanController } from './loadingplan/loadingplan.controller';
 import { qrcodeController } from './qrcode/qrcode.controller';
 import { labelsController } from './labels/labels.controller';
+import { driversController } from './drivers/drivers.controller';
+import { carriersController } from './carriers/carriers.controller';
 const router = Router();
 
 router.use(authenticate, authorize('WAREHOUSE_KEEPER'), requireActiveWarehouse);
@@ -47,6 +51,7 @@ router.post('/cartons/printed', userRateLimit({ windowMs: 60_000, max: 120, keyP
 // ── Scan-out ──
 router.post('/scan-out', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'w:scanout' }), validate(scanOutSchema), scanOutController.scan);
 router.post('/scan-out/manual', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:scanout:manual' }), validate(manualExitSchema), scanOutController.manual);
+router.post('/scan-out/assign-driver', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'w:scanout:driver' }), validate(scanoutAssignDriverSchema), scanOutController.assignDriver);
 
 // ── دستورات جابه‌جایی/خروج مدیر (دوفازی) — برای اجرا با اسکن ──
 router.get('/transfers', warehouseController.listPendingTransfers);
@@ -56,5 +61,17 @@ router.post('/loading-plan',          loadingPlanController.generate);
 
 // ── Labels for print panel ──
 router.get('/labels',                 labelsController.getLabels);
+
+// ── Drivers (رانندگان تعریف‌شده توسط مدیریت) ──
+router.get('/drivers',                driversController.listDrivers);
+router.put('/drivers/:id', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:driver' }), validate(assignDriverSchema), driversController.assignDriver);
+
+// ── Carriers (باربری‌ها — مدیریت توسط انباردار) ──
+router.get('/carriers',               carriersController.list);
+router.post('/carriers', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:carrier' }), validate(createCarrierSchema), carriersController.create);
+// بازچینی صف بارگیری — قبل از `/:id` تا «reorder» به‌عنوان شناسه تفسیر نشود
+router.put('/carriers/reorder', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:carrier' }), validate(reorderCarriersSchema), carriersController.reorder);
+router.put('/carriers/:id', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:carrier' }), validate(updateCarrierSchema), carriersController.update);
+router.delete('/carriers/:id', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'w:carrier' }), carriersController.remove);
 
 export const warehouseRoutes = router;

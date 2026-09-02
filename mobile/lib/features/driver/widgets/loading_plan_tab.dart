@@ -3,12 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/driver_provider.dart';
 import '../../../core/network/api_error.dart';
 
-const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
-const _surfaceAlt = Color(0xFF22262D);
 const _green = Color(0xFF4ADE80);
 const _orange = Color(0xFFFB923C);
-const _info = Color(0xFF60A5FA);
 const _border = Color(0xFF2A2D33);
 
 class LoadingPlanTab extends ConsumerWidget {
@@ -22,27 +19,32 @@ class LoadingPlanTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator(color: _green)),
       error: (err, _) => _buildError(context, ref, friendlyError(err)),
       data: (data) {
+        // راننده‌ای که تیکش توسط انباردار برداشته شده → پنل خالی با پیام راهنما
+        if (data['hasWarehouse'] == false) return _buildNotConnected();
         final plan = (data['plan'] as List<dynamic>?) ?? [];
-        if (plan.isEmpty) return _buildEmpty();
+        final pending = (data['pendingOrders'] as List<dynamic>?) ?? [];
+        // سفارش‌های تازه‌ثبت‌شده هم باید دیده شوند — حتی اگر هنوز بارگیری‌ای نباشد
+        if (plan.isEmpty && pending.isEmpty) return _buildEmpty();
+
+        final children = <Widget>[
+          _buildHeader(plan.length, pending.length),
+          if (pending.isNotEmpty) ...[_buildPendingHeader(pending.length), ...pending.map((p) => _buildPendingCard(p as Map<String, dynamic>))],
+          if (plan.isNotEmpty) ...[const SizedBox(height: 4), ...plan.asMap().entries.map((e) => _buildPlanCard(e.value as Map<String, dynamic>, e.key))],
+        ];
 
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(loadingPlanProvider),
           color: _green,
-          child: ListView.builder(
+          child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            itemCount: plan.length + 1, // +1 for header
-            itemBuilder: (_, i) {
-              if (i == 0) return _buildHeader(plan.length);
-              final item = plan[i - 1] as Map<String, dynamic>;
-              return _buildPlanCard(item, i - 1);
-            },
+            children: children,
           ),
         );
       },
     );
   }
 
-  Widget _buildHeader(int total) {
+  Widget _buildHeader(int total, int pendingCount) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -66,11 +68,115 @@ class LoadingPlanTab extends ConsumerWidget {
             Text('$total سفارش آماده بارگیری',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 2),
-            Text('دورترین باربری اول بار زده شود',
-                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+            Text(
+              pendingCount > 0
+                  ? 'و $pendingCount سفارش در انتظار خروج از انبار'
+                  : 'به ترتیب صف بارگیری: از بالا نزدیک‌ترین، اول بار زده می‌شود',
+              style: TextStyle(
+                color: pendingCount > 0 ? _orange : Colors.white.withOpacity(0.5),
+                fontSize: 11,
+                fontWeight: pendingCount > 0 ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
           ]),
         ),
         Icon(Icons.arrow_downward_rounded, color: _green.withOpacity(0.5), size: 20),
+      ]),
+    );
+  }
+
+  /// عنوان بخش سفارش‌های تازه‌ثبت‌شده (هنوز از انبار خارج نشده‌اند)
+  Widget _buildPendingHeader(int count) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Container(
+          width: 6, height: 6,
+          decoration: BoxDecoration(color: _orange, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Text('$count سفارش در انتظار خروج از انبار',
+            style: const TextStyle(color: _orange, fontWeight: FontWeight.w700, fontSize: 12)),
+      ]),
+    );
+  }
+
+  /// کارت سفارش تازه‌ثبت‌شده — هنوز کارتنی برای بار زدن ندارد
+  Widget _buildPendingCard(Map<String, dynamic> item) {
+    final orderNumber = item['orderNumber'];
+    final carrier = item['carrier'] ?? 'نامشخص';
+    final city = item['city'];
+    final items = (item['items'] as List<dynamic>?) ?? [];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _orange.withOpacity(0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: _orange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.hourglass_empty_rounded, color: _orange, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  orderNumber != null && orderNumber.toString().isNotEmpty
+                      ? 'سفارش شماره $orderNumber'
+                      : carrier,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+              if (orderNumber != null && orderNumber.toString().isNotEmpty)
+                Text(carrier,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              if (city != null && city.toString().isNotEmpty)
+                Text(city.toString(),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ]),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _orange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _orange.withOpacity(0.2)),
+            ),
+            child: const Text('در انتظار خروج',
+                style: TextStyle(color: _orange, fontSize: 11, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        // اقلام سفارش
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: items.map((i) {
+              final name = i['productName'] ?? '';
+              final qty = i['quantity'] ?? 1;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _orange.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _orange.withOpacity(0.15)),
+                ),
+                child: Text('$name × $qty',
+                    style: TextStyle(color: _orange.withOpacity(0.85), fontSize: 11)),
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text('به محض خروج از انبار، برای بارگیری آماده می‌شود',
+            style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11)),
       ]),
     );
   }
@@ -178,10 +284,26 @@ class LoadingPlanTab extends ConsumerWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.inbox_rounded, size: 64, color: Colors.white12),
         SizedBox(height: 16),
-        Text('هیچ سفارشی برای بارگیری نیست',
+        Text('باری برای شما تعریف نشده',
             style: TextStyle(color: Colors.white38, fontSize: 15)),
         SizedBox(height: 6),
-        Text('منتظر ثبت سفارش و خروج از انبار باشید',
+        Text('وقتی انباردار هنگام خروج محصول راننده را انتخاب کند، بار اینجا ظاهر می‌شود',
+            style: TextStyle(color: Colors.white24, fontSize: 12),
+            textAlign: TextAlign.center),
+      ]),
+    );
+  }
+
+  /// راننده به انباری متصل نیست (تیک توسط انباردار برداشته شده) — پنل خالی با پیام راهنما
+  Widget _buildNotConnected() {
+    return const Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.link_off_rounded, size: 64, color: Colors.white12),
+        SizedBox(height: 16),
+        Text('به انباری متصل نیستید',
+            style: TextStyle(color: Colors.white38, fontSize: 15)),
+        SizedBox(height: 6),
+        Text('با انباردار هماهنگ کنید تا شما را متصل کند',
             style: TextStyle(color: Colors.white24, fontSize: 12)),
       ]),
     );

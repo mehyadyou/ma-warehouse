@@ -169,4 +169,61 @@ describe('dispatchOutbox - نوتیفیکیشن سفارش برای انبارد
         expect(mocks.create).not.toHaveBeenCalled();
         expect(mocks.toWarehouse).toHaveBeenCalledTimes(1);
     });
+
+    it('تحویل سفارش: نوتیفیکیشن به مدیر و انباردارِ همان انبار با نام باربری', async () => {
+        mocks.outboxEvent.findMany.mockResolvedValue([
+            makeEvent('delivery:completed', {
+                orderId: 'o1',
+                orderNumber: 42,
+                driverId: 'd1',
+                driverName: 'علی',
+                receiverName: 'رضا',
+                city: 'تهران',
+                carrier: 'باربری آفتاب',
+                warehouseId: 'whA',
+                warehouseName: 'انبار مرکزی',
+                receiptUrl: '/uploads/receipts/bijak.jpg',
+                deliveredAt: new Date().toISOString(),
+            }),
+        ]);
+        mocks.user.findMany.mockImplementation(({ where }: any) =>
+            where?.role === 'MANAGER'
+                ? Promise.resolve([{ id: 'm1' }])
+                : Promise.resolve([{ id: 'k1' }]),
+        );
+
+        const delivered = await dispatchOutbox();
+
+        expect(delivered).toBe(1);
+
+        // مدیر: چه سفارشی به چه باربری تحویل داده شد
+        expect(mocks.create).toHaveBeenCalledWith(
+            'm1',
+            'تحویل سفارش',
+            expect.stringContaining('باربری آفتاب'),
+            'success',
+            expect.objectContaining({
+                type: 'DELIVERY_COMPLETED',
+                orderId: 'o1',
+                orderNumber: 42,
+                carrier: 'باربری آفتاب',
+                warehouseId: 'whA',
+                receiptUrl: '/uploads/receipts/bijak.jpg',
+            }),
+            'ev1:m1',
+        );
+
+        // انباردارِ همان انبار هم مطلع می‌شود
+        expect(mocks.create).toHaveBeenCalledWith(
+            'k1',
+            'تحویل سفارش',
+            expect.stringContaining('سفارش 42'),
+            'success',
+            expect.objectContaining({ type: 'DELIVERY_COMPLETED' }),
+            'ev1:k1',
+        );
+
+        expect(mocks.toRole).toHaveBeenCalledWith('MANAGER', 'delivery:completed', expect.any(Object));
+        expect(mocks.toWarehouse).toHaveBeenCalledWith('whA', 'delivery:completed', expect.any(Object));
+    });
 });

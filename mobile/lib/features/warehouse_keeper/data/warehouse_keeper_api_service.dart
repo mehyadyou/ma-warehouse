@@ -4,6 +4,8 @@ import '../../manager/models/carton_search_model.dart';
 import '../../manager/models/order_model.dart';
 import '../../manager/models/transfer_model.dart';
 import '../models/check_in_result_model.dart';
+import '../models/keeper_carrier_model.dart';
+import '../models/keeper_driver_model.dart';
 import '../models/keeper_inventory_model.dart';
 import '../models/keeper_inventory_summary_model.dart';
 import '../models/keeper_order_model.dart';
@@ -189,10 +191,15 @@ class WarehouseKeeperApiService {
 
   /// خروج دستی (بدون QR) برای محصولاتی که برچسب ندارند — محصول + مدل + تعداد،
   /// اعتبارسنجی مطابق سفارش یا دستور خروج/جابه‌جایی مدیر سمت سرور انجام می‌شود
+  /// [driverId] اگر داده شود، این بار (سفارش) برای همان رانندهٔ تیک‌خورده تعریف می‌شود.
+  /// [orderId]/[transferId] وقتی چند هدف فعال است از پیکر انتخاب می‌شوند.
   Future<ScanOutResultModel> manualExit({
     required String productId,
     String? modelId,
     required int quantity,
+    String? driverId,
+    String? orderId,
+    String? transferId,
   }) async {
     final res = await _dio.post(
       '/warehouse-keeper/scan-out/manual',
@@ -200,9 +207,22 @@ class WarehouseKeeperApiService {
         'productId': productId,
         if (modelId != null && modelId.trim().isNotEmpty) 'modelId': modelId,
         'quantity': quantity,
+        if (driverId != null && driverId.trim().isNotEmpty) 'driverId': driverId,
+        if (orderId != null && orderId.trim().isNotEmpty) 'orderId': orderId,
+        if (transferId != null && transferId.trim().isNotEmpty) 'transferId': transferId,
       },
     );
     return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));
+  }
+
+  /// تعریف بار (سفارش) برای راننده — بعد از اسکن خروج، انباردار راننده را از
+  /// لیست رانندگان تیک‌خورده انتخاب می‌کند
+  Future<Map<String, dynamic>> assignDriverToOrder(String orderId, String driverId) async {
+    final res = await _dio.post(
+      '/warehouse-keeper/scan-out/assign-driver',
+      data: {'orderId': orderId, 'driverId': driverId},
+    );
+    return Map<String, dynamic>.from(res.data);
   }
 
   /// کارتن‌های خروج‌زده‌شده برای یک سفارش خاص — نمایش پیشرفت خروج
@@ -238,6 +258,98 @@ class WarehouseKeeperApiService {
             Map<String, dynamic>.from(e as Map),
           ),
         )
+        .toList();
+  }
+
+  /// رانندگان تعریف‌شده توسط مدیریت — بخش «مدیریت رانندگان» پنل انباردار
+  Future<List<KeeperDriverModel>> getDrivers() async {
+    final res = await _dio.get('/warehouse-keeper/drivers');
+    return (res.data['drivers'] as List? ?? [])
+        .map(
+          (e) => KeeperDriverModel.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  /// تیک زدن/برداشتن تیک راننده — اتصال/قطع راننده به انبارِ خودِ انباردار
+  Future<void> assignDriver(String driverId, bool assigned) async {
+    await _dio.put(
+      '/warehouse-keeper/drivers/$driverId',
+      data: {'assigned': assigned},
+    );
+  }
+
+  /// باربری‌ها — منوی «باربری» پنل انباردار (همان لیستی که مدیر هنگام ثبت سفارش می‌بیند)
+  Future<List<KeeperCarrierModel>> getCarriers() async {
+    final res = await _dio.get('/warehouse-keeper/carriers');
+    return (res.data['carriers'] as List? ?? [])
+        .map(
+          (e) => KeeperCarrierModel.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  /// افزودن باربری جدید
+  Future<KeeperCarrierModel> createCarrier({
+    required String name,
+    int priority = 0,
+    String? phone,
+    String? address,
+  }) async {
+    final res = await _dio.post(
+      '/warehouse-keeper/carriers',
+      data: {
+        'name': name,
+        'priority': priority,
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
+      },
+    );
+    return KeeperCarrierModel.fromJson(
+      Map<String, dynamic>.from(res.data['carrier'] as Map),
+    );
+  }
+
+  /// ویرایش باربری — فقط فیلدهای ارسالی تغییر می‌کنند
+  Future<KeeperCarrierModel> updateCarrier(
+    String id, {
+    String? name,
+    int? priority,
+    String? phone,
+    String? address,
+  }) async {
+    final res = await _dio.put(
+      '/warehouse-keeper/carriers/$id',
+      data: {
+        if (name != null) 'name': name,
+        if (priority != null) 'priority': priority,
+        'phone': (phone == null || phone.trim().isEmpty) ? null : phone.trim(),
+        'address': (address == null || address.trim().isEmpty) ? null : address.trim(),
+      },
+    );
+    return KeeperCarrierModel.fromJson(
+      Map<String, dynamic>.from(res.data['carrier'] as Map),
+    );
+  }
+
+  /// حذف باربری — سفارش‌های قبلی نام باربری را نگه داشته‌اند
+  Future<void> deleteCarrier(String id) async {
+    await _dio.delete('/warehouse-keeper/carriers/$id');
+  }
+
+  /// تغییر ترتیب صف بارگیری (درگ‌انددراپ انباردار) — [ids] همان ترتیب جدید از بالا به پایین است؛
+  /// اولویت‌ها سمت سرور بازچینی می‌شوند تا برنامهٔ بارگیری راننده همان ترتیب را بگیرد
+  Future<List<KeeperCarrierModel>> reorderCarriers(List<String> ids) async {
+    final res = await _dio.put(
+      '/warehouse-keeper/carriers/reorder',
+      data: {'ids': ids},
+    );
+    return (res.data['carriers'] as List? ?? [])
+        .map((e) => KeeperCarrierModel.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
 }

@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/driver_api_service.dart';
+import '../../../core/realtime/socket_service.dart';
 
 final driverApiProvider = Provider<DriverApiService>((ref) => DriverApiService());
 
-// لیست سفارش‌های آماده
-final readyOrdersProvider = FutureProvider<List<dynamic>>((ref) async {
+// Socket service - singleton, بدون وابستگی چرخه‌ای
+final socketServiceProvider = Provider<SocketService>((ref) => SocketService());
+
+// لیست سفارش‌های آماده — hasWarehouse=false یعنی راننده به انباری متصل نیست
+final readyOrdersProvider =
+    FutureProvider<({List<dynamic> orders, bool hasWarehouse})>((ref) async {
   final api = ref.watch(driverApiProvider);
   return api.getReadyOrders();
 });

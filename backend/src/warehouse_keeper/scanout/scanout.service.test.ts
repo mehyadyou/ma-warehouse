@@ -17,9 +17,12 @@ const mocks = vi.hoisted(() => {
             updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
         transaction: { create: vi.fn().mockResolvedValue({}) },
         warehouse: { findUnique: vi.fn().mockResolvedValue({ name: 'انبار اصلی' }) },
         outboxEvent: { create: vi.fn().mockResolvedValue({}) },
+        delivery: { upsert: vi.fn().mockResolvedValue({}) },
+        user: { findUnique: vi.fn() },
         $queryRaw: vi.fn().mockResolvedValue([{ units: 0 }]),
     };
     const orderRow = (overrides: any = {}) => ({
@@ -41,6 +44,8 @@ const mocks = vi.hoisted(() => {
         productFindUnique: vi.fn(),
         productModelFindUnique: vi.fn(),
         activityLogCreate: vi.fn().mockResolvedValue({}),
+        orderFindUnique: vi.fn(),
+        userFindUnique: vi.fn(),
     };
 });
 
@@ -53,10 +58,11 @@ vi.mock('../../utils/prisma', () => ({
             findMany: mocks.findMany,
             count: mocks.cartonCount,
         },
-        order: { findMany: mocks.orderFindMany },
+        order: { findMany: mocks.orderFindMany, findUnique: mocks.orderFindUnique },
         transfer: { findMany: mocks.transferFindMany },
         product: { findUnique: mocks.productFindUnique },
         productModel: { findUnique: mocks.productModelFindUnique },
+        user: { findUnique: mocks.userFindUnique },
         $queryRaw: mocks.tx.$queryRaw,
         activityLog: { create: mocks.activityLogCreate },
     },
@@ -99,6 +105,13 @@ beforeEach(() => {
     mocks.cartonCount.mockResolvedValue(0);
     mocks.productFindUnique.mockReset();
     mocks.productModelFindUnique.mockReset();
+    mocks.orderFindUnique.mockReset();
+    mocks.userFindUnique.mockReset();
+    mocks.tx.user.findUnique.mockReset();
+    mocks.tx.delivery.upsert.mockReset();
+    mocks.tx.delivery.upsert.mockResolvedValue({});
+    mocks.tx.auditLog.create.mockReset();
+    mocks.tx.auditLog.create.mockResolvedValue({});
     mocks.tx.carton.findMany.mockReset();
     mocks.tx.carton.findMany.mockResolvedValue([]);
 });
@@ -248,11 +261,11 @@ describe('scanOutService.scanOut - اتصال خودکار (بدون انتخا�
         expect(mocks.tx.outboxEvent.create).toHaveBeenCalledOnce();
     });
 
-    it('چند سفارش فعال منطبق → خطای انتخاب صریح (بدون خروج)', async () => {
+    it('چند سفارش فعال منطبق → خطای انتخاب صریح با لیست هدف‌های ممکن (بدون خروج)', async () => {
         mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
         mocks.orderFindMany.mockResolvedValue([
-            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
-            { id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+            { id: 'order1', orderNumber: 1, city: 'تهران', receiverName: 'رضا', carrier: 'باربری', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
+            { id: 'order2', orderNumber: 2, city: 'کرج', receiverName: 'علی', carrier: 'تیپاکس', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
         ]);
         mocks.cartonCount.mockResolvedValue(0);
 
@@ -261,7 +274,24 @@ describe('scanOutService.scanOut - اتصال خودکار (بدون انتخا�
         );
         expect(result.valid).toBe(false);
         expect(result.error).toContain('چند سفارش');
+        // لیست هدف‌ها برای انتخاب صریح انباردار داخل پاسخ می‌آید
+        expect(result.candidates).toHaveLength(2);
+        expect(result.candidates![0]).toEqual(expect.objectContaining({ kind: 'order', id: 'order1', orderNumber: 1 }));
+        expect(result.candidates![1]).toEqual(expect.objectContaining({ kind: 'order', id: 'order2', orderNumber: 2 }));
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('اسکن با انتخاب صریح بعد از لیست هدف‌ها → خروج موفق (تأیید مسیر پیکر)', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow());
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1', orderId: 'order2' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ orderId: 'order2' }) })
+        );
     });
 
     it('سفارش منطبق ولی ظرفیت تکمیل‌شده → بدون اتصال، خطای اجازهٔ خروج', async () => {
@@ -610,10 +640,10 @@ describe('scanOutService.manualExit - خروج دستی (بدون QR)', () => {
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
     });
 
-    it('چند سفارش فعال منطبق → خطای انتخاب صریح', async () => {
+    it('چند سفارش فعال منطبق → خطای انتخاب صریح با لیست هدف‌های ممکن', async () => {
         mocks.orderFindMany.mockResolvedValue([
-            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
-            { id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+            { id: 'order1', orderNumber: 1, city: 'تهران', receiverName: 'رضا', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+            { id: 'order2', orderNumber: 2, city: 'کرج', receiverName: 'علی', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
         ]);
         mocks.cartonCount.mockResolvedValue(0);
 
@@ -622,6 +652,35 @@ describe('scanOutService.manualExit - خروج دستی (بدون QR)', () => {
         );
         expect(result.valid).toBe(false);
         expect(result.error).toContain('چند سفارش');
+        expect(result.candidates).toHaveLength(2);
+        expect(result.candidates![0]).toEqual(expect.objectContaining({ kind: 'order', id: 'order1' }));
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('خروج دستی با هدف صریح (orderId از پیکر) → موفق حتی با چند سفارش فعال', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+            { id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow({ id: 'order2', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] }));
+        mocks.tx.carton.updateMany.mockResolvedValue({ count: 1 });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1, orderId: 'order2' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.carton.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ orderId: 'order2' }) })
+        );
+    });
+
+    it('انتخاب هم‌زمان سفارش و دستور در خروج دستی → رد', async () => {
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1, orderId: 'o1', transferId: 't1' }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('فقط یکی');
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
     });
 
@@ -638,5 +697,163 @@ describe('scanOutService.manualExit - خروج دستی (بدون QR)', () => {
         expect(result.valid).toBe(false);
         expect(result.error).toContain('موجودی کافی');
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('با انتخاب راننده → رکورد تحویل IN_TRANSIT برای همان سفارش ساخته می‌شود', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow({ items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] }));
+        mocks.tx.carton.updateMany.mockResolvedValue({ count: 1 });
+        // رانندهٔ تیک‌خورده: بررسی قبل از تراکنش + داخل تراکنش
+        mocks.userFindUnique.mockResolvedValue({
+            id: 'd1', name: 'علی', phone: '09120000000', role: 'DRIVER', isActive: true, deletedAt: null, warehouseId: 'wh1',
+        });
+        mocks.tx.user.findUnique.mockResolvedValue({
+            id: 'd1', name: 'علی', phone: '09120000000', role: 'DRIVER', isActive: true, deletedAt: null, warehouseId: 'wh1',
+        });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1, driverId: 'd1' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.delivery.upsert).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: { orderId: 'order1' },
+                create: expect.objectContaining({ driverId: 'd1', status: 'IN_TRANSIT' }),
+            })
+        );
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ type: 'order:driver:assigned' }) })
+        );
+        expect(result.carton.driver).toEqual(expect.objectContaining({ id: 'd1', name: 'علی' }));
+    });
+
+    it('راننده‌ای که تیک نخورده → خطای واضح و بدون خروج', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.userFindUnique.mockResolvedValue({
+            id: 'd1', name: 'علی', role: 'DRIVER', isActive: true, deletedAt: null, warehouseId: 'wh-other',
+        });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1, driverId: 'd1' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('تیک');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('انتخاب راننده برای خروجِ دستور مدیر → خطای واضح', async () => {
+        mocks.orderFindMany.mockResolvedValue([]);
+        mocks.transferFindMany.mockResolvedValue([{ id: 't1', quantity: 10 }]);
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1, driverId: 'd1' }, 'wh1', 'user1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('دستور');
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+});
+
+describe('scanOutService.assignDriver - تخصیص بار به راننده (بعد از اسکن)', () => {
+    const driverRow = (overrides: any = {}) => ({
+        id: 'd1', name: 'علی', phone: '09120000000',
+        role: 'DRIVER', isActive: true, deletedAt: null, warehouseId: 'wh1',
+        ...overrides,
+    });
+
+    it('سفارش + رانندهٔ تیک‌خورده → رکورد تحویل IN_TRANSIT، ممیزی و رویداد', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh1', status: 'SHIPPED', delivery: null,
+        });
+        mocks.tx.user.findUnique.mockResolvedValue(driverRow());
+        mocks.tx.warehouse.findUnique.mockResolvedValue({ name: 'خزایی' });
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd1' }, 'wh1', 'user1');
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.delivery.upsert).toHaveBeenCalledWith({
+            where: { orderId: 'order1' },
+            create: { orderId: 'order1', driverId: 'd1', status: 'IN_TRANSIT' },
+            update: { driverId: 'd1', status: 'IN_TRANSIT' },
+        });
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'order',
+                    type: 'order:driver:assigned',
+                    payload: expect.objectContaining({
+                        orderId: 'order1', orderNumber: 8, driverId: 'd1', driverName: 'علی', warehouseId: 'wh1',
+                    }),
+                }),
+            })
+        );
+        expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ action: 'order.assign_driver', entityId: 'order1' }) })
+        );
+        expect(result.assignment).toEqual(expect.objectContaining({ orderId: 'order1', driverId: 'd1', driverName: 'علی' }));
+    });
+
+    it('راننده‌ای که برای این انبار تیک نخورده → خطا', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh1', status: 'SHIPPED', delivery: null,
+        });
+        mocks.tx.user.findUnique.mockResolvedValue(driverRow({ warehouseId: 'wh-other' }));
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd1' }, 'wh1', 'user1');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('تیک');
+        expect(mocks.tx.delivery.upsert).not.toHaveBeenCalled();
+    });
+
+    it('راننده یافت نشد → خطا', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh1', status: 'SHIPPED', delivery: null,
+        });
+        mocks.tx.user.findUnique.mockResolvedValue(null);
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd1' }, 'wh1', 'user1');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('یافت نشد');
+        expect(mocks.tx.delivery.upsert).not.toHaveBeenCalled();
+    });
+
+    it('سفارش از انبار دیگر → خطا', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh-other', status: 'SHIPPED', delivery: null,
+        });
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd1' }, 'wh1', 'user1');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('انبار شما نیست');
+    });
+
+    it('بار قبلاً تحویل شده → قابل تغییر نیست', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh1', status: 'SHIPPED',
+            delivery: { status: 'DELIVERED', driverId: 'd1' },
+        });
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd1' }, 'wh1', 'user1');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('تحویل شده');
+        expect(mocks.tx.delivery.upsert).not.toHaveBeenCalled();
+    });
+
+    it('تغییر راننده پیش از تحویل مجاز است', async () => {
+        mocks.tx.order.findUnique.mockResolvedValue({
+            id: 'order1', orderNumber: 8, warehouseId: 'wh1', status: 'SHIPPED',
+            delivery: { status: 'IN_TRANSIT', driverId: 'd-old' },
+        });
+        mocks.tx.user.findUnique.mockResolvedValue(driverRow({ id: 'd2', name: 'رضا' }));
+
+        const result = await scanOutService.assignDriver({ orderId: 'order1', driverId: 'd2' }, 'wh1', 'user1');
+        expect(result.valid).toBe(true);
+        expect(mocks.tx.delivery.upsert).toHaveBeenCalledWith(
+            expect.objectContaining({ update: { driverId: 'd2', status: 'IN_TRANSIT' } })
+        );
     });
 });

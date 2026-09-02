@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../utils/prisma', () => ({
     prisma: {
@@ -12,6 +11,7 @@ vi.mock('../../utils/prisma', () => ({
         warehouse: { findUnique: vi.fn() },
         product: { findMany: vi.fn() },
         productModel: { findMany: vi.fn() },
+        carrier: { findMany: vi.fn(), create: vi.fn() },
     },
 }));
 
@@ -67,62 +67,44 @@ const mockMappedOrder = (overrides: Record<string, any> = {}) => ({
 });
 
 describe('ordersService.getCarriers', () => {
-    it('آرایه‌ای از باربری‌ها برمیگرداند', async () => {
+    it('باربری‌ها را از دیتابیس برمی‌گرداند — مرتب بر اساس اولویت سپس نام', async () => {
+        (prisma.carrier.findMany as any).mockResolvedValue([
+            { id: 'c1', name: 'باربری فارس', priority: 1, phone: '071-12345678', address: 'شیراز' },
+            { id: 'c2', name: 'باربری قدس', priority: 3, phone: null, address: null },
+        ]);
+
         const carriers = await ordersService.getCarriers();
-        expect(Array.isArray(carriers)).toBe(true);
-        expect(carriers.length).toBeGreaterThan(0);
+
+        expect(carriers).toHaveLength(2);
         expect(carriers[0]).toHaveProperty('name');
         expect(carriers[0]).toHaveProperty('priority');
-    });
-
-    it('ساختار هر باربری درست است', async () => {
-        const carriers = await ordersService.getCarriers();
-        for (const c of carriers) {
-            expect(typeof c.name).toBe('string');
-            expect(typeof c.priority).toBe('number');
-        }
+        expect(prisma.carrier.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({ orderBy: [{ priority: 'asc' }, { name: 'asc' }] })
+        );
     });
 });
 
 describe('ordersService.createCarrier', () => {
-    const originalReadFileSync = fs.readFileSync;
-    const originalWriteFileSync = fs.writeFileSync;
-    let writtenData: string | null = null;
-
-    beforeEach(() => {
-        writtenData = null;
-        vi.spyOn(fs, 'readFileSync').mockImplementation((path: any, encoding: any) => {
-            if (String(path).includes('carriers.json')) {
-                return JSON.stringify([
-                    { name: 'باربری موجود', priority: 1, phone: '021-11111111', address: 'تهران' },
-                ]);
-            }
-            return originalReadFileSync(path, encoding);
+    it('باربری جدید با موفقیت در دیتابیس ثبت میشود', async () => {
+        (prisma.carrier.create as any).mockResolvedValue({
+            id: 'c9', name: 'باربری جدید', priority: 5, phone: '021-99999999', address: 'اصفهان',
+            createdAt: new Date(), updatedAt: new Date(),
         });
-        vi.spyOn(fs, 'writeFileSync').mockImplementation((path: any, data: any) => {
-            if (String(path).includes('carriers.json')) {
-                writtenData = data as string;
-            }
-        });
-    });
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('باربری جدید با موفقیت اضافه میشود', async () => {
         const result = await ordersService.createCarrier('باربری جدید', 5, '021-99999999', 'اصفهان');
+
         expect(result.name).toBe('باربری جدید');
         expect(result.priority).toBe(5);
-
-        const written = JSON.parse(writtenData!);
-        expect(written).toHaveLength(2);
-        expect(written[1].name).toBe('باربری جدید');
+        expect(prisma.carrier.create).toHaveBeenCalledWith({
+            data: { name: 'باربری جدید', priority: 5, phone: '021-99999999', address: 'اصفهان' },
+        });
     });
 
-    it('نام تکراری AppError 409 برمیگرداند', async () => {
+    it('نام تکراری (P2002) → AppError 409', async () => {
+        (prisma.carrier.create as any).mockRejectedValue({ code: 'P2002' });
+
         await expect(
-            ordersService.createCarrier('باربری موجود', 1)
+            ordersService.createCarrier('باربری تکراری', 1)
         ).rejects.toThrow('این باربری قبلاً ثبت شده است');
     });
 });

@@ -26,6 +26,10 @@ export enum RealtimeEvents {
 
   // Delivery
   DELIVERY_COMPLETED  = 'delivery:completed',
+  ORDER_ASSIGNED      = 'order:assigned',
+
+  // Drivers (اتصال/قطع راننده به انبار توسط انباردار)
+  DRIVER_ASSIGNED     = 'driver:assigned',
 
   // Notifications
   NOTIFICATION = 'notification',

@@ -220,6 +220,18 @@ model Carton {
   @@index([serialNumber(ops: raw("extensions.gin_trgm_ops"))], type: Gin, map: "Carton_serialNumber_trgm_idx")
 }
 
+/// باربری‌های تعریف‌شده — مدیریت کامل توسط انباردار، انتخاب هنگام ثبت سفارش توسط مدیر
+/// (Order.carrier نام باربری را به‌صورت متن نگه می‌دارد تا تاریخچه پس از ویرایش/حذف بماند)
+model Carrier {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  priority  Int      @default(0)
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 /// شمارنده ترتیبی سریال کارتن‌ها به تفکیک سال شمسی — افزایش اتمی داخل تراکنش ورود کالا
 model SerialSequence {
   year    Int @id
@@ -355,6 +367,8 @@ model Delivery {
   status      DeliveryStatus @default(IN_TRANSIT)
   deliveredAt DateTime?
   notes       String?
+  /// عکس بیجکی که باربری هنگام تحویل بار به راننده داده — پیش‌شرط ثبت تحویل
+  receiptUrl  String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
