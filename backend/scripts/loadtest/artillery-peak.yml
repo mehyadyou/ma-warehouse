@@ -1,0 +1,58 @@
+# Artillery — سناریوی بارِ پیش از انتشار (REST + Socket.IO)
+# سناریوی ۶ از docs/pre-release-audit.md — شبیه‌سازیِ ساعتِ اوجِ انبار:
+#   - ۵۰ کاربرِ مجازی که طی ۶۰ ثانیه بالا می‌آیند (rest-login + probe)
+#   - نقطهٔ داغ: سقفِ ۲۰ RPS روی /healthz به‌عنوان probe سلامتِ زیر بار
+#   - اتصال Socket.IO پایدار با handshake توکن‌دار (گرفتنِ رویدادهای outbox)
+#
+# اجرا:
+#   cd backend && npm i -D artillery
+#   BASE_URL=http://localhost:3000 JWT=<توکن_معتبر> \
+#     npx artillery run scripts/loadtest/artillery-peak.yml
+#
+# سنجشِ موفقیت (آستانه‌های پیشنهادی Release):
+#   - p95 كل درخواست‌ها < 500ms
+#   - نرخ خطای 5xx = 0
+#   - socket اتصالش قطع نشود و رویداد receive کند
+config:
+  target: "{{ $env.BASE_URL }}"
+  phases:
+    - name: ramp-up-peak
+      duration: 60
+      arrivalRate: 1
+      maxVusers: 50
+    - name: hold-peak
+      duration: 120
+      arrivalRate: 10
+  variables:
+    jwt: "{{ $env.JWT }}"
+  plugins:
+    expect: {}
+    metrics-by-endpoint: {}
+
+scenarios:
+  - name: "REST — probe مسیرِ داغِ زیرِ بار"
+    weight: 70
+    flow:
+      - get:
+          url: "/healthz"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/auth/me"
+          headers:
+            Authorization: "Bearer {{ jwt }}"
+      # سایر endpoint های داغ (لیست سفارش‌ها/داشبورد) را با توکن واقعی اضافه کنید
+
+  - name: "Socket.IO — پایداریِ اتصال و دریافتِ رویداد"
+    weight: 30
+    engine: socketio
+    extra:
+      auth:
+        token: "{{ jwt }}"
+    flow:
+      - emit:
+          channel: "__connect_probe"   # اتصال + join خودکار اتاق‌های user/role/warehouse
+      - think: 5
+      # پیام‌گیریِ رویدادهای push را در گزارشِ latency ببینید؛
+      # برای تست outbox واقعی: یک ورود کالا از پنل ثبت کنید و تأخیرِ رسيدن
+      # رویداد checkin:completed را روی این سوکت اندازه بگیرید (< ۱ ثانیه).

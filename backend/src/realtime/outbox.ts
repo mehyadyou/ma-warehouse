@@ -174,10 +174,31 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
       break;
     }
 
-    case 'order:updated':
+    case 'order:updated': {
+      // مدیر سفارش را ویرایش کرد — انباردار همان انبار باید مطلع شود (اطلاعات ارسال/اقلام ممکن است
+      // عوض شده باشد) تا بر اساس نسخهٔ تازه آماده‌سازی کند
+      const keepers = await findWarehouseKeepers(payload.warehouseId);
+      const label = `${payload.senderName ?? 'فرستنده'} → ${payload.receiverName ?? 'گیرنده'}`;
+      for (const keeper of keepers) {
+        await notificationService.create(
+          keeper.id,
+          'ویرایش سفارش',
+          `سفارش «${label}» توسط مدیریت ویرایش شد — جزئیات را بررسی کنید`,
+          'info',
+          {
+            type: 'ORDER_UPDATED',
+            orderId: payload.orderId ?? null,
+            warehouseId: payload.warehouseId ?? null,
+            senderName: payload.senderName ?? null,
+            receiverName: payload.receiverName ?? null,
+          },
+          `${eventId}:${keeper.id}`,
+        );
+      }
       realtime.toWarehouse(payload.warehouseId, RealtimeEvents.ORDER_UPDATED, payload);
       realtime.toRole('MANAGER', RealtimeEvents.ORDER_UPDATED, payload);
       break;
+    }
 
     case 'order:deleted': {
       const keepers = await findWarehouseKeepers(payload.warehouseId);
@@ -203,7 +224,7 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
       break;
     }
 
-    // تعریف بار برای راننده توسط انباردار (بعد از اسکن خروج) — اعلان به راننده + رفرش زنده
+    // تعریف بار برای راننده توسط انباردار (بعد از اسکن خروج) — اعلان به راننده + مدیر + رفرش زنده
     case 'order:driver:assigned': {
       const warehouseName = payload.warehouseName ?? '';
       const orderLabel = payload.orderNumber
@@ -224,9 +245,207 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
         },
         `${eventId}:${payload.driverId}`,
       );
+      // مدیر هم مطلع می‌شود چه بار و به کدام راننده واگذار شد (ردیابی حساس خروج کالا)
+      const managers = await findManagers();
+      const orderRef = payload.orderNumber
+        ? `سفارش #${payload.orderNumber}${payload.city ? ` (${payload.city})` : ''}`
+        : 'یک سفارش';
+      for (const mgr of managers) {
+        await notificationService.create(
+          mgr.id,
+          'تخصیص بار',
+          `${orderRef} به راننده «${payload.driverName ?? '—'}»${warehouseName ? ` در انبار ${warehouseName}` : ''} واگذار شد`,
+          'info',
+          {
+            type: 'DRIVER_ORDER_ASSIGNED',
+            orderId: payload.orderId ?? null,
+            driverId: payload.driverId ?? null,
+            driverName: payload.driverName ?? null,
+            warehouseId: payload.warehouseId ?? null,
+            warehouseName,
+          },
+          `${eventId}:${mgr.id}`,
+        );
+      }
       // پنل راننده همان‌لحظه بار را نشان می‌دهد + مدیر لیست زندهٔ سفارش‌ها را رفرش می‌کند
       realtime.toUser(payload.driverId, RealtimeEvents.ORDER_ASSIGNED, payload);
       realtime.toRole('MANAGER', RealtimeEvents.ORDER_ASSIGNED, payload);
+      break;
+    }
+
+    // انباردار پیش از تحویل راننده را عوض کرد — رانندهٔ قبلی باید همان لحظه بداند بار از او گرفته شده
+    case 'order:driver:unassigned': {
+      const orderRef = payload.orderNumber
+        ? `سفارش شماره ${payload.orderNumber}`
+        : 'یک سفارش';
+      await notificationService.create(
+        payload.driverId,
+        'حذف بار',
+        `${orderRef} از لیست بارهای شما حذف شد و به رانندهٔ دیگری واگذار گردید`,
+        'warning',
+        {
+          type: 'DRIVER_ORDER_REMOVED',
+          orderId: payload.orderId ?? null,
+          driverId: payload.driverId ?? null,
+          newDriverId: payload.newDriverId ?? null,
+          warehouseId: payload.warehouseId ?? null,
+          warehouseName: payload.warehouseName ?? null,
+        },
+        `${eventId}:${payload.driverId}`,
+      );
+      // پنل رانندهٔ قبلی همان لحظه سفارش را از لیستش پاک می‌کند (بار دیگر برایش نیست)
+      realtime.toUser(payload.driverId, RealtimeEvents.ORDER_UNASSIGNED, payload);
+      break;
+    }
+
+    // ── دستور جابه‌جایی/خروج مدیر (دوفازی) ──
+    // صادر شدن دستور (PENDING → انباردار باید اجرا کند) یا اجرای مستقیم مسیر لِگاسی (DONE)
+    case 'transfer:created': {
+      const isTransfer = payload.kind === 'transfer';
+      const productLabel = `${payload.productName ?? ''}${payload.modelName ? ` (${payload.modelName})` : ''}`;
+      const unit = payload.quantity ?? 0;
+      const done = payload.status === 'DONE';
+      const fromName = payload.fromWarehouseName ?? '';
+      const toName = payload.toWarehouseName ?? null;
+      const scope = toName ? `از ${fromName} به ${toName}` : `از ${fromName}`;
+      const verb = isTransfer ? 'جابه‌جایی' : 'خروج';
+      const data = {
+        type: done ? 'TRANSFER_EXECUTED' : isTransfer ? 'TRANSFER_CREATED' : 'EXIT_CREATED',
+        transferId: payload.transferId ?? null,
+        fromWarehouseId: payload.fromWarehouseId ?? null,
+        fromWarehouseName: fromName || null,
+        toWarehouseId: payload.toWarehouseId ?? null,
+        toWarehouseName: toName,
+        productName: payload.productName ?? null,
+        modelName: payload.modelName ?? null,
+        quantity: unit,
+        status: payload.status ?? 'PENDING',
+      };
+
+      // انباردارِ مبدأ (و مقصد در جابه‌جایی) باید از دستور تازه باخبر شوند — چه در انتظار اجرا
+      // باشد و چه (مسیر لِگاسی) مستقیم توسط مدیریت اجرا شده باشد
+      const targetIds = new Set<string>();
+      const fromKeepers = await findWarehouseKeepers(payload.fromWarehouseId);
+      for (const k of fromKeepers) targetIds.add(k.id);
+      if (payload.toWarehouseId) {
+        const toKeepers = await findWarehouseKeepers(payload.toWarehouseId);
+        for (const k of toKeepers) targetIds.add(k.id);
+      }
+      for (const keeperId of targetIds) {
+        await notificationService.create(
+          keeperId,
+          done ? `اجرای ${verb} کالا` : `دستور ${verb} جدید`,
+          done
+            ? `${productLabel} — ${unit} واحد ${scope} توسط مدیریت اجرا شد`
+            : `${productLabel} — ${unit} واحد ${scope} — در انتظار اجرا`,
+          done ? 'info' : 'warning',
+          data,
+          `${eventId}:${keeperId}`,
+        );
+      }
+      realtime.toWarehouse(payload.fromWarehouseId, RealtimeEvents.TRANSFER_CREATED, payload);
+      if (payload.toWarehouseId) {
+        realtime.toWarehouse(payload.toWarehouseId, RealtimeEvents.TRANSFER_CREATED, payload);
+      }
+      break;
+    }
+
+    // دستور با اسکن انباردار کامل اجرا شد — یک اعلانِ تجمیعی به مدیر + انبارهای مبدأ/مقصد
+    case 'transfer:completed': {
+      const isTransfer = payload.kind === 'transfer';
+      const productLabel = `${payload.productName ?? ''}${payload.modelName ? ` (${payload.modelName})` : ''}`;
+      const unit = payload.quantity ?? 0;
+      const fromName = payload.fromWarehouseName ?? '';
+      const toName = payload.toWarehouseName ?? null;
+      const scope = toName ? `از ${fromName} به ${toName}` : `از ${fromName}`;
+      const verb = isTransfer ? 'جابه‌جایی' : 'خروج';
+      const data = {
+        type: 'TRANSFER_COMPLETED',
+        transferId: payload.transferId ?? null,
+        fromWarehouseId: payload.fromWarehouseId ?? null,
+        fromWarehouseName: fromName || null,
+        toWarehouseId: payload.toWarehouseId ?? null,
+        toWarehouseName: toName,
+        productName: payload.productName ?? null,
+        modelName: payload.modelName ?? null,
+        quantity: unit,
+      };
+      const managers = await findManagers();
+      for (const mgr of managers) {
+        await notificationService.create(
+          mgr.id,
+          `تکمیل دستور ${verb}`,
+          `${productLabel} — ${unit} واحد ${scope} به‌طور کامل اجرا شد`,
+          'success',
+          data,
+          `${eventId}:${mgr.id}`,
+        );
+      }
+      const targetIds = new Set<string>();
+      const fromKeepers = await findWarehouseKeepers(payload.fromWarehouseId);
+      for (const k of fromKeepers) targetIds.add(k.id);
+      if (payload.toWarehouseId) {
+        const toKeepers = await findWarehouseKeepers(payload.toWarehouseId);
+        for (const k of toKeepers) targetIds.add(k.id);
+      }
+      for (const keeperId of targetIds) {
+        await notificationService.create(
+          keeperId,
+          `تکمیل دستور ${verb}`,
+          `${productLabel} — ${unit} واحد ${scope} به‌طور کامل اجرا شد`,
+          'success',
+          data,
+          `${eventId}:${keeperId}`,
+        );
+      }
+      realtime.toWarehouse(payload.fromWarehouseId, RealtimeEvents.TRANSFER_COMPLETED, payload);
+      if (payload.toWarehouseId) {
+        realtime.toWarehouse(payload.toWarehouseId, RealtimeEvents.TRANSFER_COMPLETED, payload);
+      }
+      break;
+    }
+
+    // مدیر دستورِ در انتظار را لغو کرد — انباردار نباید دیگر برایش اسکن کند
+    case 'transfer:canceled': {
+      const isTransfer = payload.kind === 'transfer';
+      const productLabel = `${payload.productName ?? ''}${payload.modelName ? ` (${payload.modelName})` : ''}`;
+      const unit = payload.quantity ?? 0;
+      const fromName = payload.fromWarehouseName ?? '';
+      const toName = payload.toWarehouseName ?? null;
+      const scope = toName ? `از ${fromName} به ${toName}` : `از ${fromName}`;
+      const verb = isTransfer ? 'جابه‌جایی' : 'خروج';
+      const data = {
+        type: 'TRANSFER_CANCELED',
+        transferId: payload.transferId ?? null,
+        fromWarehouseId: payload.fromWarehouseId ?? null,
+        fromWarehouseName: fromName || null,
+        toWarehouseId: payload.toWarehouseId ?? null,
+        toWarehouseName: toName,
+        productName: payload.productName ?? null,
+        modelName: payload.modelName ?? null,
+        quantity: unit,
+      };
+      const targetIds = new Set<string>();
+      const fromKeepers = await findWarehouseKeepers(payload.fromWarehouseId);
+      for (const k of fromKeepers) targetIds.add(k.id);
+      if (payload.toWarehouseId) {
+        const toKeepers = await findWarehouseKeepers(payload.toWarehouseId);
+        for (const k of toKeepers) targetIds.add(k.id);
+      }
+      for (const keeperId of targetIds) {
+        await notificationService.create(
+          keeperId,
+          `لغو دستور ${verb}`,
+          `${productLabel} — ${unit} واحد ${scope} توسط مدیریت لغو شد — دیگر قابل اجرا نیست`,
+          'warning',
+          data,
+          `${eventId}:${keeperId}`,
+        );
+      }
+      realtime.toWarehouse(payload.fromWarehouseId, RealtimeEvents.TRANSFER_CANCELED, payload);
+      if (payload.toWarehouseId) {
+        realtime.toWarehouse(payload.toWarehouseId, RealtimeEvents.TRANSFER_CANCELED, payload);
+      }
       break;
     }
 
@@ -271,6 +490,12 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
       }
       realtime.toRole('MANAGER', RealtimeEvents.DELIVERY_COMPLETED, payload);
       realtime.toWarehouse(payload.warehouseId, RealtimeEvents.DELIVERY_COMPLETED, payload);
+      break;
+    }
+
+    // بازچینی صف بارگیری توسط انباردار — پنل راننده همان لحظه صفِ تازه را می‌گیرد
+    case 'carriers:reordered': {
+      realtime.toRole('DRIVER', RealtimeEvents.CARRIERS_REORDERED, payload);
       break;
     }
 

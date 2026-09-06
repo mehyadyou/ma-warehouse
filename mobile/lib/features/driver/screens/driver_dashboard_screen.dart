@@ -54,12 +54,18 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
     socket.on('scanout:done', _onOrdersChanged);
     // انباردار بار را به این راننده تخصیص داد (بعد از اسکن خروج) — همان لحظه در پنل بیاید
     socket.on('order:assigned', _onOrdersChanged);
+    // بار از این راننده گرفته شد و به رانندهٔ دیگری واگذار شد — همان لحظه از پنلش پاک شود
+    socket.on('order:unassigned', _onOrdersChanged);
+    // انباردار چیدمان صف بارگیری را تغییر داد — صفِ پنل راننده همان لحظه به همان ترتیب بازچینی می‌شود
+    socket.on('carriers:reordered', _onOrdersChanged);
     _socketHandlers['driver:assigned'] = _onOrdersChanged;
     _socketHandlers['order:created'] = _onOrdersChanged;
     _socketHandlers['order:updated'] = _onOrdersChanged;
     _socketHandlers['order:deleted'] = _onOrdersChanged;
     _socketHandlers['scanout:done'] = _onOrdersChanged;
     _socketHandlers['order:assigned'] = _onOrdersChanged;
+    _socketHandlers['order:unassigned'] = _onOrdersChanged;
+    _socketHandlers['carriers:reordered'] = _onOrdersChanged;
   }
 
   void _onOrdersChanged(dynamic data) {

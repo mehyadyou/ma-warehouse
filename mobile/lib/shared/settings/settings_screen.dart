@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../../features/manager/assistant/assistant_model_settings_screen.dart';
 import '../utils/validators.dart';
 import '../widgets/lock_settings_tile.dart';
 import 'data/settings_api_service.dart';
@@ -286,6 +287,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 28),
 
+                // ═══ دستیار هوش مصنوعی — فقط مدیر ═══
+                if (ref.watch(authProvider).role == 'MANAGER') ...[                
+                  _settingsTile(
+                    icon: Icons.smart_toy_rounded,
+                    title: 'مدل دستیار هوش مصنوعی',
+                    subtitle: 'تغییر سرویس‌دهنده، مدل یا کلید هوش مصنوعی',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AssistantModelSettingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
                 // ═══ نوتیفیکیشن‌ها ═══
                 _settingsTile(
                   icon: Icons.notifications_rounded,
@@ -395,12 +414,38 @@ class _NotificationSettingsSheet extends StatefulWidget {
 }
 
 class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet> {
-  static const _labels = [
-    ('CARGO_ENTRY', 'ورود کالا', 'اعلان وقتی انباردار کالای جدید ثبت می‌کند'),
-    ('RETURN_ENTRY', 'ورود مرجوعی', 'اعلان وقتی کالای مرجوعی به انبار برمی‌گردد'),
-    ('SCAN_OUT', 'خروج کالا', 'اعلان وقتی کالایی از انبار خارج می‌شود'),
-    ('SCAN_OUT_ERROR', 'خطاها', 'اعلان خطاهای خروج کالا'),
-    ('DELIVERY_COMPLETED', 'تحویل سفارش', 'اعلان وقتی سفارشی توسط راننده تحویل داده می‌شود'),
+  // همهٔ کلیدهای DEFAULT_NOTIFICATION_SETTINGS بک‌اند — مرتب‌شده بر اساس دسته
+  static const _groups = [
+    ('ورود/خروج کالا', [
+      ('CARGO_ENTRY', 'ورود کالا', 'اعلان وقتی انباردار کالای جدید ثبت می‌کند'),
+      ('RETURN_ENTRY', 'ورود مرجوعی', 'اعلان وقتی کالای مرجوعی به انبار برمی‌گردد'),
+      ('SCAN_OUT', 'خروج کالا', 'اعلان وقتی کالایی از انبار خارج می‌شود'),
+      ('EXIT_EXECUTED', 'اجرای دستور خروج', 'اعلان وقتی خروج طبق دستور مدیر اجرا می‌شود'),
+      ('SCAN_OUT_ERROR', 'خطاهای خروج', 'اعلان خطاهای خروج کالا'),
+    ]),
+    ('سفارش‌ها', [
+      ('NEW_ORDER', 'سفارش جدید', 'اعلان وقتی مدیر سفارش جدید ثبت می‌کند'),
+      ('ORDER_UPDATED', 'ویرایش سفارش', 'اعلان وقتی سفارش توسط مدیر ویرایش می‌شود'),
+      ('ORDER_DELETED', 'حذف سفارش', 'اعلان وقتی سفارش توسط مدیر حذف می‌شود'),
+    ]),
+    ('دستورهای جابه‌جایی/خروج', [
+      ('TRANSFER_CREATED', 'دستور جابه‌جایی', 'اعلان دستور جدید جابه‌جایی کالا'),
+      ('EXIT_CREATED', 'دستور خروج', 'اعلان دستور جدید خروج کالا'),
+      ('TRANSFER_EXECUTED', 'اجرای جابه‌جایی', 'اعلان وقتی جابه‌جایی کالا انجام می‌شود'),
+      ('TRANSFER_COMPLETED', 'تکمیل دستور', 'اعلان وقتی دستور به‌طور کامل اجرا می‌شود'),
+      ('TRANSFER_CANCELED', 'لغو دستور', 'اعلان وقتی دستور توسط مدیر لغو می‌شود'),
+    ]),
+    ('تخصیص بار به راننده', [
+      ('DRIVER_ORDER_ASSIGNED', 'تخصیص بار', 'اعلان وقتی بار به راننده واگذار می‌شود'),
+      ('DRIVER_ORDER_REMOVED', 'حذف بار', 'اعلان وقتی بار از راننده گرفته می‌شود'),
+    ]),
+    ('اتصال راننده به انبار', [
+      ('DRIVER_ASSIGNED', 'اتصال به انبار', 'اعلان وقتی راننده به انبار متصل می‌شود'),
+      ('DRIVER_UNASSIGNED', 'قطع اتصال', 'اعلان وقتی اتصال راننده به انبار قطع می‌شود'),
+    ]),
+    ('تحویل سفارش', [
+      ('DELIVERY_COMPLETED', 'تحویل سفارش', 'اعلان وقتی سفارشی توسط راننده تحویل داده می‌شود'),
+    ]),
   ];
 
   final _api = SettingsApiService();
@@ -482,16 +527,26 @@ class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet> 
             if (settings == null)
               const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(color: _green)))
             else
-              ..._labels.map((entry) {
-                final key = entry.$1;
-                return SwitchListTile(
-                  value: settings[key] ?? true,
-                  onChanged: _saving ? null : (v) => _toggle(key, v),
-                  activeTrackColor: _green,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                  title: Text(entry.$2, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                  subtitle: Text(entry.$3, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-                );
+              ..._groups.expand((group) {
+                final header = group.$1;
+                final entries = group.$2;
+                return [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
+                    child: Text(header, style: const TextStyle(color: _green, fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                  ...entries.map((entry) {
+                    final key = entry.$1;
+                    return SwitchListTile(
+                      value: settings[key] ?? true,
+                      onChanged: _saving ? null : (v) => _toggle(key, v),
+                      activeTrackColor: _green,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                      title: Text(entry.$2, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                      subtitle: Text(entry.$3, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                    );
+                  }),
+                ];
               }),
             const SizedBox(height: 12),
           ],

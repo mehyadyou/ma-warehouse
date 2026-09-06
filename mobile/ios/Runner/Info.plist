@@ -30,6 +30,10 @@
 	<string>برای ورود سریع و امن به برنامه با اثر انگشت یا فیس آید استفاده می‌شود</string>
 	<key>NSCameraUsageDescription</key>
 	<string>برای اسکن کد QR کالاها از دوربین استفاده می‌شود</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>برای تبدیل گفتار به متن در دستیار هوشمند از میکروفون استفاده می‌شود</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>برای تبدیل گفتار به متن در دستیار هوشمند از تشخیص گفتار استفاده می‌شود</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>برای انتخاب عکس پروفایل از گالری استفاده می‌شود</string>
 	<key>NSAppTransportSecurity</key>

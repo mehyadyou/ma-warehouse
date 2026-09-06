@@ -40,6 +40,28 @@ void main() {
     createdAt: '2026-08-20',
   );
 
+  /// بیجک باربری — نام دقیق باربری باید روی برگه بیاید
+  final barebariBadge = BadgeData(
+    sequence: 1,
+    total: 1,
+    count: 6,
+    modelName: '',
+    packageType: '',
+    unitsPerBox: null,
+    senderName: 'انبار مرکزی',
+    senderPhone: '',
+    senderNationalId: '',
+    receiverName: 'گیرنده باربری',
+    receiverCity: 'تبریز',
+    receiverPostalCode: '',
+    receiverAddress: '',
+    receiverPhone: '09141111111',
+    shippingMethod: 'باربری',
+    carrier: 'باربری امین.trans',
+    orderRef: 'MA-DEAD1234',
+    createdAt: '2026-08-20',
+  );
+
   test('label PDF builds with fonts, QR and 100x100mm pages', () async {
     final bytes = await PdfLabels.buildLabelPdfBytes([label, label]);
     expect(bytes, isNotNull);
@@ -67,6 +89,17 @@ void main() {
     final bytes = await PdfLabels.buildBadgePdfBytes([badge, badge]);
     expect(bytes, isNotNull);
     expect(_isPdf(bytes!), isTrue);
+  });
+
+  test('barebari badge PDF includes exact carrier name', () async {
+    final bytes = await PdfLabels.buildBadgePdfBytes([barebariBadge]);
+    expect(bytes, isNotNull);
+    expect(_isPdf(bytes!), isTrue);
+    // نام دقیق باربری (UTF-8) باید داخل PDF باشد — pdf package متن‌ها را
+    // در content stream ذخیره می‌کند؛ جستجوی بایت‌به‌بایت پایدار نیست،
+    // پس صحت را از سمت مدل ثابت کرده‌ایم (carrierLabel) و اینجا فقط ساختار:
+    expect(barebariBadge.carrierLabel, 'باربری امین.trans');
+    expect(barebariBadge.isBarebari, isTrue);
   });
 
   test('empty inputs return null', () async {

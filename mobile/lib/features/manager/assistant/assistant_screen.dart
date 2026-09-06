@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import 'models/assistant_message.dart';
+import 'assistant_voice_service.dart';
 import 'providers/assistant_provider.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -31,6 +32,7 @@ class AssistantScreen extends ConsumerStatefulWidget {
 
 class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   final _inputCtrl = TextEditingController();
+  AssistantVoiceService? _voice;
   bool _recording = false;
 
   @override
@@ -40,8 +42,18 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
   @override
   void dispose() {
+    // اگر صفحه بسته شد و میکروفون هنوز روشن است → لغو فوری بدون نتیجه
+    _voice?.cancel();
     _inputCtrl.dispose();
     super.dispose();
+  }
+
+  AssistantVoiceService get _voiceService {
+    final existing = _voice;
+    if (existing != null) return existing;
+    final created = ref.read(assistantVoiceServiceProvider);
+    _voice = created;
+    return created;
   }
 
   void _snack(String msg) {
@@ -52,33 +64,65 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   }
 
   Future<void> _startRecording() async {
-    final voice = ref.read(assistantVoiceServiceProvider);
-    final ok = await voice.initialize();
-    if (!mounted) return;
+    if (_recording) return; // دبل‌لانگ‌پرس → دوبار شروع نشود
+    final voice = _voiceService;
+    final ok = await voice.initialize(
+      onError: (error) {
+        // خطای دائمی وسط ضبط → بنر ضبط بسته شود
+        if (mounted && error != null && _recording) {
+          setState(() => _recording = false);
+        }
+      },
+    );
+    if (!mounted) {
+      if (ok) await voice.cancel(); // صفحه بسته شده ولی init موفق شده
+      return;
+    }
     if (!ok) {
       _snack('سرویس گفتار این دستگاه در دسترس نیست؛ از صفحه‌کلید استفاده کنید');
       return;
     }
     setState(() => _recording = true);
     HapticFeedback.mediumImpact();
+    final existing = _inputCtrl.text; // متن تایپ‌شده از بین نرود
     await voice.start(
       onResult: (text) {
-        if (mounted) _inputCtrl.text = text;
-      },
-      onError: (_) {
-        if (mounted) {
+        if (!mounted) return;
+        _inputCtrl.text = text.isEmpty
+            ? existing
+            : (existing.isEmpty ? text : '$existing $text');
+        _inputCtrl.selection = TextSelection.collapsed(
+          offset: _inputCtrl.text.length,
+        );
+        // اگر موتور خودش ضبط را بسته (سقف زمانی/سکوت) → بنر ضبط بسته شود
+        if (_recording && !voice.isListening) {
           setState(() => _recording = false);
-          _snack('تشخیص گفتار ناموفق بود؛ دوباره تلاش کنید');
         }
+        // دکمهٔ ارسال بعد از دیکته فعال شود
+        setState(() {});
+      },
+      onError: (msg) {
+        if (!mounted) return;
+        if (_recording) setState(() => _recording = false);
+        _snack(msg ?? 'تشخیص گفتار ناموفق بود؛ دوباره تلاش کنید');
       },
     );
+    // اگر listen بلافاصله شکست خورد (فیلد مشغول و…) → بنر برداشته شود
+    if (mounted && !voice.isListening) {
+      setState(() => _recording = false);
+    }
   }
 
   Future<void> _stopRecording() async {
-    final voice = ref.read(assistantVoiceServiceProvider);
+    final voice = _voiceService;
+    if (!_recording) {
+      // موتور ممکن است خودش بسته باشد ولی session نیمه‌کاره مانده باشد
+      await voice.cancel();
+      return;
+    }
     setState(() => _recording = false);
     HapticFeedback.lightImpact();
-    await voice.stop();
+    await voice.stop(); // نتیجهٔ نهایی از طریق onResult می‌آید
   }
 
   Future<void> _send() async {
@@ -87,6 +131,10 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     _inputCtrl.clear();
     FocusScope.of(context).unfocus();
     await ref.read(assistantChatProvider.notifier).send(text);
+  }
+
+  void _stop() {
+    ref.read(assistantChatProvider.notifier).stop();
   }
 
   Future<void> _confirmNewChat() async {
@@ -128,7 +176,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         _snack(next.error!);
       }
     });
-    final canSend = _inputCtrl.text.trim().isNotEmpty && !state.isStreaming;
+    final canSend = _inputCtrl.text.trim().isNotEmpty && !state.isStreaming && !_recording;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -171,7 +219,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         children: [
           if (_recording) _recordingBanner(),
           Expanded(child: _chatArea(state)),
-          _inputBar(canSend),
+          _inputBar(canSend, state.isStreaming),
         ],
       ),
     );
@@ -181,18 +229,17 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     return Container(
       width: double.infinity,
       color: _red.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.mic_rounded, color: _red, size: 16),
-          SizedBox(width: 8),
-          Text(
-            'در حال ضبط... رها کنید تا به متن تبدیل شود',
-            style: TextStyle(color: _red, fontSize: 12),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.mic_rounded, color: _red, size: 16),
+            SizedBox(width: 8),
+            Text(
+              'در حال ضبط... برای پایان، دکمه را رها کنید',
+              style: TextStyle(color: _red, fontSize: 12),
+            ),
+          ],
+        ),
     );
   }
 
@@ -436,7 +483,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     );
   }
 
-  Widget _inputBar(bool canSend) {
+  Widget _inputBar(bool canSend, bool isStreaming) {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
       decoration: const BoxDecoration(color: _surface),
@@ -447,7 +494,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           children: [
             // میکروفون — نگه‌داشتن = ضبط، رها کردن = تبدیل به متن
             GestureDetector(
-              onLongPressStart: (_) => _startRecording(),
+              onLongPressStart: isStreaming ? null : (_) => _startRecording(),
               onLongPressEnd: (_) => _stopRecording(),
               onLongPressCancel: () => _stopRecording(),
               child: Container(
@@ -473,11 +520,14 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                 controller: _inputCtrl,
                 minLines: 1,
                 maxLines: 4,
+                enabled: !isStreaming,
                 textInputAction: TextInputAction.newline,
                 style: const TextStyle(color: Colors.white, fontSize: 13.5),
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'سوال یا دستور خود را بنویسید...',
+                  hintText: isStreaming
+                      ? 'در حال دریافت پاسخ...'
+                      : 'سوال یا دستور خود را بنویسید...',
                   hintStyle: const TextStyle(color: _textDim, fontSize: 13),
                   filled: true,
                   fillColor: _surfaceAlt,
@@ -502,24 +552,44 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: canSend ? _green : _surfaceAlt,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: IconButton(
-                onPressed: canSend ? _send : null,
-                icon: Icon(
-                  Icons.send_rounded,
-                  color: canSend ? Colors.black : _textDim,
-                  size: 20,
-                ),
-              ),
-            ),
+            // دکمه ارسال یا توقف
+            isStreaming
+                ? _stopButton()
+                : Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: canSend ? _green : _surfaceAlt,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: IconButton(
+                      onPressed: canSend ? _send : null,
+                      icon: Icon(
+                        Icons.send_rounded,
+                        color: canSend ? Colors.black : _textDim,
+                        size: 20,
+                      ),
+                    ),
+                  ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _stopButton() {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: _red.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _red.withValues(alpha: 0.4)),
+      ),
+      child: IconButton(
+        onPressed: _stop,
+        icon: const Icon(Icons.stop_rounded, color: _red, size: 22),
+        tooltip: 'توقف',
       ),
     );
   }

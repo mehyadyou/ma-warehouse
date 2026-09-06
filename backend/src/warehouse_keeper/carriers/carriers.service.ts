@@ -6,7 +6,8 @@ const isUniqueViolation = (e: any) => e?.code === 'P2002';
 
 export const carriersService = {
     /// لیست همهٔ باربری‌ها — مرتب بر اساس اولویت (صعودی) و سپس نام؛
-    /// اولویت ۰ = بالای صف = نزدیک‌ترین = اولین بارِ برنامهٔ بارگیری راننده
+    /// اولویت ۰ = بالای صف = دورترین = اولین بارِ برنامهٔ بارگیری راننده (ته وانت)؛
+    /// پایین صف = نزدیک‌ترین = آخرین بار
     list: async () => {
         return prisma.carrier.findMany({
             orderBy: [{ priority: 'asc' }, { name: 'asc' }],
@@ -14,7 +15,7 @@ export const carriersService = {
     },
 
     /// ثبت باربری جدید — نام تکراری → 409.
-    /// بدون اولویت → انتهای صف اضافه می‌شود (دورترین‌ترین جایگاه)؛ ترتیب نهایی با درگ‌انددراپ تعیین می‌شود
+    /// بدون اولویت → انتهای صف (آخرین بار) اضافه می‌شود؛ جایگاه در صف با درگ‌انددراپ تعیین می‌شود
     create: async (name: string, phone?: string, address?: string) => {
         try {
             // اولویت بعدی = یک بیشتر از بیشترینِ موجود (اختلاف اولویت‌ها در بازچینی دوباره نرمال می‌شود)
@@ -58,8 +59,10 @@ export const carriersService = {
         }
     },
 
-    /// بازچینی صف بارگیری (درگ‌انددراپ انباردار) — [ids] دقیقاً همان ترتیب جدید است.
+    /// بازچینی صف بارگیری (درگ‌انددراپ انباردار) — [ids] دقیقاً همان ترتیب جدید است؛
+    /// بالای صف = دورترین = اولین بار و پایین صف = نزدیک‌ترین = آخرین بار.
     /// اولویت‌ها ۰..n بازنویسی می‌شوند تا برنامهٔ بارگیری راننده همان ترتیب را بگیرد.
+    /// داخل همان تراکنش رویداد زنده ساخته می‌شود تا پنل راننده بلافاصله صف تازه را بگیرد.
     reorder: async (ids: string[]) => {
         const rows = await prisma.carrier.findMany({ select: { id: true } });
         const existing = new Set(rows.map((r) => r.id));
@@ -67,11 +70,19 @@ export const carriersService = {
             throw new AppError('ترتیب ارسالی با لیست باربری‌ها همخوانی ندارد', 400);
         }
 
-        await prisma.$transaction(
-            ids.map((id, i) =>
-                prisma.carrier.update({ where: { id }, data: { priority: i } }),
-            ),
-        );
+        await prisma.$transaction(async (tx) => {
+            for (const [i, id] of ids.entries()) {
+                await tx.carrier.update({ where: { id }, data: { priority: i } });
+            }
+            // رویداد تراکنشی — با موفقیت ذخیرهٔ ترتیب جدید، به راننده‌ها اطلاع داده می‌شود
+            await tx.outboxEvent.create({
+                data: {
+                    aggregate: 'carrier',
+                    type: 'carriers:reordered',
+                    payload: { ids, count: ids.length },
+                },
+            });
+        });
         return prisma.carrier.findMany({
             orderBy: [{ priority: 'asc' }, { name: 'asc' }],
         });

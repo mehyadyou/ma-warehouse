@@ -21,7 +21,14 @@ vi.mock('openai', () => ({
 }));
 
 vi.mock('../../utils/prisma', () => ({
-    prisma: { $transaction: mocks.transaction },
+    prisma: {
+        $transaction: mocks.transaction,
+        assistantConfig: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            upsert: vi.fn(),
+            deleteMany: vi.fn(),
+        },
+    },
 }));
 
 function toolCallMessage(id: string, sql: string) {
@@ -46,7 +53,7 @@ async function* streamGen(chunks: string[]) {
 
 beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv('OPENROUTER_API_KEY', 'test-key');
+    vi.stubEnv('ZAI_API_KEY', 'test-key');
 });
 
 afterEach(() => {
@@ -76,6 +83,43 @@ describe('assistantService.chat', () => {
             expect.stringContaining('SELECT * FROM (SELECT id, name FROM "Product" LIMIT 5)'),
         );
         expect(mocks.tx.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('LIMIT 200'));
+    });
+
+    it('دور اول ابزار را اجباری می‌کند تا مدل نتواند از حفظ جواب بدهد', async () => {
+        mocks.create
+            .mockResolvedValueOnce({
+                choices: [{ message: toolCallMessage('call_1', 'SELECT count(*) FROM "Product"') }],
+            })
+            .mockResolvedValueOnce({
+                choices: [{ message: { role: 'assistant', content: 'گزارش نهایی' } }],
+            });
+
+        await assistantService.chat({ message: 'چند محصول داریم؟', history: [] });
+
+        const first = mocks.create.mock.calls[0][0];
+        expect(first.tool_choice).toEqual({
+            type: 'function',
+            function: { name: 'run_readonly_query' },
+        });
+        const second = mocks.create.mock.calls[1][0];
+        expect(second.tool_choice).toBe('auto');
+    });
+
+    it('حتی سؤال احوالپرسی هم دور اول با ابزار می‌رود و کوئری واقعاً اجرا می‌شود', async () => {
+        mocks.create
+            .mockResolvedValueOnce({
+                choices: [{ message: toolCallMessage('call_1', 'SELECT 1 AS ok') }],
+            })
+            .mockResolvedValueOnce({
+                choices: [{ message: { role: 'assistant', content: 'سلام! چطور می‌توانم کمکت کنم؟' } }],
+            });
+
+        const { answer } = await assistantService.chat({ message: 'سلام', history: [] });
+
+        expect(answer).toBe('سلام! چطور می‌توانم کمکت کنم؟');
+        expect(mocks.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('SELECT 1 AS ok'),
+        );
     });
 
     it('ستون حساس از نتیجه حذف می‌شود', async () => {
@@ -269,11 +313,11 @@ describe('assistantService.chat', () => {
         expect(streamOptions.tool_choice).toBeUndefined();
     });
 
-    it('بدون کلید OpenRouter خطای روشن می‌دهد', async () => {
-        vi.stubEnv('OPENROUTER_API_KEY', '');
+    it('بدون کلید هوش مصنوعی خطای روشن می‌دهد', async () => {
+        vi.stubEnv('ZAI_API_KEY', '');
         await expect(
             assistantService.chat({ message: 'سلام', history: [] }),
-        ).rejects.toThrow(new AppError('کلید OpenRouter در سرور تنظیم نشده است', 500));
+        ).rejects.toThrow(new AppError('کلید هوش مصنوعی تنظیم نشده است؛ از تنظیمات دستیار وارد کنید', 500));
         expect(mocks.create).not.toHaveBeenCalled();
     });
 
@@ -294,7 +338,7 @@ describe('assistantService.chat', () => {
 describe('assistantService.chatStream', () => {
     it('استریم کامل: reasoning و سپس پاسخ، از همان درخواست اول (بدون درخواست دوم)', async () => {
         async function* reasoningThenAnswer() {
-            yield { choices: [{ delta: { reasoning: 'بذار حساب کنم' } }] };
+            yield { choices: [{ delta: { reasoning_content: 'بذار حساب کنم' } }] };
             yield { choices: [{ delta: { content: 'گزارش ' } }] };
             yield { choices: [{ delta: { content: 'کامل' } }] };
         }
@@ -362,11 +406,113 @@ describe('assistantService.chatStream', () => {
         expect(mocks.create.mock.calls[1][0].stream).toBe(true);
     });
 
-    it('بدون کلید OpenRouter خطای روشن می‌دهد', async () => {
-        vi.stubEnv('OPENROUTER_API_KEY', '');
+    it('استریم: دور اول ابزار را اجباری می‌کند، دور دوم auto', async () => {
+        async function* toolRound() {
+            yield {
+                choices: [
+                    {
+                        delta: {
+                            tool_calls: [
+                                {
+                                    index: 0,
+                                    id: 'call_s1',
+                                    type: 'function',
+                                    function: {
+                                        name: 'run_readonly_query',
+                                        arguments: JSON.stringify({
+                                            sql: 'SELECT count(*) FROM "Product"',
+                                        }),
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            };
+        }
+        async function* answerRound() {
+            yield { choices: [{ delta: { content: 'گزارش' } }] };
+        }
+        mocks.create
+            .mockResolvedValueOnce(toolRound())
+            .mockResolvedValueOnce(answerRound());
+
+        await assistantService.chatStream(
+            { message: 'چند محصول؟', history: [] },
+            { onToken: () => {} },
+        );
+
+        expect(mocks.create.mock.calls[0][0].tool_choice).toEqual({
+            type: 'function',
+            function: { name: 'run_readonly_query' },
+        });
+        expect(mocks.create.mock.calls[1][0].tool_choice).toBe('auto');
+    });
+
+    it('بدون کلید هوش مصنوعی خطای روشن می‌دهد', async () => {
+        vi.stubEnv('ZAI_API_KEY', '');
         await expect(
             assistantService.chatStream({ message: 'سلام', history: [] }, { onToken: () => {} }),
-        ).rejects.toThrow(new AppError('کلید OpenRouter در سرور تنظیم نشده است', 500));
+        ).rejects.toThrow(new AppError('کلید هوش مصنوعی تنظیم نشده است؛ از تنظیمات دستیار وارد کنید', 500));
         expect(mocks.create).not.toHaveBeenCalled();
+    });
+});
+
+describe('assistantService error mapping', () => {
+    it('خطای ۴۲۹ سرویس‌دهنده به پیام فارسی نگاشت می‌شود — پیام خام انگلیسی نشت نمی‌کند', async () => {
+        mocks.create.mockRejectedValueOnce(
+            Object.assign(
+                new Error('The service may be temporarily overloaded, please try again later'),
+                { status: 429, name: 'RateLimitError' },
+            ),
+        );
+        await expect(
+            assistantService.chat({ message: 'سلام', history: [] }),
+        ).rejects.toMatchObject({
+            message: 'سرویس هوش مصنوعی شلوغ است؛ چند لحظه بعد دوباره تلاش کنید',
+            statusCode: 429,
+        });
+    });
+
+    it('خطای ۴۰۱ سرویس‌دهنده → پیام کلید نامعتبر (۵۰۲)', async () => {
+        mocks.create.mockRejectedValueOnce(
+            Object.assign(new Error('Incorrect API key provided'), { status: 401, name: 'AuthenticationError' }),
+        );
+        await expect(
+            assistantService.chat({ message: 'سلام', history: [] }),
+        ).rejects.toMatchObject({
+            message: 'کلید هوش مصنوعی نامعتبر است؛ از تنظیمات دستیار بررسی کنید',
+            statusCode: 502,
+        });
+    });
+
+    it('خطای وسط استریم هم به پیام فارسی نگاشت می‌شود', async () => {
+        async function* brokenStream() {
+            yield { choices: [{ delta: { content: 'پاسخ ناق' } }] };
+            throw Object.assign(new Error('upstream disconnected'), {
+                status: 502,
+                name: 'APIError',
+            });
+        }
+        mocks.create.mockResolvedValueOnce(brokenStream());
+        await expect(
+            assistantService.chatStream(
+                { message: 'سلام', history: [] },
+                { onToken: () => {} },
+            ),
+        ).rejects.toMatchObject({
+            message: 'سرور هوش مصنوعی موقتاً در دسترس نیست؛ کمی بعد دوباره تلاش کنید',
+            statusCode: 502,
+        });
+    });
+
+    it('خطای شبکه بدون status → پیام اتصال (۵۰۲)', async () => {
+        mocks.create.mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND api.z.ai'));
+        await expect(
+            assistantService.chat({ message: 'سلام', history: [] }),
+        ).rejects.toMatchObject({
+            message: 'اتصال به سرویس هوش مصنوعی برقرار نشد؛ اتصال سرور را بررسی کنید',
+            statusCode: 502,
+        });
     });
 });

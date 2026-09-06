@@ -91,6 +91,7 @@ class BadgeSheetWidget extends StatelessWidget {
                     label: 'تعداد ${data.packageLabel}',
                     value: '${data.packageCount}',
                   ),
+                  _InfoRow(label: 'باربری', value: data.carrierLabel),
                 ],
               ),
             ),

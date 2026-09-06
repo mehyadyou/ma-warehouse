@@ -137,7 +137,7 @@ void main() {
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
 
-    // جایگاه صف نمایش داده می‌شود: فارس اول (نزدیک‌ترین)، قدس دوم
+    // جایگاه صف نمایش داده می‌شود: فارس اول (دورترین = اولین بار)، قدس دوم
     expect(find.text('1'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
     expect(find.byIcon(Icons.drag_handle_rounded), findsNWidgets(2));
@@ -159,6 +159,76 @@ void main() {
     expect(api.lastReorderIds, ['c2', 'c1']);
     // جایگاه جدید: قدس اول
     expect(find.text('باربری قدس'), findsOneWidget);
+  });
+
+  testWidgets('با موس: درگ بلافاصله با کلیک-کشیدن (بدون نگه‌داشتن) انجام می‌شود', (tester) async {
+    final api = _FakeApi([
+      const KeeperCarrierModel(id: 'c1', name: 'باربری فارس', priority: 0),
+      const KeeperCarrierModel(id: 'c2', name: 'باربری قدس', priority: 1),
+    ]);
+
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+
+    // حرکت موس روی لیست → حالت درگ فوری فعال می‌شود (بدون نیاز به کلیک)
+    final handle = find.byIcon(Icons.drag_handle_rounded).at(1);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(handle));
+    await tester.pump();
+    await mouse.moveTo(tester.getCenter(handle) + const Offset(10, 0));
+    await tester.pump();
+
+    // کلیک و کشیدن فوری — بدون صبر برای kLongPressTimeout
+    await mouse.down(tester.getCenter(handle));
+    await tester.pump();
+    for (var i = 0; i < 4; i++) {
+      await mouse.moveBy(const Offset(0, -40));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await mouse.up();
+    await tester.pumpAndSettle();
+
+    expect(api.reorderCalls, 1);
+    expect(api.lastReorderIds, ['c2', 'c1']);
+    expect(find.text('باربری قدس'), findsOneWidget);
+  });
+
+  testWidgets('بعد از درگ، افزودن/حذف با لیست تازهٔ سرور نمایش داده می‌شود', (tester) async {
+    final api = _FakeApi([
+      const KeeperCarrierModel(id: 'c1', name: 'باربری فارس', priority: 0),
+      const KeeperCarrierModel(id: 'c2', name: 'باربری قدس', priority: 1),
+    ]);
+
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+
+    // اول یک درگ انجام می‌دهیم تا سایهٔ ترتیب محلی فعال شود
+    final handle = find.byIcon(Icons.drag_handle_rounded).at(1);
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(api.reorderCalls, 1);
+    expect(api.lastReorderIds, ['c2', 'c1']);
+
+    // افزودن بعد از درگ → باربری جدید باید ظاهر شود (سایهٔ کهنه نباید پوشانده)
+    await _openForm(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'نام باربری *'), 'باربری تازه');
+    await tester.tap(find.text('افزودن باربری'));
+    await tester.pumpAndSettle();
+    expect(find.text('باربری تازه'), findsOneWidget);
+
+    // حذف بعد از درگ → کارت حذف‌شده باید ناپدید شود
+    await tester.tap(find.byIcon(Icons.delete_outline_rounded).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حذف'));
+    await tester.pumpAndSettle();
+    expect(api.deleteCalls, 1);
+    expect(find.text('باربری قدس'), findsNothing);
   });
 
   testWidgets('نام خالی → بدون درخواست پیام خطا نشان داده می‌شود', (tester) async {

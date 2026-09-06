@@ -230,6 +230,31 @@ export const transfersService = {
                 },
             });
 
+            // رویداد تراکنشی — انباردارِ مبدأ/مقصد همان لحظه از دستور تازه باخبر می‌شود
+            // (در انتظار اجرا، یا در مسیر لِگاسی: اجرای مستقیم توسط مدیریت)
+            await tx.outboxEvent.create({
+                data: {
+                    aggregate: 'transfer',
+                    type: 'transfer:created',
+                    payload: {
+                        transferId: transfer.id,
+                        kind: toWarehouse ? 'transfer' : 'exit',
+                        fromWarehouseId: fromWarehouse.id,
+                        fromWarehouseName: fromWarehouse.name,
+                        toWarehouseId: toWarehouseId ?? null,
+                        toWarehouseName: toWarehouse?.name ?? null,
+                        productId: product.id,
+                        productName: product.name,
+                        modelId: modelId ?? null,
+                        modelName: model?.name ?? null,
+                        quantity,
+                        description: transfer.description,
+                        status,
+                        createdAt: new Date().toISOString(),
+                    },
+                },
+            });
+
             return mapTransfer(
                 {
                     id: transfer.id,
@@ -256,7 +281,15 @@ export const transfersService = {
 
     /** لغو دستور توسط مدیر — فقط در انتظار و بدون هیچ اسکن اجراشده */
     cancelTransfer: async (id: string, userId: string) => {
-        const transfer = await prisma.transfer.findUnique({ where: { id } });
+        const transfer = await prisma.transfer.findUnique({
+            where: { id },
+            include: {
+                fromWarehouse: { select: { name: true } },
+                toWarehouse: { select: { name: true } },
+                product: { select: { name: true } },
+                model: { select: { name: true } },
+            },
+        });
         if (!transfer) throw new AppError('دستور یافت نشد', 404);
         if (transfer.status !== 'PENDING') {
             throw new AppError('فقط دستورهای «در انتظار» قابل لغو هستند', 400);
@@ -276,6 +309,28 @@ export const transfersService = {
                 type: transfer.toWarehouseId ? 'product_transfer' : 'product_exit',
                 label: `لغو دستور ${transfer.toWarehouseId ? 'جابه‌جایی' : 'خروج'} ${transfer.quantity} واحدی`,
                 userId,
+            },
+        });
+
+        // رویداد تراکنشی‌گونه — انباردارهای مبدأ (و مقصد) از لغو دستور باخبر می‌شوند
+        await prisma.outboxEvent.create({
+            data: {
+                aggregate: 'transfer',
+                type: 'transfer:canceled',
+                payload: {
+                    transferId: transfer.id,
+                    kind: transfer.toWarehouseId ? 'transfer' : 'exit',
+                    fromWarehouseId: transfer.fromWarehouseId,
+                    fromWarehouseName: (transfer as any).fromWarehouse?.name ?? '',
+                    toWarehouseId: transfer.toWarehouseId ?? null,
+                    toWarehouseName: (transfer as any).toWarehouse?.name ?? null,
+                    productId: transfer.productId,
+                    productName: (transfer as any).product?.name ?? '',
+                    modelId: transfer.modelId ?? null,
+                    modelName: (transfer as any).model?.name ?? null,
+                    quantity: transfer.quantity,
+                    canceledAt: new Date().toISOString(),
+                },
             },
         });
     },

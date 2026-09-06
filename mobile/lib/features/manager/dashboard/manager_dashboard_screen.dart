@@ -19,6 +19,7 @@ import 'navigation_drawer/screens/history_screen.dart';
 import 'navigation_drawer/screens/archive_screen.dart';
 import 'navigation_drawer/screens/invoices_screen.dart';
 import 'navigation_drawer/screens/transfer_screen.dart';
+import 'navigation_drawer/screens/product_history_screen.dart';
 import '../delivery_inbox/delivery_inbox_screen.dart';
 import '../../../../shared/settings/settings_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
@@ -192,6 +193,12 @@ class _ManagerDashboardScreenState extends ConsumerState<ManagerDashboardScreen>
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const DeliveryInboxScreen()),
+            );
+          },
+          onProductHistoryTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProductHistoryScreen()),
             );
           },
         ),

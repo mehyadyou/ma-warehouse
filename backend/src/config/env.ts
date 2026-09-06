@@ -19,7 +19,8 @@ export const env = {
 
     // ── دستیار هوش مصنوعی (اختیاری — بدون کلید، دستیار خطای روشن می‌دهد) ──
     // getter برای خواندن زندهٔ env در تست‌ها (vi.stubEnv)
-    get OPENROUTER_API_KEY() { return process.env.OPENROUTER_API_KEY || ''; },
-    get OPENROUTER_MODEL() { return process.env.OPENROUTER_MODEL || '~deepseek/deepseek-v4-flash-latest'; },
+    get ZAI_API_KEY() { return process.env.ZAI_API_KEY || ''; },
+    get ZAI_MODEL() { return process.env.ZAI_MODEL || 'glm-4.7-flash'; },
+    get ZAI_BASE_URL() { return process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4'; },
     get ASSISTANT_MAX_TOKENS() { return Number(process.env.ASSISTANT_MAX_TOKENS) || 8000; },
 };

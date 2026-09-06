@@ -1,13 +1,12 @@
 import OpenAI from 'openai';
-import { env } from '../../config/env';
 import { prisma } from '../../utils/prisma';
 import { logger } from '../../utils/logger';
 import { AppError } from '../../common/exceptions/AppError';
 import { validateReadOnlySql, maskSensitiveColumns } from './sql-guard';
 import { ASSISTANT_SYSTEM_PROMPT } from './schema-description';
+import { assistantConfigService } from './assistant-config.service';
 import { ChatHistoryItem } from './assistant.schema';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const MAX_TOOL_ROUNDS = 6;
 const MAX_ROWS = 200;
 const STATEMENT_TIMEOUT_MS = 15000;
@@ -18,9 +17,9 @@ interface ToolCallAcc {
     arguments: string;
 }
 
-/** نوع پیام دستیار OpenRouter با فیلد reasoning_details (افزونهٔ OpenRouter) */
-type ORAssistantMessage = OpenAI.ChatCompletionMessageParam & {
-    reasoning_details?: unknown;
+/** نوع پیام دستیار Z.AI با فیلد reasoning_content (افزونهٔ Z.AI برای حالت فکرکردن) */
+type ZAIAssistantMessage = OpenAI.ChatCompletionMessageParam & {
+    reasoning_content?: string;
 };
 
 const READ_ONLY_TOOL: OpenAI.ChatCompletionTool = {
@@ -28,7 +27,7 @@ const READ_ONLY_TOOL: OpenAI.ChatCompletionTool = {
     function: {
         name: 'run_readonly_query',
         description:
-            'اجرای یک کوئری فقط‌خواندنی (SELECT) روی دیتابیس انبار و برگرداندن ردیف‌ها به‌صورت JSON. فقط SELECT — هر نوع نوشتن رد می‌شود.',
+            'اجرای یک کوئری فقط‌خواندنی (SELECT) روی دیتابیس انبار و برگرداندن ردیف‌ها به‌صورت JSON. تنها منبع داده برای پاسخ تو همین ابزار است — نتیجهٔ آن را دقیق بررسی کن. فقط SELECT — هر نوع نوشتن رد می‌شود.',
         parameters: {
             type: 'object',
             properties: {
@@ -40,6 +39,16 @@ const READ_ONLY_TOOL: OpenAI.ChatCompletionTool = {
             required: ['sql'],
         },
     },
+};
+
+/**
+ * اجبار ابزار در دور اول: مدل باید پیش از هر پاسخ آماری حداقل یک کوئری واقعی بزند.
+ * بدون این، بعضی مدل‌ها (مثل GLM) از حفظ جواب می‌دهند و عدد جعل می‌کنند.
+ * از دور دوم به بعد 'auto' است تا مدل با دادهٔ موجود مستقیماً پاسخ دهد.
+ */
+const FORCE_QUERY_TOOL: OpenAI.ChatCompletionToolChoiceOption = {
+    type: 'function',
+    function: { name: 'run_readonly_query' },
 };
 
 /**
@@ -88,7 +97,7 @@ function toModelJson(rows: Record<string, unknown>[]): string {
  * شامل: گارد SQL فقط‌خواندنی، جلوگیری از اجرای دوبارهٔ کوئری تکراری و ماسک ستون‌های حساس.
  */
 async function runToolCalls(
-    messages: ORAssistantMessage[],
+    messages: ZAIAssistantMessage[],
     toolCalls: ToolCallAcc[],
     executedQueries: Set<string>,
 ): Promise<void> {
@@ -132,34 +141,91 @@ async function runToolCalls(
     }
 }
 
+/**
+ * تبدیل خطاهای سرویس‌دهندهٔ هوش مصنوعی به پیام فارسیِ قابل‌نمایش.
+ * پیام خام انگلیسیِ SDK/سرویس‌دهنده (مثل «The service may be temporarily overloaded… 429»)
+ * هرگز به کلاینت نشت نمی‌کند؛ جزئیات فقط در لاگ سرور ثبت می‌شود.
+ */
+function toAssistantError(e: unknown): AppError {
+    if (e instanceof AppError) return e;
+    const err = e as { status?: unknown; name?: string } | null;
+    if (err?.name === 'AbortError' || err?.name === 'APIUserAbortError') {
+        return new AppError('درخواست لغو شد', 499);
+    }
+    const status = typeof err?.status === 'number' ? err.status : undefined;
+    if (status === 429) {
+        return new AppError('سرویس هوش مصنوعی شلوغ است؛ چند لحظه بعد دوباره تلاش کنید', 429);
+    }
+    if (status === 401 || status === 403) {
+        return new AppError('کلید هوش مصنوعی نامعتبر است؛ از تنظیمات دستیار بررسی کنید', 502);
+    }
+    if (status === 404) {
+        return new AppError('مدل یا آدرس پایهٔ هوش مصنوعی اشتباه است؛ از تنظیمات دستیار بررسی کنید', 502);
+    }
+    if (status !== undefined && status >= 400 && status < 500) {
+        return new AppError('درخواست هوش مصنوعی رد شد؛ تنظیمات دستیار را بررسی کنید', 502);
+    }
+    if (status !== undefined && status >= 500) {
+        return new AppError('سرور هوش مصنوعی موقتاً در دسترس نیست؛ کمی بعد دوباره تلاش کنید', 502);
+    }
+    // بدون status → خطای شبکه/DNS/timeout سمت سرور
+    return new AppError('اتصال به سرویس هوش مصنوعی برقرار نشد؛ اتصال سرور را بررسی کنید', 502);
+}
+
+/** فراخوانی سرویس‌دهنده با نگاشت خطا — هر خطای خام به AppError فارسی تبدیل می‌شود */
+async function createChatSafe<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+        return await fn();
+    } catch (e) {
+        logger.warn(
+            { err: (e as Error)?.message, name: (e as Error)?.name },
+            'assistant provider error',
+        );
+        throw toAssistantError(e);
+    }
+}
+
+/** پوشش استریم: خطای وسط استریم (قطع اتصال/خطای سرویس‌دهنده) هم به پیام فارسی نگاشت می‌شود */
+async function* mapStreamErrors<T>(it: AsyncIterable<T>): AsyncGenerator<T> {
+    try {
+        yield* it;
+    } catch (e) {
+        logger.warn(
+            { err: (e as Error)?.message, name: (e as Error)?.name },
+            'assistant provider stream error',
+        );
+        throw toAssistantError(e);
+    }
+}
+
 export const assistantService = {
     /**
      * گفتگوی مدیر با دستیار.
-     * فاز ۱: حلقهٔ غیراستریمی با ابزارها (reasoning_details بین فراخوانی‌ها حفظ می‌شود —
-     *        الگوی رسمی OpenRouter برای ادامهٔ استدلال).
+     * فاز ۱: حلقهٔ غیراستریمی با ابزارها (reasoning_content بین فراخوانی‌ها حفظ می‌شود —
+     *        الگوی Z.AI برای ادامهٔ استدلال در حالت فکرکردن).
      * فاز ۲ (فقط وقتی onToken داده شده): پاسخ نهایی به‌صورت استریم توکن‌به‌توکن.
      */
     async chat(
         input: { message: string; history: ChatHistoryItem[] },
         onToken?: (text: string) => void,
     ): Promise<{ answer: string }> {
-        const apiKey = env.OPENROUTER_API_KEY;
-        if (!apiKey) throw new AppError('کلید OpenRouter در سرور تنظیم نشده است', 500);
+        const cfg = await assistantConfigService.resolve();
+        const apiKey = cfg.apiKey;
+        if (!apiKey) throw new AppError('کلید هوش مصنوعی تنظیم نشده است؛ از تنظیمات دستیار وارد کنید', 500);
 
-        const client = new OpenAI({ baseURL: OPENROUTER_BASE_URL, apiKey });
-        const messages: ORAssistantMessage[] = [
+        const client = new OpenAI({ baseURL: cfg.baseUrl, apiKey });
+        const messages: ZAIAssistantMessage[] = [
             { role: 'system', content: ASSISTANT_SYSTEM_PROMPT },
             ...input.history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
             { role: 'user', content: input.message },
         ];
 
         const baseOptions = {
-            model: env.OPENROUTER_MODEL,
+            model: cfg.model,
             tools: [READ_ONLY_TOOL],
-            tool_choice: 'auto' as const,
-            max_tokens: env.ASSISTANT_MAX_TOKENS,
-            // افزونهٔ OpenRouter — reasoning داخلی فعال است ولی به کاربر نمایش داده نمی‌شود
-            reasoning: { enabled: true },
+            max_tokens: cfg.maxTokens,
+            // Z.AI — حالت فکرکردن (thinking)؛ فقط برای سرویس‌دهنده‌هایی که پشتیبانی می‌کنند فرستاده می‌شود
+            ...(cfg.thinking ? { thinking: { type: 'enabled' } as const } : {}),
         };
 
         let finalText = '';
@@ -169,10 +235,14 @@ export const assistantService = {
         // پاسخ خالی فقط یک بار با «نوشتن پاسخ نهایی» دوباره خواسته می‌شود
         let emptyRetries = 0;
         for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-            const response = await client.chat.completions.create({
-                ...baseOptions,
-                messages,
-            } as OpenAI.ChatCompletionCreateParamsNonStreaming);
+            const response = await createChatSafe(() =>
+                client.chat.completions.create({
+                    ...baseOptions,
+                    // دور اول: ابزار اجباری — مدل نمی‌تواند بدون کوئری واقعی پاسخ دهد (جلوگیری از جعل داده)
+                    tool_choice: round === 0 ? FORCE_QUERY_TOOL : 'auto',
+                    messages,
+                } as OpenAI.ChatCompletionCreateParamsNonStreaming),
+            );
 
             const msg = response.choices[0]?.message;
             const finishReason = response.choices[0]?.finish_reason ?? null;
@@ -199,12 +269,15 @@ export const assistantService = {
                 throw new AppError('دستیار نتوانست پاسخ را کامل کند؛ دوباره تلاش کنید', 502);
             }
 
-            // حفظ reasoning_details طبق مستندات OpenRouter — content برای پیام ابزار null است
+            // حفظ reasoning_content طبق مستندات Z.AI — فقط وقتی حالت فکرکردن فعال است.
+            // content برای پیام ابزار null است.
             messages.push({
                 role: 'assistant',
                 content: null,
                 tool_calls: toolCalls,
-                reasoning_details: (msg as ORAssistantMessage).reasoning_details,
+                ...(cfg.thinking
+                    ? { reasoning_content: (msg as ZAIAssistantMessage).reasoning_content }
+                    : {}),
             });
 
             const accs: ToolCallAcc[] = toolCalls
@@ -231,11 +304,11 @@ export const assistantService = {
                 const stream = await client.chat.completions.create({
                     model: baseOptions.model,
                     max_tokens: baseOptions.max_tokens,
-                    reasoning: baseOptions.reasoning,
                     messages,
                     stream: true,
+                    ...(cfg.thinking ? { thinking: { type: 'enabled' } as const } : {}),
                 } as OpenAI.ChatCompletionCreateParamsStreaming);
-                for await (const chunk of stream) {
+                for await (const chunk of mapStreamErrors(stream)) {
                     const delta = chunk.choices[0]?.delta?.content;
                     if (delta) onToken(delta);
                 }
@@ -262,25 +335,27 @@ export const assistantService = {
             signal?: AbortSignal;
         },
     ): Promise<{ answer: string }> {
-        const apiKey = env.OPENROUTER_API_KEY;
-        if (!apiKey) throw new AppError('کلید OpenRouter در سرور تنظیم نشده است', 500);
+        const cfg = await assistantConfigService.resolve();
+        const apiKey = cfg.apiKey;
+        if (!apiKey) throw new AppError('کلید هوش مصنوعی تنظیم نشده است؛ از تنظیمات دستیار وارد کنید', 500);
 
-        const client = new OpenAI({ baseURL: OPENROUTER_BASE_URL, apiKey });
-        const messages: ORAssistantMessage[] = [
+        const client = new OpenAI({ baseURL: cfg.baseUrl, apiKey });
+        const messages: ZAIAssistantMessage[] = [
             { role: 'system', content: ASSISTANT_SYSTEM_PROMPT },
             ...input.history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
             { role: 'user', content: input.message },
         ];
 
         const baseOptions = {
-            model: env.OPENROUTER_MODEL,
+            model: cfg.model,
             tools: [READ_ONLY_TOOL],
-            tool_choice: 'auto' as const,
-            max_tokens: env.ASSISTANT_MAX_TOKENS,
-            // افزونهٔ OpenRouter — reasoning داخلی به‌صورت زنده استریم می‌شود
-            reasoning: { enabled: true },
+            max_tokens: cfg.maxTokens,
+            // Z.AI — حالت فکرکردن (thinking)؛ فقط برای سرویس‌دهنده‌هایی که پشتیبانی می‌کنند فرستاده می‌شود
+            ...(cfg.thinking ? { thinking: { type: 'enabled' } as const } : {}),
         };
 
+        // پاسخ نهایی فقط از دورِ بدون-ابزار ساخته می‌شود؛ متن دورهای ابزار (مقدمهٔ
+        // قبل از کوئری) زنده استریم می‌شود ولی نباید در پاسخ نهایی تکرار شود
         let answer = '';
         let emptyRetries = 0;
         const executedQueries = new Set<string>();
@@ -295,25 +370,29 @@ export const assistantService = {
         };
 
         for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-            const stream = await client.chat.completions.create({
-                ...baseOptions,
-                messages,
-                stream: true,
-                signal: callbacks.signal,
-            } as OpenAI.ChatCompletionCreateParamsStreaming);
+            const stream = await createChatSafe(() =>
+                client.chat.completions.create({
+                    ...baseOptions,
+                    // دور اول: ابزار اجباری — مدل نمی‌تواند بدون کوئری واقعی پاسخ دهد (جلوگیری از جعل داده)
+                    tool_choice: round === 0 ? FORCE_QUERY_TOOL : 'auto',
+                    messages,
+                    stream: true,
+                    signal: callbacks.signal,
+                } as OpenAI.ChatCompletionCreateParamsStreaming),
+            );
 
             let content = '';
             let reasoning = '';
             const toolCallIndex = new Map<number, ToolCallAcc>();
 
-            for await (const chunk of stream) {
+            for await (const chunk of mapStreamErrors(stream)) {
                 const delta = chunk.choices?.[0]?.delta;
                 if (!delta) continue;
                 if (delta.content) {
                     content += delta.content;
                     callbacks.onToken(delta.content);
                 }
-                const reasoningFrag = (delta as unknown as { reasoning?: string }).reasoning;
+                const reasoningFrag = (delta as unknown as { reasoning_content?: string }).reasoning_content;
                 if (reasoningFrag) {
                     reasoning += reasoningFrag;
                     status(reasoning);
@@ -330,9 +409,6 @@ export const assistantService = {
                     if (tc.function?.arguments) acc.arguments += tc.function.arguments;
                 }
             }
-
-            // هر متنی که در این دور استریم شده (مثل مقدمهٔ قبل از ابزار) در پاسخ نهایی حفظ می‌شود
-            answer += content;
 
             const toolCalls = [...toolCallIndex.entries()]
                 .sort((a, b) => a[0] - b[0])
@@ -358,6 +434,8 @@ export const assistantService = {
             }
 
             if (content.trim()) {
+                // فقط محتوای همین دور نهایی — بدون مقدمهٔ دورهای ابزار
+                answer = content;
                 return { answer };
             }
             if (emptyRetries >= 1 || round === MAX_TOOL_ROUNDS) {

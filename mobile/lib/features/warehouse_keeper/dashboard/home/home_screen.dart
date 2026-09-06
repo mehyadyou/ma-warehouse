@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ma_app/features/warehouse_keeper/providers/warehouse_keeper_provider.dart';
 import 'activity_section.dart';
 import 'inventory_chart_card.dart';
+import 'unreviewed_orders_card.dart';
 
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onOpenOrders});
+
+  /// لمس کارت «سفارش‌های بررسی‌نشده» → رفتن به فهرست سفارش‌ها (تب سفارش)
+  final VoidCallback? onOpenOrders;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,6 +21,7 @@ class HomeScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          UnreviewedOrdersCard(onTap: onOpenOrders),
           const InventoryChartCard(),
           const SizedBox(height: 22),
           ActivitySection(

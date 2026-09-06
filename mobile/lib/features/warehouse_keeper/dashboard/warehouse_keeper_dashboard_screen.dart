@@ -34,9 +34,9 @@ class _WarehouseKeeperDashboardScreenState
     extends ConsumerState<WarehouseKeeperDashboardScreen> {
   int _selectedIndex = 0;
 
-  final _screens = [
-    // ← const رو برداشتیم
-    const HomeScreen(),
+  /// صفحه‌ها — late: کارت «سفارش‌های بررسی‌نشده» باید بتواند تب را عوض کند
+  late final List<Widget> _screens = [
+    HomeScreen(onOpenOrders: () => _selectTab(3)),
     const InventoryScreen(),
     const ReportsScreen(),
     OrdersScreen(), // ← const نداره
@@ -44,6 +44,13 @@ class _WarehouseKeeperDashboardScreenState
 
   /// تبهایی که تاکنون باز شدهاند — mount نازک (نخستین بازدید واقعی میسازد)
   final List<bool> _visited = [true, false, false, false];
+
+  void _selectTab(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _visited[index] = true;
+    });
+  }
 
   @override
   void initState() {
@@ -123,6 +130,45 @@ class _WarehouseKeeperDashboardScreenState
           ref.invalidate(keeperInventoryListProvider);
           ref.invalidate(transactionsProvider);
           ref.invalidate(ordersProvider);
+        }
+      },
+      // مدیر دستور خروج/جابه‌جایی جدید صادر کرد — انباردار باید برای اجرا اقدام کند
+      'transfer:created': (data) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('دستور خروج/جابه‌جایی جدید از مدیریت صادر شد'),
+              backgroundColor: _orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      },
+      // سهمیهٔ دستور با اسکن کامل اجرا شد — موجودی/دفتر تراکنش به‌روز می‌شود
+      'transfer:completed': (data) {
+        if (mounted) {
+          ref.invalidate(inventorySummaryProvider);
+          ref.invalidate(keeperInventoryListProvider);
+          ref.invalidate(transactionsProvider);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('دستور خروج/جابه‌جایی کامل اجرا شد'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      // مدیر دستور در انتظار را لغو کرد — دیگر نباید برایش اسکن شود
+      'transfer:canceled': (data) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('یک دستور خروج/جابه‌جایی توسط مدیریت لغو شد'),
+              backgroundColor: Colors.redAccent,
+              duration: Duration(seconds: 3),
+            ),
+          );
         }
       },
     };
@@ -296,10 +342,7 @@ class _WarehouseKeeperDashboardScreenState
         selectedIndex: _selectedIndex,
         items: keeperNavItems,
         fabIcon: Icons.output_rounded,
-        onTap: (i) => setState(() {
-          _selectedIndex = i;
-          _visited[i] = true;
-        }),
+        onTap: _selectTab,
         onAddPressed: () => _openExitMenu(),
       ),
     );

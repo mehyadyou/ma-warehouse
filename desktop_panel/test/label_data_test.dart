@@ -135,6 +135,55 @@ void main() {
       expect(data.modelDisplay, '—');
       expect(data.packageCount, 7);
     });
+
+    group('carrierLabel (نام باربری روی بیجک)', () {
+      test('باربری: نام دقیق باربریِ ثبت‌شده برگردانده می‌شود', () {
+        final data = BadgeData.fromBadge({
+          'orderId': 'x',
+          'sequence': 1,
+          'order': {'shippingMethod': 'باربری', 'carrier': 'باربری امین'},
+        });
+        expect(data.isBarebari, isTrue);
+        expect(data.carrierLabel, 'باربری امین');
+      });
+
+      test('باربری بدون carrier: fallback به «باربری»', () {
+        final data = BadgeData.fromBadge({
+          'orderId': 'x',
+          'sequence': 1,
+          'order': {'shippingMethod': 'باربری', 'carrier': null},
+        });
+        expect(data.carrierLabel, 'باربری');
+      });
+
+      test('تیپاکس: همیشه «تیپاکس» (carrier نادیده گرفته می‌شود)', () {
+        final data = BadgeData.fromBadge({
+          'orderId': 'x',
+          'sequence': 1,
+          'order': {'shippingMethod': 'تیپاکس', 'carrier': 'چیز دیگر'},
+        });
+        expect(data.isTipax, isTrue);
+        expect(data.carrierLabel, 'تیپاکس');
+      });
+
+      test('روش دیگر با carrier: نام carrier', () {
+        final data = BadgeData.fromBadge({
+          'orderId': 'x',
+          'sequence': 1,
+          'order': {'shippingMethod': 'پست', 'carrier': 'پست پیشتاز'},
+        });
+        expect(data.carrierLabel, 'پست پیشتاز');
+      });
+
+      test('بدون هیچ اطلاعاتی: «—»', () {
+        final data = BadgeData.fromBadge({
+          'orderId': 'x',
+          'sequence': 1,
+          'order': <String, dynamic>{},
+        });
+        expect(data.carrierLabel, '—');
+      });
+    });
   });
 
   group('shortOrderId', () {

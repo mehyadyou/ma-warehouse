@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => {
     const update = vi.fn();
     const deleteFn = vi.fn();
     const aggregate = vi.fn();
-    const transaction = vi.fn(async (ops: any[]) => {
-        for (const op of ops) await op;
-    });
-    return { findMany, findUnique, create, update, deleteFn, aggregate, transaction };
+    const outboxCreate = vi.fn();
+    // تراکنش تعاملی: callback را با tx شامل carrier.update و outboxEvent.create صدا می‌زند
+    const transaction = vi.fn(async (fn: (tx: any) => Promise<any>) =>
+        fn({ carrier: { update: mocks.update }, outboxEvent: { create: mocks.outboxCreate } }),
+    );
+    return { findMany, findUnique, create, update, deleteFn, aggregate, transaction, outboxCreate };
 });
 
 vi.mock('../../utils/prisma', () => ({
@@ -173,13 +175,29 @@ describe('carriersService.reorder', () => {
         expect(carriers[1].name).toBe('باربری فارس');
     });
 
-    it('ترتیب ناقص → AppError 400 بدون تراکنش', async () => {
+    it('رویداد زندهٔ carriers:reordered داخل همان تراکنش ساخته می‌شود', async () => {
+        mocks.findMany.mockResolvedValueOnce([{ id: 'c1' }, { id: 'c2' }]);
+        mocks.outboxCreate.mockResolvedValue({ id: 'e1' });
+
+        await carriersService.reorder(['c2', 'c1']);
+
+        expect(mocks.outboxCreate).toHaveBeenCalledWith({
+            data: {
+                aggregate: 'carrier',
+                type: 'carriers:reordered',
+                payload: { ids: ['c2', 'c1'], count: 2 },
+            },
+        });
+    });
+
+    it('ترتیب ناقص → AppError 400 بدون تراکنش و بدون رویداد', async () => {
         mocks.findMany.mockResolvedValueOnce([{ id: 'c1' }, { id: 'c2' }]);
 
         await expect(carriersService.reorder(['c1'])).rejects.toThrow(
             'ترتیب ارسالی با لیست باربری‌ها همخوانی ندارد',
         );
         expect(mocks.transaction).not.toHaveBeenCalled();
+        expect(mocks.outboxCreate).not.toHaveBeenCalled();
     });
 
     it('شناسهٔ ناشناخته در ترتیب → AppError 400 بدون تراکنش', async () => {
@@ -189,6 +207,7 @@ describe('carriersService.reorder', () => {
             'ترتیب ارسالی با لیست باربری‌ها همخوانی ندارد',
         );
         expect(mocks.transaction).not.toHaveBeenCalled();
+        expect(mocks.outboxCreate).not.toHaveBeenCalled();
     });
 });
 

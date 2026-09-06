@@ -83,33 +83,117 @@ export function jalaliToGregorian(jy: number, jm: number, jd: number): Date {
     return new Date(g.gy, g.gm - 1, g.gd, 12);
 }
 
-// تبدیل تاریخ میلادی به شمسی (الگوریتم استاندارد jalaali-js) — فقط برای استخراج سال شمسی
+// تبدیل تاریخ میلادی به شمسی (الگوریتم استاندارد jalaali-js)
+// بر اساس سالِ تحویل (نوروز): اختلافِ روز از نوروز همان سال، ماه/روز شمسی را می‌دهد.
+export function gregorianToJalali(gy: number, gm: number, gd: number): { year: number; month: number; day: number } {
+    const jdn = g2d(gy, gm, gd);
+
+    // حدس اولیه: سال شمسی ≈ سال میلادی − ۶۲۱؛ اگر قبل از نوروز بود یک سال کم کن
+    let jy = gy - 621;
+    const nowruzOf = (j: number) => g2d(jalCal(j, true).gy, 3, jalCal(j, true).march);
+    let nowruz = nowruzOf(jy);
+    if (jdn < nowruz) {
+        jy -= 1;
+        nowruz = nowruzOf(jy);
+    }
+
+    const dayOfYear = jdn - nowruz + 1; // ۱ تا ۳۶۵/۳۶۶
+    let jm: number;
+    let jd: number;
+    if (dayOfYear <= 186) {
+        // شش ماه اول هر کدام ۳۱ روز
+        jm = 1 + Math.floor((dayOfYear - 1) / 31);
+        jd = dayOfYear - 31 * (jm - 1);
+    } else {
+        // ماه‌های ۷ تا ۱۱ سی روزه و اسفند ۲۹/۳۰ روزه
+        const rest = dayOfYear - 186;
+        jm = 7 + Math.floor((rest - 1) / 30);
+        jd = rest - 30 * (jm - 7);
+    }
+    return { year: jy, month: jm, day: jd };
+}
+
+// سال شمسی از روی تاریخ محلیِ همین ماشین (رفتار قبلی حفظ شده)
 export function jalaliYear(date: Date): number {
-    let gy = date.getFullYear();
-    const gm = date.getMonth() + 1;
-    const gd = date.getDate();
+    return gregorianToJalali(date.getFullYear(), date.getMonth() + 1, date.getDate()).year;
+}
 
-    const gDaysInMonth = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    let jy = gy <= 1600 ? 0 : 979;
-    gy -= jy <= 0 ? 621 : 1600;
-    const gy2 = gm > 2 ? gy + 1 : gy;
-    let days = (365 * gy)
-        + Math.floor((gy2 + 3) / 4)
-        - Math.floor((gy2 + 99) / 100)
-        + Math.floor((gy2 + 399) / 400)
-        - 80
-        + gDaysInMonth[gm - 1]!
-        + gd;
+// اجزای تاریخِ میلادیِ «دیوارِ ساعتِ تهران» از روی یک لحظه — روزِ کسب‌وکارِ کاربر
+function tehranGregorianParts(date: Date): { year: number; month: number; day: number } {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Tehran',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date);
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return { year: get('year'), month: get('month'), day: get('day') };
+}
 
-    jy += 33 * Math.floor(days / 12053);
-    days %= 12053;
-    jy += 4 * Math.floor(days / 1461);
-    days %= 1461;
-    jy += Math.floor((days - 1) / 365);
-    if (days > 365) days = (days - 1) % 365;
+/**
+ * کلیدِ روزِ شمسیِ تهران برای یک لحظه — سال*۱۰۰۰۰ + ماه*۱۰۰ + روز (مثل 14050614).
+ * مبنای «شمارهٔ روزانهٔ سفارش» (هر روز از ۱) است تا مرزِ روز با روزِ کاریِ کاربر یکی باشد.
+ */
+export function jalaliDayKey(date: Date): number {
+    const g = tehranGregorianParts(date);
+    const j = gregorianToJalali(g.year, g.month, g.day);
+    return j.year * 10000 + j.month * 100 + j.day;
+}
 
-    const jm = days < 186 ? 1 + Math.floor(days / 31) : 7 + Math.floor((days - 186) / 30);
-    const jd = 1 + (days < 186 ? days % 31 : (days - 186) % 30);
+// ساعتِ کاملِ «دیوارِ ساعتِ تهران» از یک لحظه — برای ساختِ مرزِ روز
+function tehranWallClock(date: Date): {
+    year: number; month: number; day: number;
+    hour: number; minute: number; second: number;
+} {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Tehran',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+    }).formatToParts(date);
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return {
+        year: get('year'), month: get('month'), day: get('day'),
+        hour: get('hour'), minute: get('minute'), second: get('second'),
+    };
+}
 
-    return jy;
+/**
+ * لحظه‌ای که ساعتِ تهران ۰۰:۰۰:۰۰ِ تاریخِ میلادیِ داده‌شده را نشان می‌دهد.
+ * مستقل از منطقهٔ زمانیِ سرور — با حدسِ UTC+3:30 شروع و با Intl تصحیح می‌شود
+ * (تغییرات DST تاریخی تهران را هم پوشش می‌دهد).
+ */
+function tehranMidnight(gy: number, gm: number, gd: number): Date {
+    const expected = new Date(Date.UTC(gy, gm - 1, gd));
+    const ey = expected.getUTCFullYear();
+    const em = expected.getUTCMonth() + 1; // نرمال‌سازی سرریزِ روز (مثل gd+1 بعد از روز آخرِ ماه)
+    const ed = expected.getUTCDate();
+    let t = new Date(Date.UTC(gy, gm - 1, gd) - 210 * 60 * 1000); // حدس: ۰۰:۰۰ تهران = ۲۰:۳۰ UTCِ روز قبل
+    for (let i = 0; i < 3; i++) {
+        const w = tehranWallClock(t);
+        if (w.year === ey && w.month === em && w.day === ed && w.hour === 0 && w.minute === 0 && w.second === 0) break;
+        const gotSec = w.hour * 3600 + w.minute * 60 + w.second;
+        t = new Date(t.getTime() - gotSec * 1000);
+    }
+    return t;
+}
+
+/**
+ * بازهٔ [start, end) یک روزِ شمسی بر اساس ساعتِ تهران — مستقل از منطقهٔ زمانیِ سرور.
+ * مرزِ روز همان روزِ کاریِ کاربر است (نه UTC)، پس «فعالیتِ ۱۴۰۵/۰۶/۱۵» دقیقاً یعنی
+ * هر چه از نیمه‌شبِ تهرانِ آن روز تا نیمه‌شبِ بعد ثبت شده.
+ */
+export function tehranDayRange(jy: number, jm: number, jd: number): { start: Date; end: Date } {
+    // ظهرِ محلی برای استخراجِ تاریخِ میلادیِ درست از الگوریتمِ jalaali
+    const noon = jalaliToGregorian(jy, jm, jd);
+    const gy = noon.getFullYear();
+    const gm = noon.getMonth() + 1;
+    const gd = noon.getDate();
+    const start = tehranMidnight(gy, gm, gd);
+    const end = tehranMidnight(gy, gm, gd + 1); // سرریزِ روز در Date.UTC نرمال می‌شود
+    return { start, end };
 }

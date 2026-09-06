@@ -57,9 +57,11 @@ type TargetMatch =
   | { multiple: TargetInfo[] };
 
 /**
- * پیدا کردن تنها هدف فعالِ منطبق (سفارش یا دستور جابه‌جایی/خروج) برای اتصال خودکار خروج.
+ * پیدا کردن هدف فعالِ منطبق (سفارش یا دستور جابه‌جایی/خروج) برای اتصال خروج.
  * ملاک تطابق فقط «محصول + مدل» است؛ سریال/QR در مجوز خروج هیچ نقشی ندارد.
- * برمی‌گرداند: {kind, id} یا 'none' یا {multiple: [اطلاعات هر هدف]} برای انتخاب صریح توسط انباردار.
+ * سفارش‌ها و دستورهای مدیر با هم سنجیده می‌شوند؛ انباردار باید برای هر خروج مشخص کند
+ * برای کدام هدف (سفارش/دستور) است — نه فقط وقتی سفارشی منطبق نبود.
+ * برمی‌گرداند: {kind, id} (فقط یک هدف) یا 'none' یا {multiple: [اطلاعات هر هدف]} برای انتخاب صریح توسط انباردار.
  */
 async function findSingleMatchingTarget(
   carton: CartonWithRefs,
@@ -121,10 +123,8 @@ async function findSingleMatchingTarget(
     }
   }
 
-  if (orderCandidates.length === 1) return { kind: 'order', id: orderCandidates[0].id };
-  if (orderCandidates.length > 1) return { multiple: orderCandidates };
-
-  // دستور جابه‌جایی/خروج مدیر (دوفازی) — فقط وقتی سفارشی منطبق نبود
+  // دستور جابه‌جایی/خروج مدیر (دوفازی) — همیشه همراه سفارش‌ها سنجیده می‌شود تا انباردار
+  // بتواند خروج را صریحاً به یک دستور متصل کند حتی وقتی سفارشِ منطبق هم وجود دارد
   const transfers =
     (await prisma.transfer.findMany({
       where: {
@@ -158,14 +158,21 @@ async function findSingleMatchingTarget(
     }
   }
 
-  if (transferCandidates.length === 1) return { kind: 'transfer', id: transferCandidates[0].id };
-  if (transferCandidates.length > 1) return { multiple: transferCandidates };
+  // سفارش‌ها و دستورها را با هم در نظر بگیر: یک هدف → اتصال خودکار؛ بیش از یک هدف →
+  // انتخاب صریح انباردار (پیکر «کدام هدف؟» هر دو گروه را نمایش می‌دهد)
+  const targets: TargetInfo[] = [...orderCandidates, ...transferCandidates];
+  if (targets.length === 1) {
+    const only = targets[0];
+    return { kind: only.kind, id: only.id };
+  }
+  if (targets.length > 1) return { multiple: targets };
   return 'none';
 }
 
 /**
- * پیدا کردن تنها هدف فعالِ منطبق برای خروج دستی (بدون QR): محصول + مدل + تعداد.
+ * پیدا کردن هدف فعالِ منطبق برای خروج دستی (بدون QR): محصول + مدل + تعداد.
  * ملاک فقط «محصول + مدل» است؛ ظرفیتِ باقی‌مانده باید حداقل برابرِ تعدادِ درخواستی باشد.
+ * سفارش‌ها و دستورهای مدیر با هم سنجیده می‌شوند — انباردار هدف (سفارش/دستور) را انتخاب می‌کند.
  */
 async function findSingleManualTarget(
   productId: string,
@@ -221,10 +228,8 @@ async function findSingleManualTarget(
     }
   }
 
-  if (orderCandidates.length === 1) return { kind: 'order', id: orderCandidates[0].id };
-  if (orderCandidates.length > 1) return { multiple: orderCandidates };
-
-  // دستور جابه‌جایی/خروج مدیر (دوفازی) — فقط وقتی سفارشی منطبق نبود
+  // دستور جابه‌جایی/خروج مدیر (دوفازی) — همیشه همراه سفارش‌ها سنجیده می‌شود تا انباردار
+  // بتواند خروج را صریحاً به یک دستور متصل کند حتی وقتی سفارشِ منطبق هم وجود دارد
   const transfers =
     (await prisma.transfer.findMany({
       where: {
@@ -257,8 +262,14 @@ async function findSingleManualTarget(
     }
   }
 
-  if (transferCandidates.length === 1) return { kind: 'transfer', id: transferCandidates[0].id };
-  if (transferCandidates.length > 1) return { multiple: transferCandidates };
+  // سفارش‌ها و دستورها را با هم در نظر بگیر: یک هدف → اتصال خودکار؛ بیش از یک هدف →
+  // انتخاب صریح انباردار (پیکر «کدام هدف؟» هر دو گروه را نمایش می‌دهد)
+  const targets: TargetInfo[] = [...orderCandidates, ...transferCandidates];
+  if (targets.length === 1) {
+    const only = targets[0];
+    return { kind: only.kind, id: only.id };
+  }
+  if (targets.length > 1) return { multiple: targets };
   return 'none';
 }
 
@@ -298,6 +309,7 @@ async function assignDriverToOrder(
         where: { id: orderId },
         select: {
             id: true, orderNumber: true, warehouseId: true, status: true,
+            city: true, receiverName: true,
             delivery: { select: { status: true, driverId: true } },
         },
     });
@@ -337,6 +349,30 @@ async function assignDriverToOrder(
         where: { id: warehouseId },
         select: { name: true },
     });
+
+    // اگر بار قبلاً به رانندهٔ دیگری تخصیص یافته بود و حالا عوض می‌شود، رانندهٔ قبلی باید
+    // همان لحظه بداند بار از او گرفته شده (پنلش پاک می‌شود + اعلان هشدار)
+    if (isChange && prevDriverId) {
+        await tx.outboxEvent.create({
+            data: {
+                aggregate: 'order',
+                type: 'order:driver:unassigned',
+                payload: {
+                    orderId,
+                    orderNumber: order.orderNumber,
+                    driverId: prevDriverId,
+                    newDriverId: driver.id,
+                    newDriverName: driver.name,
+                    warehouseId,
+                    warehouseName: warehouse?.name ?? '',
+                    city: order.city ?? null,
+                    receiverName: order.receiverName ?? null,
+                    reassignedAt: new Date().toISOString(),
+                },
+            },
+        });
+    }
+
     await tx.outboxEvent.create({
         data: {
             aggregate: 'order',
@@ -348,6 +384,8 @@ async function assignDriverToOrder(
                 driverName: driver.name,
                 warehouseId,
                 warehouseName: warehouse?.name ?? '',
+                city: order.city ?? null,
+                receiverName: order.receiverName ?? null,
                 assignedAt: new Date().toISOString(),
             },
         },
@@ -558,6 +596,28 @@ export const scanOutService = {
               },
             },
           });
+
+          // تکمیل کامل سهمیهٔ دستور — یک اعلان تجمیعی برای مدیر و انبارهای مبدأ/مقصد
+          if (completed) {
+            await tx.outboxEvent.create({
+              data: {
+                aggregate: 'transfer',
+                type: 'transfer:completed',
+                payload: {
+                  transferId: transfer.id,
+                  kind: transfer.toWarehouseId ? 'transfer' : 'exit',
+                  fromWarehouseId: warehouseId,
+                  fromWarehouseName: warehouse?.name ?? '',
+                  toWarehouseId: transfer.toWarehouseId ?? null,
+                  toWarehouseName: dest?.name ?? null,
+                  productName: carton.product.name,
+                  modelName: carton.model?.name ?? null,
+                  quantity: transfer.quantity,
+                  completedAt: new Date().toISOString(),
+                },
+              },
+            });
+          }
           return;
         }
 
@@ -908,6 +968,38 @@ export const scanOutService = {
             });
           }
           completedTransfer = await completeTransferIfDone(tx, transfer.id, executed + quantity);
+
+          // تکمیل کامل سهمیهٔ دستور — یک اعلان تجمیعی برای مدیر و انبارهای مبدأ/مقصد
+          if (completedTransfer) {
+            const srcName = (await tx.warehouse.findUnique({
+              where: { id: warehouseId },
+              select: { name: true },
+            }))?.name ?? '';
+            const dstName = transfer.toWarehouseId
+              ? (await tx.warehouse.findUnique({
+                  where: { id: transfer.toWarehouseId },
+                  select: { name: true },
+                }))?.name ?? null
+              : null;
+            await tx.outboxEvent.create({
+              data: {
+                aggregate: 'transfer',
+                type: 'transfer:completed',
+                payload: {
+                  transferId: transfer.id,
+                  kind: transfer.toWarehouseId ? 'transfer' : 'exit',
+                  fromWarehouseId: warehouseId,
+                  fromWarehouseName: srcName,
+                  toWarehouseId: transfer.toWarehouseId ?? null,
+                  toWarehouseName: dstName,
+                  productName: product.name,
+                  modelName: model?.name ?? null,
+                  quantity: transfer.quantity,
+                  completedAt: new Date().toISOString(),
+                },
+              },
+            });
+          }
         } else if (driverId) {
           // ── سفارش + رانندهٔ انتخاب‌شده: این بار برای همان راننده تعریف می‌شود ──
           const order = await tx.order.findUnique({
@@ -1035,6 +1127,11 @@ export const scanOutService = {
             },
           });
         }
+        // نام انبار برای اعلان‌های دقیق به مدیر (پیام خروج دستی)
+        const manualWarehouseName = (await tx.warehouse.findUnique({
+          where: { id: warehouseId },
+          select: { name: true },
+        }))?.name ?? '';
         await tx.outboxEvent.create({
           data: {
             aggregate: target.kind === 'order' ? 'order' : 'carton',
@@ -1043,6 +1140,7 @@ export const scanOutService = {
               orderId: target.kind === 'order' ? target.id : null,
               transferId: target.kind === 'transfer' ? target.id : null,
               warehouseId,
+              warehouseName: manualWarehouseName,
               productName: product.name,
               modelName: model?.name ?? null,
               quantity,

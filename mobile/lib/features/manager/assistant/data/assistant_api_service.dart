@@ -15,6 +15,18 @@ class AssistantApiService {
   final Dio _dio = DioClient().dio;
   final SocketService _socket;
 
+  /// لغو درخواست در جریان — سوکت cleanup و HTTP cancelToken
+  CancelToken? _cancelToken;
+  void Function()? _socketCleanup;
+
+  /// متوقف کردن پردازش در جریان
+  void stop() {
+    _socketCleanup?.call();
+    _socketCleanup = null;
+    _cancelToken?.cancel('stopped by user');
+    _cancelToken = null;
+  }
+
   /// ارسال پیام؛ با رسیدن هر قطعه onToken، با هر به‌روزرسانی وضعیت onStatus،
   /// با پایان پاسخ onDone و با خطا onError صدا زده می‌شود.
   Future<void> ask({
@@ -78,6 +90,7 @@ class AssistantApiService {
         _socket.on('assistant:status', onStatusEvent);
         _socket.on('assistant:done', onDoneEvent);
         _socket.on('assistant:error', onErrorEvent);
+        _socketCleanup = cleanup;
         _socket.emit('assistant:ask', {
           'message': message,
           'history': history
@@ -86,6 +99,7 @@ class AssistantApiService {
         });
       } catch (_) {
         cleanup();
+        _socketCleanup = null;
         onError('ارتباط با دستیار برقرار نشد؛ دوباره تلاش کنید');
       }
       return;
@@ -106,6 +120,8 @@ class AssistantApiService {
     void Function(String error) onError,
   ) async {
     try {
+      final ct = CancelToken();
+      _cancelToken = ct;
       final response = await _dio.post<ResponseBody>(
         '/manager/assistant/chat/stream',
         data: {
@@ -119,6 +135,7 @@ class AssistantApiService {
           // بین هر قطعه ریست می‌شود؛ استدلال طولانی قطع نمی‌شود
           receiveTimeout: const Duration(minutes: 5),
         ),
+        cancelToken: ct,
       );
 
       final stream = response.data?.stream;

@@ -9,6 +9,7 @@ import '../models/keeper_driver_model.dart';
 import '../models/keeper_inventory_model.dart';
 import '../models/keeper_inventory_summary_model.dart';
 import '../models/keeper_order_model.dart';
+import '../models/keeper_report_model.dart';
 import '../models/keeper_product_model.dart';
 import '../models/keeper_transaction_model.dart';
 import '../models/keeper_warehouse_model.dart';
@@ -223,6 +224,19 @@ class WarehouseKeeperApiService {
       data: {'orderId': orderId, 'driverId': driverId},
     );
     return Map<String, dynamic>.from(res.data);
+  }
+
+  /// گزارش عملکرد انباردار — نمودارها + فیلتر بازه و محدوده (فعالیت‌های من / کل انبار)
+  Future<KeeperReportsData> getReports({
+    required String from,
+    required String to,
+    String scope = 'mine',
+  }) async {
+    final res = await _dio.get(
+      '/warehouse-keeper/reports',
+      queryParameters: {'from': from, 'to': to, 'scope': scope},
+    );
+    return KeeperReportsData.fromJson(Map<String, dynamic>.from(res.data));
   }
 
   /// کارتن‌های خروج‌زده‌شده برای یک سفارش خاص — نمایش پیشرفت خروج

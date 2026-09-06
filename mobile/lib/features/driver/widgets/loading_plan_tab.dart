@@ -29,7 +29,7 @@ class LoadingPlanTab extends ConsumerWidget {
         final children = <Widget>[
           _buildHeader(plan.length, pending.length),
           if (pending.isNotEmpty) ...[_buildPendingHeader(pending.length), ...pending.map((p) => _buildPendingCard(p as Map<String, dynamic>))],
-          if (plan.isNotEmpty) ...[const SizedBox(height: 4), ...plan.asMap().entries.map((e) => _buildPlanCard(e.value as Map<String, dynamic>, e.key))],
+          if (plan.isNotEmpty) ...[const SizedBox(height: 4), ...plan.asMap().entries.map((e) => _buildPlanCard(e.value as Map<String, dynamic>, e.key, isLast: e.key == plan.length - 1))],
         ];
 
         return RefreshIndicator(
@@ -71,7 +71,7 @@ class LoadingPlanTab extends ConsumerWidget {
             Text(
               pendingCount > 0
                   ? 'و $pendingCount سفارش در انتظار خروج از انبار'
-                  : 'به ترتیب صف بارگیری: از بالا نزدیک‌ترین، اول بار زده می‌شود',
+                  : 'به ترتیب صف بارگیری: از بالا دورترین، اول بار زده می‌شود؛ نزدیک‌ترین در پایان',
               style: TextStyle(
                 color: pendingCount > 0 ? _orange : Colors.white.withOpacity(0.5),
                 fontSize: 11,
@@ -181,7 +181,7 @@ class LoadingPlanTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildPlanCard(Map<String, dynamic> item, int index) {
+  Widget _buildPlanCard(Map<String, dynamic> item, int index, {bool isLast = false}) {
     final sequence = item['sequence'] ?? index + 1;
     final carrier = item['carrier'] ?? 'نامشخص';
     final city = item['city'];
@@ -273,6 +273,17 @@ class LoadingPlanTab extends ConsumerWidget {
               const SizedBox(width: 6),
               Text('اولین بار — ته وانت',
                   style: TextStyle(color: _green.withOpacity(0.7), fontSize: 11)),
+            ]),
+          ),
+        // Last item indicator — نزدیک‌ترین باربری آخر از همه بار زده می‌شود
+        if (isLast)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(children: [
+              Icon(Icons.info_outline_rounded, size: 14, color: _orange.withOpacity(0.7)),
+              const SizedBox(width: 6),
+              Text('آخرین بار — نزدیک‌ترین',
+                  style: TextStyle(color: _orange.withOpacity(0.85), fontSize: 11)),
             ]),
           ),
       ]),

@@ -42,6 +42,28 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
   String? _assignedOrderId;
   String? _assignedDriverName;
 
+  /// کدی (QR/سریال) که همین الان پردازش شده — تا وقتی دوربین هنوز همان کد را می‌بیند،
+  /// اسکنِ تکراریِ همان کد (بعد از خطا/موفقیت یا بستن پیکر) دوباره اجرا نشود
+  String? _lastHandledCode;
+  DateTime? _lastHandledAt;
+
+  /// آیا این کد همان کدی است که چند لحظه قبل پردازش شده؟ (جلوگیری از چرخهٔ
+  /// «خطا → پاپ‌آپ گزینه‌ها» وقتی همان QR جلوی دوربین مانده)
+  bool _isHandledRecently(String? raw, String? serial) {
+    final code = raw ?? serial;
+    final at = _lastHandledAt;
+    if (code == null || _lastHandledCode == null || code != _lastHandledCode || at == null) {
+      return false;
+    }
+    return DateTime.now().difference(at) < const Duration(seconds: 4);
+  }
+
+  void _markHandled(String? code) {
+    if (code == null) return;
+    _lastHandledCode = code;
+    _lastHandledAt = DateTime.now();
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -52,12 +74,14 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
     if (!_scanning || _processing) return;
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || !raw.startsWith('MA|')) return;
+    if (_isHandledRecently(raw, null)) return;
     await _processScan(raw, null);
   }
 
   /// اسکن سریال دستی (فیلد بالای صفحه)
   Future<void> _scanOutSerial(String value) async {
     if (value.trim().isEmpty || _processing) return;
+    if (_isHandledRecently(null, value.trim())) return;
     await _processScan(null, value.trim());
   }
 
@@ -65,6 +89,7 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
   /// وقتی سرور چند هدف فعال برمی‌گرداند (candidates)، برگهٔ انتخاب هدف باز می‌شود
   /// و همان اسکن با هدفِ انتخاب‌شده دوباره ارسال می‌شود.
   Future<void> _processScan(String? raw, String? serial, {ScanOutTargetModel? target}) async {
+    _markHandled(raw ?? serial);
     setState(() { _scanning = false; _processing = true; });
     try {
       final data = await (serial != null
@@ -78,14 +103,17 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
               orderId: target?.kind == 'order' ? target!.id : widget.orderId,
               transferId: target?.kind == 'transfer' ? target!.id : widget.transferId,
             ));
+      // پنجرهٔ نادیده‌گیری از لحظهٔ نتیجه هم تازه شود تا دوربین همان کد را
+      // بعد از از سرگیری خودکار دوباره اسکن نکند
+      _markHandled(raw ?? serial);
       _handleScanResult(data);
     } on DioException catch (e) {
       await _handleScanError(e, raw, serial);
     }
   }
 
-  /// خطای اسکن: اگر سرور لیست هدف‌های ممکن (candidates) را داده، برگهٔ انتخاب باز می‌شود؛
-  /// در غیر این صورت کارت خطا + از سرگیری خودکار اسکن.
+  /// خطای اسکن: اگر سرور لیست هدف‌های ممکن (candidates) را داده، مستقیم برگهٔ انتخاب
+  /// باز می‌شود (بدون نمایش کارت خطا)؛ در غیر این صورت کارت خطا + از سرگیری خودکار اسکن.
   Future<void> _handleScanError(DioException e, String? raw, String? serial) async {
     if (!mounted) return;
     final body = e.response?.data;
@@ -96,13 +124,12 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
             .toList()
         : <ScanOutTargetModel>[];
 
-    setState(() {
-      _lastResult = _ScanResult(valid: false, message: friendlyError(e));
-      _processing = false;
-    });
-
     if (rawCandidates.isNotEmpty) {
-      // چند هدف فعال — انباردار باید انتخاب کند؛ در این مدت تایمر خودکار روشن نمی‌شود
+      // چند هدف فعال — بدون فلش خطا، فقط پیکر «کدام هدف؟» باز می‌شود تا انباردار انتخاب کند
+      setState(() {
+        _lastResult = null;
+        _processing = false;
+      });
       String productLabel = '';
       final transfer = rawCandidates.where((c) => c.kind == 'transfer').firstOrNull;
       if (transfer != null) {
@@ -129,11 +156,20 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
         await _processScan(raw, serial, target: picked);
         return;
       }
-      // انصراف — برگرد به حالت اسکن
+      // انصراف — همان کد هنوز جلوی دوربین است؛ تا چند لحظه نادیده گرفته شود تا
+      // پیکر با همان QRِ تکراری بلافاصله دوباره باز نشود
+      _markHandled(raw ?? serial);
       setState(() { _scanning = true; _lastResult = null; });
       return;
     }
 
+    setState(() {
+      _lastResult = _ScanResult(valid: false, message: friendlyError(e));
+      _processing = false;
+    });
+    // خطاهای عادی (مثل «قبلاً خروج داده شده») هم پنجرهٔ نادیده‌گیری را تازه می‌کنند
+    // تا وقتی کارتن از جلوی دوربین برداشته می‌شود، همان کد دوباره اجرا نشود
+    _markHandled(raw ?? serial);
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) setState(() { _scanning = true; _lastResult = null; });
     });

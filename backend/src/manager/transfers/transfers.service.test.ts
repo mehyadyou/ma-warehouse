@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
         transaction: { create: vi.fn().mockResolvedValue({}) },
         transfer: { create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: 't1', createdAt: new Date('2026-01-01'), ...data })) },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
+        outboxEvent: { create: vi.fn().mockResolvedValue({}) },
         $queryRaw: vi.fn(),
     };
     return {
@@ -31,6 +32,7 @@ vi.mock('../../utils/prisma', () => ({
         },
         carton: { count: vi.fn().mockResolvedValue(0) },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
+        outboxEvent: { create: vi.fn().mockResolvedValue({}) },
         $queryRaw: vi.fn().mockResolvedValue([]),
     },
 }));
@@ -107,6 +109,25 @@ describe('transfersService.createTransfer - مسیر کارتنی', () => {
         expect(mocks.tx.activityLog.create).toHaveBeenCalledWith({
             data: expect.objectContaining({ type: 'product_transfer' }),
         });
+        // انباردار مبدأ/مقصد باید از دستور تازه باخبر شوند (رویداد تراکنشی)
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'transfer',
+                    type: 'transfer:created',
+                    payload: expect.objectContaining({
+                        transferId: 't1',
+                        kind: 'transfer',
+                        fromWarehouseId: 'wh1',
+                        fromWarehouseName: 'انبار تهران',
+                        toWarehouseId: 'wh2',
+                        toWarehouseName: 'انبار کرج',
+                        quantity: 21,
+                        status: 'PENDING',
+                    }),
+                }),
+            })
+        );
         expect(result.status).toBe('PENDING');
         expect(result.executedUnits).toBe(0);
         expect(result.toWarehouseId).toBe('wh2');
@@ -183,6 +204,16 @@ describe('transfersService.createTransfer - مسیر لِگاسی (بدون کا
         expect(mocks.tx.$queryRaw).toHaveBeenCalledOnce();
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
         expect(mocks.tx.transaction.create).toHaveBeenCalledTimes(2);
+        // مسیر لِگاسی: دستور همان لحظه DONE شده — رویداد با status DONE تا انبارها باخبر شوند
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'transfer',
+                    type: 'transfer:created',
+                    payload: expect.objectContaining({ kind: 'transfer', status: 'DONE', quantity: 10 }),
+                }),
+            })
+        );
         expect(result.toWarehouseId).toBe('wh2');
     });
 
@@ -274,9 +305,12 @@ describe('transfersService.cancelTransfer', () => {
         vi.mocked(prisma.transfer.update).mockResolvedValue({} as any);
     });
 
-    it('لغو دستور PENDING بدون اسکن → CANCELED + لاگ', async () => {
+    it('لغو دستور PENDING بدون اسکن → CANCELED + لاگ + اعلان به انباردارها', async () => {
         vi.mocked(prisma.transfer.findUnique).mockResolvedValue({
             id: 't1', status: 'PENDING', toWarehouseId: null, quantity: 10,
+            fromWarehouseId: 'wh1', productId: 'p1',
+            fromWarehouse: { name: 'انبار تهران' },
+            product: { name: 'کالای A' },
         } as any);
 
         await transfersService.cancelTransfer('t1', 'u1');
@@ -287,6 +321,22 @@ describe('transfersService.cancelTransfer', () => {
         });
         expect(prisma.activityLog.create).toHaveBeenCalledWith(
             expect.objectContaining({ data: expect.objectContaining({ type: 'product_exit' }) }),
+        );
+        expect(prisma.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'transfer',
+                    type: 'transfer:canceled',
+                    payload: expect.objectContaining({
+                        transferId: 't1',
+                        kind: 'exit',
+                        fromWarehouseId: 'wh1',
+                        fromWarehouseName: 'انبار تهران',
+                        productName: 'کالای A',
+                        quantity: 10,
+                    }),
+                }),
+            })
         );
     });
 

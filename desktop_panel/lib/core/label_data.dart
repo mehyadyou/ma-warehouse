@@ -223,6 +223,17 @@ class BadgeData {
   bool get isBarebari => shippingMethod.trim() == 'باربری';
   bool get missingReceiver => receiverName.isEmpty;
 
+  /// نام باربری/روش ارسال برای نمایش روی برگهٔ بیجک — عیناً معادلِ
+  /// `badgeCarrierLabel` در بک‌اند (orders.service.ts):
+  /// تیپاکس → «تیپاکس» · باربری → نام دقیق باربریِ ثبت‌شده (یا «باربری» اگر ثبت نشده)
+  String get carrierLabel {
+    final method = shippingMethod.trim();
+    final c = carrier.trim();
+    if (method == 'تیپاکس') return 'تیپاکس';
+    if (method == 'باربری') return c.isNotEmpty ? c : 'باربری';
+    return c.isNotEmpty ? c : (method.isEmpty ? '—' : method);
+  }
+
   /// برچسب نوع بسته از پنل مدیریت (کارتن/کیسه/…) — پیش‌فرض «کارتن»
   String get packageLabel {
     final t = packageType.trim();

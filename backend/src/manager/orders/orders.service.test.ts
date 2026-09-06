@@ -25,7 +25,11 @@ beforeEach(() => {
 function makeTx(overrides: Record<string, any> = {}) {
     return {
         $queryRaw: vi.fn(),
-        order: { create: vi.fn().mockResolvedValue({}), delete: vi.fn().mockResolvedValue({}) },
+        order: {
+            create: vi.fn().mockResolvedValue({}),
+            delete: vi.fn().mockResolvedValue({}),
+            count: vi.fn().mockResolvedValue(0),
+        },
         orderItem: {
             deleteMany: vi.fn().mockResolvedValue({}),
             createMany: vi.fn().mockResolvedValue({}),
@@ -154,6 +158,22 @@ describe('ordersService.createOrder', () => {
             expect.any(Function),
             expect.objectContaining({ isolationLevel: 'Serializable' }),
         );
+    });
+
+    it('شمارهٔ سفارش روزانه است: تعداد سفارش‌های همان روز + ۱ (اولِ هر روز از ۱)', async () => {
+        const tx = await runCreate(makeTx(), [
+            'wh1', 'user1', [{ productId: 'p1', quantity: 1 }], 'باربری',
+            undefined, undefined, undefined, undefined, undefined,
+            'فرستنده', 'گیرنده',
+        ]);
+
+        const createData = tx.order.create.mock.calls[0][0].data;
+        // شمارش بر اساس کلیدِ روزِ شمسیِ امروز انجام می‌شود
+        expect(tx.order.count).toHaveBeenCalledWith({
+            where: { orderDay: expect.any(Number) },
+        });
+        expect(createData.orderDay).toEqual(expect.any(Number));
+        expect(createData.orderNumber).toBe(1); // count موک = ۰ → اولین سفارش روز
     });
 
     it('badge عکسِ اطلاعات ارسال را نگه می‌دارد (تیپاکس با همهٔ فیلدها)', async () => {

@@ -16,7 +16,10 @@ import { transfersController } from './transfers/transfers.controller';
 import { createTransferSchema } from './transfers/transfers.schema';
 import { deliveryInboxController } from './delivery_inbox/delivery_inbox.controller';
 import { assistantController } from './assistant/assistant.controller';
+import { assistantConfigController } from './assistant/assistant-config.controller';
 import { assistantChatSchema } from './assistant/assistant.schema';
+import { assistantConfigSchema, assistantConfigTestSchema } from './assistant/assistant-config.service';
+import { productHistoryController } from './product_history/product-history.controller';
 
 const router = Router();
 
@@ -107,5 +110,15 @@ router.post(
     validate(assistantChatSchema),
     assistantController.chatStream,
 );
+
+// ── Product History (سابقهٔ کامل محصولات از ابتدای سیستم) ──
+router.get('/product-history', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:ph' }), productHistoryController.list);
+router.get('/product-history/:id', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:phd' }), productHistoryController.detail);
+
+// ── Assistant Model Config (پیکربندی مدل دستیار — از تنظیمات مدیریت) ──
+router.get('/assistant/config', assistantConfigController.get);
+router.put('/assistant/config', validate(assistantConfigSchema), assistantConfigController.update);
+router.delete('/assistant/config', assistantConfigController.reset);
+router.post('/assistant/config/test', validate(assistantConfigTestSchema), assistantConfigController.test);
 
 export const managerRoutes = router;

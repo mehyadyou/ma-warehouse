@@ -240,7 +240,10 @@ model SerialSequence {
 
 model Order {
   id             String      @id @default(uuid())
-  orderNumber    Int         @unique @default(autoincrement())
+  /// شمارهٔ روزانهٔ سفارش — از اول هر روزِ شمسی (کلید روز در orderDay) از ۱ شماره می‌خورد
+  orderNumber    Int
+  /// کلید روزِ شمسیِ ساخت سفارش (yyyymmdd) — مبنای شمارشِ روزانهٔ orderNumber
+  orderDay       Int?
   warehouseId    String
   warehouse      Warehouse   @relation(fields: [warehouseId], references: [id])
   status         OrderStatus @default(PENDING)
@@ -264,6 +267,7 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  @@unique([orderDay, orderNumber])
   @@index([status, createdAt(sort: Desc)])
   @@index([warehouseId, status])
   @@index([createdById])
@@ -452,4 +456,23 @@ model RefreshToken {
   createdAt  DateTime  @default(now())
 
   @@index([userId])
+}
+
+/// پیکربندی مدل هوش مصنوعی دستیار مدیر — یک ردیف تکی (id='default')
+/// که از منوی تنظیمات مدیریت قابل ویرایش است تا مدل بدون تغییر کد/env عوض شود.
+/// وقتی ردیفی وجود ندارد، دستیار به مقادیر پیش‌فرض env (ZAI_*) برمی‌گردد.
+model AssistantConfig {
+  id        String   @id @default("default")
+  /// نام دلخواه برای نمایش (مثلاً «GLM-4.7-Flash»)
+  name      String?
+  /// آدرس پایهٔ سازگار با OpenAI — مثل https://api.z.ai/api/paas/v4
+  baseUrl   String
+  /// کلید API — خالی یعنی استفاده از کلید env (ZAI_API_KEY) یا بدون کلید برای مدل‌های محلی
+  apiKey    String?
+  model     String
+  maxTokens Int      @default(8000)
+  /// حالت فکرکردن (thinking) — افزونهٔ مخصوص Z.AI؛ برای سرویس‌دهنده‌های دیگر خاموش شود
+  thinking  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

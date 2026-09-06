@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { AppError } from '../../common/exceptions/AppError';
 import { writeAudit } from '../../utils/audit';
 import { runSerializable } from '../../utils/serializableTx';
+import { jalaliDayKey } from '../../utils/jalali';
 
 const orderInclude = {
     warehouse: { select: { name: true } },
@@ -351,89 +352,110 @@ export const ordersService = {
 
         // چک موجودی + ثبت — داخل یک تراکنش Serializable تا دو ثبت هم‌زمان نتوانند
         // بیش از موجودی واقعی سفارش بدهند (تعارض هم‌زمانی با P2034 → retry خودکار)
-        await runSerializable(async (tx) => {
-            const stockMap = await getProductStock(warehouseId, productIds, tx);
-            for (const item of items) {
-                const available = stockMap.get(item.productId) ?? 0;
-                if (available < item.quantity) {
-                    throw new AppError(`موجودی کافی نیست (موجودی: ${available})`, 400);
-                }
-            }
-
-            const totalUnits = items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0);
-            const itemSnapshot = await badgeItemSnapshot(tx, items);
-
-            await tx.order.create({
-                data: {
-                    id: orderId,
-                    warehouseId,
-                    createdById,
-                    status: 'PENDING',
-                    shippingMethod,
-                    carrier: carrier || null,
-                    city: normalizedCity,
-                    postalCode: normalizedPostal,
-                    address: address || null,
-                    customerPhone: customerPhone || null,
-                    senderName: senderName || null,
-                    senderNationalId: senderNationalId?.trim() || null,
-                    senderPhone: senderPhone?.trim() || null,
-                    receiverName: receiverName || null,
-                    items: {
-                        create: items.map((item) => ({
-                            id: crypto.randomUUID(),
-                            productId: item.productId,
-                            quantity: item.quantity,
-                            model: item.model || null,
-                            modelId: item.modelId || null,
-                            price: item.price ?? null,
-                            exchangeRate: item.exchangeRate ?? null,
-                        })),
-                    },
-                    badges: isBadgeEligible(shippingMethod, carrier) && senderName && receiverName
-                        ? {
-                            create: {
-                                count: totalUnits,
-                                modelName: itemSnapshot.modelName,
-                                packageType: itemSnapshot.packageType,
-                                unitsPerBox: itemSnapshot.unitsPerBox,
-                                senderName,
-                                senderPhone: senderPhone?.trim() || null,
-                                senderNationalId: senderNationalId?.trim() || null,
-                                receiverName,
-                                receiverCity: normalizedCity,
-                                receiverPostalCode: normalizedPostal,
-                                receiverAddress: address || null,
-                                receiverPhone: customerPhone || null,
-                            },
+        // اگر دو ثبتِ هم‌زمانِ یک روز به یک «شمارهٔ روزانه» برسند، تراکنش با P2002 روی
+        // ایندکس orderDay+orderNumber رد شده و کلِ ثبت دوباره اجرا می‌شود تا شمارهٔ درست بگیرد
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await runSerializable(async (tx) => {
+                    const stockMap = await getProductStock(warehouseId, productIds, tx);
+                    for (const item of items) {
+                        const available = stockMap.get(item.productId) ?? 0;
+                        if (available < item.quantity) {
+                            throw new AppError(`موجودی کافی نیست (موجودی: ${available})`, 400);
                         }
-                        : undefined,
-                },
-            });
+                    }
 
-            //ثبت در فعالیت‌های اخیر + رویداد تراکنشی برای اعلان ریل‌تایم به انباردار
-            await tx.activityLog.create({
-                data: {
-                    type: 'order_created',
-                    label: `${senderName ?? 'فرستنده'} → ${receiverName ?? 'گیرنده'}`,
-                    orderId,
-                    userId: createdById,
-                },
-            });
-            await tx.outboxEvent.create({
-                data: {
-                    aggregate: 'order',
-                    type: 'order:created',
-                    payload: {
-                        orderId,
-                        warehouseId,
-                        senderName: senderName ?? null,
-                        receiverName: receiverName ?? null,
-                        createdAt: new Date().toISOString(),
-                    },
-                },
-            });
-        });
+                    // شمارهٔ روزانهٔ سفارش — هر روزِ شمسی (orderDay) شماره از ۱ شروع می‌شود.
+                    // تعداد سفارش‌های همان روز داخل تراکنش خوانده می‌شود (برخورد هم‌زمان → retry بالا)
+                    const orderDay = jalaliDayKey(new Date());
+                    const orderNumber = (await tx.order.count({ where: { orderDay } })) + 1;
+
+                    const totalUnits = items.reduce((sum, item) => sum + Math.max(1, item.quantity || 1), 0);
+                    const itemSnapshot = await badgeItemSnapshot(tx, items);
+
+                    await tx.order.create({
+                        data: {
+                            id: orderId,
+                            warehouseId,
+                            createdById,
+                            status: 'PENDING',
+                            shippingMethod,
+                            carrier: carrier || null,
+                            city: normalizedCity,
+                            postalCode: normalizedPostal,
+                            address: address || null,
+                            customerPhone: customerPhone || null,
+                            senderName: senderName || null,
+                            senderNationalId: senderNationalId?.trim() || null,
+                            senderPhone: senderPhone?.trim() || null,
+                            receiverName: receiverName || null,
+                            orderNumber,
+                            orderDay,
+                            items: {
+                                create: items.map((item) => ({
+                                    id: crypto.randomUUID(),
+                                    productId: item.productId,
+                                    quantity: item.quantity,
+                                    model: item.model || null,
+                                    modelId: item.modelId || null,
+                                    price: item.price ?? null,
+                                    exchangeRate: item.exchangeRate ?? null,
+                                })),
+                            },
+                            badges: isBadgeEligible(shippingMethod, carrier) && senderName && receiverName
+                                ? {
+                                    create: {
+                                        count: totalUnits,
+                                        modelName: itemSnapshot.modelName,
+                                        packageType: itemSnapshot.packageType,
+                                        unitsPerBox: itemSnapshot.unitsPerBox,
+                                        senderName,
+                                        senderPhone: senderPhone?.trim() || null,
+                                        senderNationalId: senderNationalId?.trim() || null,
+                                        receiverName,
+                                        receiverCity: normalizedCity,
+                                        receiverPostalCode: normalizedPostal,
+                                        receiverAddress: address || null,
+                                        receiverPhone: customerPhone || null,
+                                    },
+                                }
+                                : undefined,
+                        },
+                    });
+
+                    // ثبت در فعالیت‌های اخیر + رویداد تراکنشی برای اعلان ریل‌تایم به انباردار
+                    await tx.activityLog.create({
+                        data: {
+                            type: 'order_created',
+                            label: `${senderName ?? 'فرستنده'} → ${receiverName ?? 'گیرنده'}`,
+                            orderId,
+                            userId: createdById,
+                        },
+                    });
+                    await tx.outboxEvent.create({
+                        data: {
+                            aggregate: 'order',
+                            type: 'order:created',
+                            payload: {
+                                orderId,
+                                warehouseId,
+                                senderName: senderName ?? null,
+                                receiverName: receiverName ?? null,
+                                createdAt: new Date().toISOString(),
+                            },
+                        },
+                    });
+                });
+                break;
+            } catch (e) {
+                const isDayNumberConflict =
+                    e instanceof Prisma.PrismaClientKnownRequestError &&
+                    e.code === 'P2002' &&
+                    JSON.stringify(e.meta?.target).includes('orderDay');
+                // فقط تعارضِ شمارهٔ روزانه دوباره تلاش می‌شود؛ بقیهٔ خطاها همان‌طور بالا می‌روند
+                if (!(isDayNumberConflict && attempt < 5)) throw e;
+            }
+        }
 
         const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
         return mapOrder(order);
@@ -617,7 +639,13 @@ export const ordersService = {
                 data: {
                     aggregate: 'order',
                     type: 'order:updated',
-                    payload: { orderId: id, warehouseId: existing.warehouseId, updatedAt: new Date().toISOString() },
+                    payload: {
+                        orderId: id,
+                        warehouseId: existing.warehouseId,
+                        senderName: existing.senderName ?? null,
+                        receiverName: existing.receiverName ?? null,
+                        updatedAt: new Date().toISOString(),
+                    },
                 },
             });
         });

@@ -130,6 +130,19 @@ describe('checkinService.submitCheckin - validation', () => {
             }])
         ).rejects.toThrow('قبلاً مرجوع شده است');
     });
+
+    it('کارتنِ برگشتی که هنوز در انبار است (مرجوعی دوباره بدون خروجِ مجدد) → رد', async () => {
+        (prisma.carton.findMany as any).mockResolvedValue([
+            { serialNumber: 'S1', status: 'IN_STOCK', scannedOutAt: null, entryType: 'RETURNED' },
+        ]);
+
+        await expect(
+            checkinService.submitCheckin('wh1', 'user1', [{
+                productId: 'p1', entryType: 'RETURNED', serialNumber: 'S1',
+                cartonCount: 0, individualCount: 1,
+            }])
+        ).rejects.toThrow('هنوز در انبار موجود است');
+    });
 });
 
 describe('checkinService.submitCheckin - موفقیت', () => {
@@ -205,6 +218,41 @@ describe('checkinService.submitCheckin - موفقیت', () => {
         expect(buildQrForSerial).toHaveBeenCalledWith(
             expect.objectContaining({ serial: 'S1', uuid: expect.any(String) })
         );
+        expect(txFn.carton.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: { serialNumber: 'S1', scannedOutAt: { not: null } },
+                data: { serialNumber: null },
+            })
+        );
+    });
+
+    it('مرجوعیِ دوباره پس از خروجِ مجدد (چرخهٔ دوم همان سریال) → مجاز', async () => {
+        // سریال S1 قبلاً یک بار مرجوعی شده (entryType RETURNED) و دوباره از انبار خارج شده است
+        (prisma.carton.findMany as any).mockResolvedValue([
+            { serialNumber: 'S1', status: 'SHIPPED', scannedOutAt: new Date(), entryType: 'RETURNED' },
+        ]);
+        let txFn: any;
+        (prisma.$transaction as any).mockImplementation(async (cb: any) => {
+            const tx = {
+                carton: { create: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+                transaction: { create: vi.fn().mockResolvedValue({}) },
+                activityLog: { create: vi.fn().mockResolvedValue({}) },
+                outboxEvent: { create: vi.fn().mockResolvedValue({}) },
+                idempotencyKey: { create: vi.fn().mockResolvedValue({}) },
+            };
+            txFn = tx;
+            return await cb(tx);
+        });
+
+        const result = await checkinService.submitCheckin('wh1', 'user1', [{
+            productId: 'p1', entryType: 'RETURNED', serialNumber: 'S1',
+            cartonCount: 0, individualCount: 1,
+        }]);
+
+        // سریال از کارتنِ برگشتیِ خروج‌زده پاک می‌شود و کارتنِ برگشتیِ تازه ساخته می‌شود
+        expect(result.cartons).toHaveLength(1);
+        expect(result.cartons[0].serialNumber).toBe('S1');
+        expect(result.cartons[0].entryType).toBe('RETURNED');
         expect(txFn.carton.updateMany).toHaveBeenCalledWith(
             expect.objectContaining({
                 where: { serialNumber: 'S1', scannedOutAt: { not: null } },

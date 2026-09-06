@@ -22,6 +22,7 @@ import '../models/user_report_model.dart';
 import '../models/shipment_report_model.dart';
 import '../models/transfer_model.dart';
 import '../models/delivery_inbox_item.dart';
+import '../models/product_history_model.dart';
 
 class ManagerApiService {
   final Dio _dio = DioClient().dio;
@@ -267,6 +268,68 @@ class ManagerApiService {
       if (e.response?.statusCode == 404) return null;
       rethrow;
     }
+  }
+
+  /// سابقهٔ کامل محصولات — لیست تجمیعی با فیلترهای دقیق و صفحه‌بندی
+  /// [activityDate] = تاریخِ شمسیِ دقیق (yyyy-mm-dd) — فقط محصولاتی که همان روز فعالیتی داشته‌اند
+  Future<ProductHistoryPage> getProductHistory({
+    int page = 1,
+    int pageSize = 20,
+    String? q,
+    String? warehouseId,
+    String? exitType, // any | carton | individual | none
+    String? serial,
+    String? customerPhone,
+    String? from,
+    String? to,
+    String? activityDate,
+  }) async {
+    final response = await _dio.get(
+      '/manager/product-history',
+      queryParameters: {
+        'page': page,
+        'pageSize': pageSize,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (warehouseId != null && warehouseId.isNotEmpty) 'warehouseId': warehouseId,
+        if (exitType != null && exitType != 'any') 'exitType': exitType,
+        if (serial != null && serial.trim().isNotEmpty) 'serial': serial.trim(),
+        if (customerPhone != null && customerPhone.trim().isNotEmpty)
+          'customerPhone': customerPhone.trim(),
+        if (from != null && from.isNotEmpty) 'from': from,
+        if (to != null && to.isNotEmpty) 'to': to,
+        if (activityDate != null && activityDate.isNotEmpty) 'activityDate': activityDate,
+      },
+    );
+    final data = response.data as Map<String, dynamic>;
+    final pagination = (data['pagination'] as Map?) ?? const {};
+    return ProductHistoryPage(
+      rows: ((data['rows'] as List?) ?? [])
+          .map((r) => ProductHistoryRow.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList(),
+      total: ((pagination['total'] as num?) ?? 0).toInt(),
+      hasMore: pagination['hasMore'] == true,
+    );
+  }
+
+  /// سابقهٔ کامل یک محصول — کارتن‌ها با سریال، تراکنش‌ها، جابه‌جایی/خروج
+  /// [activityDate] = فقط رخدادهای همان روزِ شمسی (yyyy-mm-dd)
+  Future<ProductHistoryDetailModel> getProductHistoryDetail(
+    String productId, {
+    String? warehouseId,
+    String? modelId,
+    String? activityDate,
+  }) async {
+    final response = await _dio.get(
+      '/manager/product-history/$productId',
+      queryParameters: {
+        if (warehouseId != null && warehouseId.isNotEmpty) 'warehouseId': warehouseId,
+        if (modelId != null && modelId.isNotEmpty) 'modelId': modelId,
+        if (activityDate != null && activityDate.isNotEmpty) 'activityDate': activityDate,
+      },
+    );
+    return ProductHistoryDetailModel.fromJson(
+      response.data as Map<String, dynamic>,
+    );
   }
 
   /// لیست ارسالی‌ها (سفارش‌های ثبت‌شده) با صفحه‌بندی و شمارندهٔ وضعیت‌ها

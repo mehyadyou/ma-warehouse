@@ -28,8 +28,19 @@ export enum RealtimeEvents {
   DELIVERY_COMPLETED  = 'delivery:completed',
   ORDER_ASSIGNED      = 'order:assigned',
 
+  // بار از راننده گرفته شد و به رانندهٔ دیگری واگذار شد — پنل رانندهٔ قبلی همان لحظه پاک می‌شود
+  ORDER_UNASSIGNED    = 'order:unassigned',
+
   // Drivers (اتصال/قطع راننده به انبار توسط انباردار)
   DRIVER_ASSIGNED     = 'driver:assigned',
+
+  // Carriers (بازچینی صف بارگیری توسط انباردار — پنل راننده همان لحظه به‌روز می‌شود)
+  CARRIERS_REORDERED  = 'carriers:reordered',
+
+  // Transfers (دستورهای جابه‌جایی/خروج مدیر — چرخهٔ زندگی: صادر → اجرا → لغو)
+  TRANSFER_CREATED    = 'transfer:created',
+  TRANSFER_COMPLETED  = 'transfer:completed',
+  TRANSFER_CANCELED   = 'transfer:canceled',
 
   // Notifications
   NOTIFICATION = 'notification',

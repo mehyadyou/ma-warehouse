@@ -217,5 +217,31 @@ void main() {
       // برچسب ثابت قدیمی نباید باشد
       expect(find.text('▸ تعداد کارتن'), findsNothing);
     });
+
+    testWidgets('باربری: ردیف «باربری» با نام دقیق باربری نمایش داده می‌شود', (tester) async {
+      final withCarrier = BadgeData.fromBadge(
+        {
+          ..._badge(order: _order(shippingMethod: 'باربری', city: 'تبریز')),
+          'order': {
+            'shippingMethod': 'باربری',
+            'carrier': 'باربری تهران بار',
+          },
+        },
+      );
+      await pump(tester, withCarrier);
+
+      expect(find.text('▸ باربری'), findsOneWidget);
+      expect(find.text('باربری تهران بار'), findsOneWidget);
+    });
+
+    testWidgets('تیپاکس: ردیف باربری مقدار «تیپاکس» دارد', (tester) async {
+      final data = BadgeData.fromBadge(
+        _badge(order: _order(shippingMethod: 'تیپاکس')),
+      );
+      await pump(tester, data);
+
+      expect(find.text('▸ باربری'), findsOneWidget);
+      expect(find.text('تیپاکس'), findsOneWidget);
+    });
   });
 }

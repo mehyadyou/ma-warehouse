@@ -13,6 +13,7 @@ class AppDrawer extends StatelessWidget {
   final VoidCallback? onDriversTap;
   final VoidCallback? onCarriersTap;
   final VoidCallback? onDeliveryInboxTap;
+  final VoidCallback? onProductHistoryTap;
   final VoidCallback? onSettingsTap;
   final Color greenColor;
   final Color surfaceColor;
@@ -31,6 +32,7 @@ class AppDrawer extends StatelessWidget {
     this.onDriversTap,
     this.onCarriersTap,
     this.onDeliveryInboxTap,
+    this.onProductHistoryTap,
     this.onSettingsTap,
     this.greenColor = const Color(0xFF4ADE80),
     this.surfaceColor = const Color(0xFF1A1D22),
@@ -138,6 +140,13 @@ class AppDrawer extends StatelessWidget {
               Icons.inbox_rounded,
               'صندوق تحویل',
               onDeliveryInboxTap,
+            ),
+          if (onProductHistoryTap != null)
+            _buildItem(
+              context,
+              Icons.manage_history_rounded,
+              'سابقهٔ محصولات',
+              onProductHistoryTap,
             ),
           if (onSettingsTap != null)
             _buildItem(

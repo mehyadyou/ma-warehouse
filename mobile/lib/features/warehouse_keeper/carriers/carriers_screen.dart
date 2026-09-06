@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/warehouse_keeper_provider.dart';
@@ -14,8 +15,10 @@ const _border = Color(0xFF2A2D33);
 
 /// منوی «باربری» پنل انباردار — افزودن/ویرایش/حذف باربری.
 ///
-/// ترتیب لیست = صف بارگیری راننده: بالا نزدیک‌ترین (اولین بار)، پایین دورترین.
-/// جابه‌جایی با دستگیرهٔ درگ انجام می‌شود و سمت سرور اولویت‌ها بازچینی می‌شوند.
+/// ترتیب لیست = صف بارگیری راننده: بالا دورترین (اولین بار — ته وانت)،
+/// پایین نزدیک‌ترین (آخرین بار — کنار در). انباردار دورترین باربری را بالای صف
+/// می‌گذارد تا اول بارگیری شود. جابه‌جایی با دستگیرهٔ درگ انجام می‌شود و سمت سرور
+/// اولویت‌ها بازچینی می‌شوند.
 class CarriersScreen extends ConsumerStatefulWidget {
   const CarriersScreen({super.key});
 
@@ -31,6 +34,10 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
   /// در خطا پاک می‌شود تا لیست به ترتیب واقعی برگردد
   List<KeeperCarrierModel>? _localCarriers;
   bool _reorderBusy = false;
+
+  /// آیا کاربر با موس کار می‌کند؟ با موس درگ بلافاصله شروع می‌شود (بدون
+  /// نگه‌داشتن)؛ با لمس برای حفظ اسکرول، درگ با نگه‌داشتن کوتاه شروع می‌شود.
+  bool _mouseMode = false;
 
   Future<void> _openForm([KeeperCarrierModel? carrier]) async {
     final saved = await showModalBottomSheet<KeeperCarrierModel>(
@@ -60,6 +67,9 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
             ).future,
           );
       if (mounted) {
+        // سایهٔ ترتیبِ حاصل از درگ را کنار بگذار تا لیست تازهٔ سرور (با
+        // باربری جدید/ویرایش‌شده) بدون پوشاندن نمایش داده شود
+        setState(() => _localCarriers = null);
         // باربری جدید به انتهای صف اضافه می‌شود؛ با درگ به جایگاه دلخواه برده می‌شود
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -110,6 +120,8 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
     try {
       await ref.read(carrierDeleteProvider(carrier.id).future);
       if (mounted) {
+        // سایهٔ ترتیبِ حاصل از درگ را کنار بگذار تا حذف در لیست تازهٔ سرور دیده شود
+        setState(() => _localCarriers = null);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('باربری حذف شد'),
@@ -220,30 +232,70 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
                     _buildQueueHint(),
                     Expanded(
                       child: RefreshIndicator(
-                        onRefresh: () => ref.refresh(carriersProvider.future),
+                        onRefresh: () {
+                          // رفرش دستی هم سایهٔ درگ را کنار می‌گذارد تا لیست سرور دیده شود
+                          _localCarriers = null;
+                          return ref.refresh(carriersProvider.future);
+                        },
                         color: _green,
                         backgroundColor: _surface,
-                        child: ReorderableListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-                          buildDefaultDragHandles: false,
-                          itemCount: list.length,
-                          onReorder: _onReorder,
-                          itemBuilder: (context, index) {
-                            final carrier = list[index];
-                            return ReorderableDelayedDragStartListener(
-                              key: ValueKey(carrier.id),
-                              index: index,
-                              // نگه‌داشتن (گرفتن) کارت → شروع درگ؛ کل کارت منطقهٔ درگ است
-                              child: _CarrierCard(
-                                carrier: carrier,
-                                position: index + 1,
-                                pending: _pendingIds.contains(carrier.id),
-                                onEdit: () => _openForm(carrier),
-                                onDelete: () => _confirmDelete(carrier),
-                              ),
-                            );
+                        child: MouseRegion(
+                          // حرکت موس روی لیست (بدون کلیک) → حالت درگ فوری فعال می‌شود
+                          onHover: (_) {
+                            if (!_mouseMode) setState(() => _mouseMode = true);
                           },
+                          child: Listener(
+                            // موس/ترک‌پد → درگ فوری؛ لمس واقعی → درگ با نگه‌داشتن (اسکرول سالم بماند)
+                            onPointerDown: (event) {
+                              final isMouse =
+                                  event.kind == PointerDeviceKind.mouse ||
+                                      event.kind == PointerDeviceKind.trackpad;
+                              if (isMouse && !_mouseMode) {
+                                setState(() => _mouseMode = true);
+                              } else if (!isMouse && _mouseMode) {
+                                setState(() => _mouseMode = false);
+                              }
+                            },
+                            child: ReorderableListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                              buildDefaultDragHandles: false,
+                              itemCount: list.length,
+                              onReorder: _onReorder,
+                              itemBuilder: (context, index) {
+                                final carrier = list[index];
+                                // با موس: درگ فوری؛ با لمس: نگه‌داشتن کوتاه
+                                final listener = _mouseMode
+                                    ? ReorderableDragStartListener(
+                                        key: ValueKey(carrier.id),
+                                        index: index,
+                                        child: _CarrierCard(
+                                          carrier: carrier,
+                                          position: index + 1,
+                                          pending: _pendingIds.contains(
+                                              carrier.id),
+                                          onEdit: () => _openForm(carrier),
+                                          onDelete: () => _confirmDelete(
+                                              carrier),
+                                        ),
+                                      )
+                                    : ReorderableDelayedDragStartListener(
+                                        key: ValueKey(carrier.id),
+                                        index: index,
+                                        child: _CarrierCard(
+                                          carrier: carrier,
+                                          position: index + 1,
+                                          pending: _pendingIds.contains(
+                                              carrier.id),
+                                          onEdit: () => _openForm(carrier),
+                                          onDelete: () => _confirmDelete(
+                                              carrier),
+                                        ),
+                                      );
+                                return listener;
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -254,7 +306,7 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
     );
   }
 
-  /// راهنمای صف بارگیری — بالا نزدیک‌ترین، پایین دورترین
+  /// راهنمای صف بارگیری — بالا دورترین (اولین بار)، پایین نزدیک‌ترین (آخرین بار)
   Widget _buildQueueHint() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -271,7 +323,7 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'ترتیب صف بارگیری: بالا = نزدیک‌ترین (اولین بار)\nراننده به همین ترتیب بار می‌زند — کارت هر باربری را بگیرید و بکشید',
+              'ترتیب صف بارگیری: بالا = دورترین (اولین بار)، پایین = نزدیک‌ترین (آخرین بار)\nکارت هر باربری را بگیرید و بکشید — با موس فوری، با لمس کمی نگه دارید',
               style: TextStyle(
                 color: _orange.withValues(alpha: 0.9),
                 fontSize: 11.5,
@@ -365,7 +417,7 @@ class _CarrierCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // جایگاه در صف بارگیری — بالا نزدیک‌ترین (اولین بار)
+          // جایگاه در صف بارگیری — بالای صف = اولین بار (دورترین)، پایین = آخرین بار (نزدیک‌ترین)
           Container(
             width: 34,
             height: 34,

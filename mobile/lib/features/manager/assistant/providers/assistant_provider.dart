@@ -59,6 +59,35 @@ class AssistantNotifier extends Notifier<AssistantState> {
     state = const AssistantState();
   }
 
+  /// متوقف کردن پردازش در جریان — پاسخ ناقص ذخیره می‌شود
+  void stop() {
+    if (!state.isStreaming) return;
+    final api = ref.read(assistantApiServiceProvider);
+    api.stop();
+    final partial = state.streamedText.trim();
+    if (partial.isNotEmpty) {
+      state = state.copyWith(
+        messages: [
+          ...state.messages,
+          AssistantMessage(
+            role: 'assistant',
+            content: '$partial\n\n---\n*توقف داده شد*',
+            createdAt: DateTime.now(),
+          ),
+        ],
+        isStreaming: false,
+        streamedText: '',
+        status: '',
+      );
+    } else {
+      state = state.copyWith(
+        isStreaming: false,
+        streamedText: '',
+        status: '',
+      );
+    }
+  }
+
   Future<void> send(String rawText) async {
     final message = rawText.trim();
     if (message.isEmpty || state.isStreaming) return;

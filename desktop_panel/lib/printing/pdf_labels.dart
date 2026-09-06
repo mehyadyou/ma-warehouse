@@ -452,6 +452,12 @@ class PdfLabels {
                     regular,
                     bold,
                   ),
+                  _pdfBadgeRow(
+                    'باربری',
+                    badge.carrierLabel,
+                    regular,
+                    bold,
+                  ),
                     ],
                   ),
                 ),

@@ -3,13 +3,32 @@ import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
 
+// کلیدهای پیش‌فرض = همهٔ نوع‌های اعلانی که سیستم ارسال می‌کند — تا (۱) toggle هر نوع در UI
+// کار کند و (۲) updateSettings هرگز کلیدی را بی‌صدا حذف نکند (فقط کلیدهای همین لیست پذیرفته می‌شوند)
 export const DEFAULT_NOTIFICATION_SETTINGS = {
-  CARGO_ENTRY:   true,
-  RETURN_ENTRY:  true,
-  SCAN_OUT:      true,
+  // ورود/خروج کالا (انبار → مدیر)
+  CARGO_ENTRY:    true,
+  RETURN_ENTRY:   true,
+  SCAN_OUT:       true,
   SCAN_OUT_ERROR: true,
-  NEW_ORDER:     true,
-  ORDER_DELETED: true,
+  // سفارش‌ها (مدیر → انبار)
+  NEW_ORDER:      true,
+  ORDER_UPDATED:  true,
+  ORDER_DELETED:  true,
+  // دستورهای جابه‌جایی/خروج مدیر (مدیر → انبار)
+  TRANSFER_CREATED:    true,
+  EXIT_CREATED:        true,
+  TRANSFER_EXECUTED:   true,
+  EXIT_EXECUTED:       true,
+  TRANSFER_COMPLETED:  true,
+  TRANSFER_CANCELED:   true,
+  // تحویل راننده (راننده → مدیر/انبار)
+  DELIVERY_COMPLETED:  true,
+  // تخصیص/حذف بار (انبار → راننده و مدیر)
+  DRIVER_ORDER_ASSIGNED: true,
+  DRIVER_ORDER_REMOVED:  true,
+  DRIVER_ASSIGNED:       true,
+  DRIVER_UNASSIGNED:     true,
 } as const;
 
 export const notificationController = {

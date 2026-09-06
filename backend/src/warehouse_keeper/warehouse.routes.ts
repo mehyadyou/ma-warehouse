@@ -15,6 +15,7 @@ import { qrcodeController } from './qrcode/qrcode.controller';
 import { labelsController } from './labels/labels.controller';
 import { driversController } from './drivers/drivers.controller';
 import { carriersController } from './carriers/carriers.controller';
+import { reportsController } from './reports/reports.controller';
 const router = Router();
 
 router.use(authenticate, authorize('WAREHOUSE_KEEPER'), requireActiveWarehouse);
@@ -55,6 +56,9 @@ router.post('/scan-out/assign-driver', userRateLimit({ windowMs: 60_000, max: 12
 
 // ── دستورات جابه‌جایی/خروج مدیر (دوفازی) — برای اجرا با اسکن ──
 router.get('/transfers', warehouseController.listPendingTransfers);
+
+// ── گزارش عملکرد انباردار (نمودارها + فیلتر بازه/نوع) ──
+router.get('/reports',                reportsController.overview);
 
 // ── Loading plan ──
 router.post('/loading-plan',          loadingPlanController.generate);

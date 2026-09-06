@@ -202,8 +202,14 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         (sum, i) => sum + (i.quantity > 0 ? i.quantity : 1),
       );
 
-  /// اسکن خروج فقط برای سفارش‌هایی که هنوز تحویل نشده‌اند
-  bool get _scannable => order.status == 'PENDING' || order.status == 'SHIPPED';
+  /// اسکن خروج فقط وقتی هنوز کارتنی برای این سفارش باقی مانده است:
+  /// - PENDING: هنوز خروجی شروع نشده
+  /// - SHIPPED: اولین کارتن خروج داده شده ولی بقیه باقی مانده‌اند
+  /// وقتی همهٔ کارتن‌ها خروج داده شده‌اند (سفارش ارسال شده) دکمه بی‌معنی است و حذف می‌شود
+  bool get _scannable =>
+      !_loadingCartons &&
+      (order.status == 'PENDING' || order.status == 'SHIPPED') &&
+      _cartons.length < _totalUnits;
 
   @override
   void initState() {
@@ -421,6 +427,35 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                     'اسکن خروج برای این سفارش',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
+                ),
+              ),
+            ] else if (!_loadingCartons &&
+                order.status == 'SHIPPED' &&
+                _cartons.length >= _totalUnits) ...[
+              // سفارش ارسال شده — همهٔ کارتن‌ها خروج داده شده‌اند؛ دکمهٔ اسکن دیگر معنی ندارد
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _green.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: _green, size: 20),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'تمام کارتن‌های این سفارش خروج داده شده و سفارش ارسال شده است',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

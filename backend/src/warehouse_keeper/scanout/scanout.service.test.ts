@@ -281,6 +281,28 @@ describe('scanOutService.scanOut - اتصال خودکار (بدون انتخا�
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
     });
 
+    it('سفارش فعال + دستور خروج/جابه‌جایی مدیر منطبق → پیکر هر دو را با هم نشان می‌دهد (بدون اتصال خودکار)', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', orderNumber: 1, city: 'تهران', receiverName: 'رضا', carrier: 'باربری', items: [{ productId: 'p1', modelId: 'm1', quantity: 2 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.transferFindMany.mockResolvedValue([
+            { id: 't1', quantity: 10, product: { name: 'کالای A' }, model: { name: 'مدل ۱' }, toWarehouse: null },
+        ]);
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1' }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('چند');
+        // لیست هدف‌ها برای انتخاب صریح انباردار: سفارش و دستور مدیر با هم می‌آیند
+        expect(result.candidates).toHaveLength(2);
+        expect(result.candidates![0]).toEqual(expect.objectContaining({ kind: 'order', id: 'order1', orderNumber: 1 }));
+        expect(result.candidates![1]).toEqual(expect.objectContaining({ kind: 'transfer', id: 't1', quantity: 10 }));
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
     it('اسکن با انتخاب صریح بعد از لیست هدف‌ها → خروج موفق (تأیید مسیر پیکر)', async () => {
         mocks.findFirst.mockResolvedValue(makeCarton({ orderId: null }));
         mocks.tx.order.findUnique.mockResolvedValue(orderRow());
@@ -463,6 +485,16 @@ describe('scanOutService.scanOut - اجرای دستور جابه‌جایی/خ�
         );
         expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
             expect.objectContaining({ data: expect.objectContaining({ type: 'carton_transferred', aggregate: 'carton' }) })
+        );
+        // تکمیل کامل سهمیه → رویداد تجمیعی transfer:completed هم ساخته می‌شود
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'transfer',
+                    type: 'transfer:completed',
+                    payload: expect.objectContaining({ transferId: 't1', kind: 'transfer', quantity: 10 }),
+                }),
+            })
         );
         expect(result.carton.transfer).toEqual(
             expect.objectContaining({ id: 't1', toWarehouseId: 'wh2' })
@@ -654,6 +686,27 @@ describe('scanOutService.manualExit - خروج دستی (بدون QR)', () => {
         expect(result.error).toContain('چند سفارش');
         expect(result.candidates).toHaveLength(2);
         expect(result.candidates![0]).toEqual(expect.objectContaining({ kind: 'order', id: 'order1' }));
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('سفارش فعال + دستور خروج/جابه‌جایی مدیر منطبق → پیکر هر دو را نشان می‌دهد (بدون خروج خودکار)', async () => {
+        mocks.orderFindMany.mockResolvedValue([
+            { id: 'order1', orderNumber: 1, city: 'تهران', receiverName: 'رضا', items: [{ productId: 'p1', modelId: 'm1', quantity: 5 }] },
+        ]);
+        mocks.cartonCount.mockResolvedValue(0);
+        mocks.transferFindMany.mockResolvedValue([
+            { id: 't1', quantity: 10, product: { name: 'پیچ مینی' }, model: { name: 'مدل ۲' }, toWarehouse: null },
+        ]);
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', modelId: 'm1', quantity: 1 }, 'wh1',
+        );
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('چند');
+        // سفارش و دستور مدیر هر دو قابل انتخاب‌اند تا انباردار مشخص کند خروج برای کدام است
+        expect(result.candidates).toHaveLength(2);
+        expect(result.candidates![0]).toEqual(expect.objectContaining({ kind: 'order', id: 'order1' }));
+        expect(result.candidates![1]).toEqual(expect.objectContaining({ kind: 'transfer', id: 't1' }));
         expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
     });
 
@@ -854,6 +907,21 @@ describe('scanOutService.assignDriver - تخصیص بار به راننده (ب�
         expect(result.valid).toBe(true);
         expect(mocks.tx.delivery.upsert).toHaveBeenCalledWith(
             expect.objectContaining({ update: { driverId: 'd2', status: 'IN_TRANSIT' } })
+        );
+        // رانندهٔ قبلی همان لحظه مطلع می‌شود (رویداد order:driver:unassigned)
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    aggregate: 'order',
+                    type: 'order:driver:unassigned',
+                    payload: expect.objectContaining({ driverId: 'd-old', newDriverId: 'd2', newDriverName: 'رضا' }),
+                }),
+            })
+        );
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({ type: 'order:driver:assigned', payload: expect.objectContaining({ driverId: 'd2' }) }),
+            })
         );
     });
 });
