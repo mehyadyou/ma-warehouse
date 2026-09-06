@@ -93,6 +93,7 @@ model User {
   deliveries           Delivery[]     @relation("DeliveredBy")
   activityLogs         ActivityLog[]
   transfers            Transfer[]     @relation("TransferCreatedBy")
+  appReleases          AppRelease[]   @relation("AppReleasePublishedBy")
   refreshTokens        RefreshToken[]
   failedLoginAttempts  Int            @default(0)
   lockUntil            DateTime?
@@ -456,6 +457,34 @@ model RefreshToken {
   createdAt  DateTime  @default(now())
 
   @@index([userId])
+}
+
+/// انتشار نسخهٔ جدید اپلیکیشن موبایل — آپدیت از راه دور (self-hosted OTA installer)
+/// هر ردیف یک APK منتشرشده است؛ اپ‌های نصب‌شده موقع بالا آمدن چک می‌کنند و پاپ‌آپ بروزرسانی می‌بینند.
+model AppRelease {
+  id             String   @id @default(uuid())
+  /// نسخهٔ نمایشی مثل 1.2.0 (versionName)
+  versionName    String
+  /// شمارهٔ نسخهٔ صعودی مثل 12 (versionCode) — مبنای مقایسه؛ یکتا
+  versionCode    Int      @unique
+  /// توضیحات فارسی برای پاپ‌آپ بروزرسانی (تغییرات این نسخه)
+  changelog      String
+  /// اجباری: کاربر نمی‌تواند پاپ‌آپ را رد کند تا آپدیت نصب شود
+  isForce        Boolean  @default(false)
+  /// مسیر نسبی APK روی سرور (مثل /uploads/apk/ma-12.apk) — سرو از همان گارد توکن‌دار
+  apkUrl         String
+  /// حجم بایت‌ی فایل — برای نوار پیشرفت دانلود
+  apkSizeBytes   Int
+  /// SHA-256 فایل — اعتبارسنجی سلامت دانلود سمت موبایل
+  apkSha256      String
+  /// نسخهٔ کمینهٔ اندروید پشتیبانی‌شده (برای فیلتر دستگاه‌های قدیمی — 0 = بدون محدودیت)
+  minAndroidSdk  Int      @default(0)
+  isActive       Boolean  @default(true)
+  publishedById  String
+  publishedBy    User     @relation("AppReleasePublishedBy", fields: [publishedById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([isActive, versionCode(sort: Desc)])
 }
 
 /// پیکربندی مدل هوش مصنوعی دستیار مدیر — یک ردیف تکی (id='default')

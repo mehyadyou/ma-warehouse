@@ -11,6 +11,7 @@ import { managerRoutes } from './manager/manager.routes';
 import { warehouseRoutes } from './warehouse_keeper/warehouse.routes';
 import { notificationRoutes } from './notification/notification.routes';
 import { badgeRoutes } from './badge/badge.routes';
+import { appUpdatesRoutes } from './app_updates/app-updates.routes';
 import driverRoutes from './driver/driver.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { requestId, logger } from './utils/logger';
@@ -92,6 +93,7 @@ export function createApp() {
   app.use('/api/warehouse-keeper', warehouseRoutes);
   app.use('/api/notifications',    notificationRoutes);
   app.use('/api/badges',           badgeRoutes);
+  app.use('/api/app/updates',      appUpdatesRoutes);
   app.use('/api/driver',           driverRoutes);
 
   // مسیرهای پیدا نشده
