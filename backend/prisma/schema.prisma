@@ -94,6 +94,7 @@ model User {
   activityLogs         ActivityLog[]
   transfers            Transfer[]     @relation("TransferCreatedBy")
   appReleases          AppRelease[]   @relation("AppReleasePublishedBy")
+  apiKeys              ApiKey[]       @relation("ApiKeyCreatedById")
   refreshTokens        RefreshToken[]
   failedLoginAttempts  Int            @default(0)
   lockUntil            DateTime?
@@ -485,6 +486,32 @@ model AppRelease {
   createdAt      DateTime @default(now())
 
   @@index([isActive, versionCode(sort: Desc)])
+}
+
+/// کلیدهای API عمومی (v1) — دسترسی فقط‌خواندنی به دادهٔ سیستم برای سیستم‌های بیرونی (حسابداری و…)
+/// کلید خام فقط یک بار هنگام ساخت برگردانده می‌شود؛ در DB فقط هش sha256 می‌ماند.
+model ApiKey {
+  id           String    @id @default(uuid())
+  /// نام قابل نمایش — مثلا «حسابداری سپیدار»
+  name         String
+  /// پیشوند کلید برای نمایش در داشبورد (مثل ma_live_xxxx) — تشخیص بدون افشای کلید
+  prefix       String
+  /// هش sha256 کلید کامل — فقط این در DB ذخیره می‌شود
+  keyHash      String    @unique
+  /// محدودهٔ دسترسی: products | inventory | orders | transactions | cartons | warehouses | carriers | deliveries | users | reports
+  scopes       String[]
+  isActive     Boolean   @default(true)
+  /// تاریخ انقضا (اختیاری) — بعد از آن کلید رد می‌شود
+  expiresAt    DateTime?
+  /// آخرین استفاده — برای داشبورد
+  lastUsedAt   DateTime?
+  useCount     Int       @default(0)
+  createdById  String
+  createdBy    User      @relation("ApiKeyCreatedById", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  @@index([isActive])
 }
 
 /// پیکربندی مدل هوش مصنوعی دستیار مدیر — یک ردیف تکی (id='default')

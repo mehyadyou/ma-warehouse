@@ -12,6 +12,8 @@ import { warehouseRoutes } from './warehouse_keeper/warehouse.routes';
 import { notificationRoutes } from './notification/notification.routes';
 import { badgeRoutes } from './badge/badge.routes';
 import { appUpdatesRoutes } from './app_updates/app-updates.routes';
+import { apiKeysRoutes } from './api_keys/api-keys.routes';
+import { publicApiV1Routes, openApiSpec } from './public_api/public.routes';
 import driverRoutes from './driver/driver.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { requestId, logger } from './utils/logger';
@@ -94,6 +96,12 @@ export function createApp() {
   app.use('/api/notifications',    notificationRoutes);
   app.use('/api/badges',           badgeRoutes);
   app.use('/api/app/updates',      appUpdatesRoutes);
+  app.use('/api/manager/api-keys', apiKeysRoutes);
+
+  // ─── API عمومی v1 (کلید ma_live_) + توضیح OpenAPI ───
+  app.get('/api/v1/openapi.json', (_req, res) => res.json(openApiSpec));
+  app.use('/api/v1',              publicApiV1Routes);
+
   app.use('/api/driver',           driverRoutes);
 
   // مسیرهای پیدا نشده
