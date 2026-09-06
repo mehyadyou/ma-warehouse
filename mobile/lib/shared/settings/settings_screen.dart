@@ -5,6 +5,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../features/manager/assistant/assistant_model_settings_screen.dart';
 import '../utils/validators.dart';
 import '../widgets/lock_settings_tile.dart';
+import '../widgets/auth_network_image.dart';
 import 'data/settings_api_service.dart';
 import '../../core/network/api_error.dart';
 
@@ -222,10 +223,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                           clipBehavior: Clip.antiAlias,
                           child: _avatarUrl != null && _avatarUrl!.isNotEmpty
-                              ? Image.network(
-                                  SettingsApiService.fullAvatarUrl(_avatarUrl),
+                              ? AuthNetworkImage(
+                                  path: _avatarUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => _avatarPlaceholder(),
+                                  errorBuilder: (_) => _avatarPlaceholder(),
                                 )
                               : _avatarPlaceholder(),
                         ),

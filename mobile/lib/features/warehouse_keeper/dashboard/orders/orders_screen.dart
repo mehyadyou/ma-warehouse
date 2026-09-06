@@ -12,7 +12,6 @@ const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
 const _green = Color(0xFF4ADE80);
 const _orange = Color(0xFFFB923C);
-const _red = Color(0xFFF87171);
 
 class OrdersScreen extends ConsumerWidget {
   OrdersScreen({super.key}); // ← const برداشتیم

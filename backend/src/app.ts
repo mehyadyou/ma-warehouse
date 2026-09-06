@@ -5,6 +5,7 @@ import path from 'path';
 import { prisma } from './utils/prisma';
 import { redisIsReady } from './utils/redis';
 import { getAllowedOrigins, isCorsAllowAll } from './config/cors';
+import { authenticate } from './middleware/auth';
 import { authRoutes } from './auth/auth.routes';
 import { managerRoutes } from './manager/manager.routes';
 import { warehouseRoutes } from './warehouse_keeper/warehouse.routes';
@@ -53,8 +54,12 @@ export function createApp() {
 
   app.use(express.json({ limit: '1mb' }));
 
-  //سرو کردن فایل‌های آپلود شده
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  // سرو کردن فایل‌های آپلودشده — فقط با توکن معتبر (عکس تحویل شامل اطلاعات مشتری است)
+  app.use(
+    '/uploads',
+    authenticate,
+    express.static(path.join(process.cwd(), 'uploads')),
+  );
 
   app.get('/', (_req, res) => res.send('ma-warehouse API is running'));
 

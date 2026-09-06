@@ -388,7 +388,6 @@ class _CarriersScreenState extends ConsumerState<CarriersScreen> {
 
 class _CarrierCard extends StatelessWidget {
   const _CarrierCard({
-    super.key,
     required this.carrier,
     required this.position,
     required this.pending,

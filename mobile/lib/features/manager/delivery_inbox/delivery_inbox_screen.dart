@@ -5,6 +5,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../../core/network/api_constants.dart';
 import '../../../core/network/api_error.dart';
 import '../../../shared/utils/numbers.dart';
+import '../../../shared/widgets/auth_network_image.dart';
 import '../data/manager_api_service.dart';
 import '../models/delivery_inbox_item.dart';
 
@@ -560,12 +561,12 @@ class _DeliveryInboxScreenState extends State<DeliveryInboxScreen> {
               children: [
                 InkWell(
                   onTap: () => _openViewer(item),
-                  child: Image.network(
-                    ApiConstants.fullUrl(item.receiptUrl ?? ''),
+                  child: AuthNetworkImage(
+                    path: item.receiptUrl ?? '',
                     fit: BoxFit.cover,
                     loadingBuilder: (_, child, progress) =>
                         progress == null ? child : const Center(child: CircularProgressIndicator(color: _green)),
-                    errorBuilder: (_, _, _) => Container(
+                    errorBuilder: (_) => Container(
                       color: _surfaceAlt,
                       child: const Icon(Icons.broken_image_outlined,
                           color: Colors.white24, size: 40),
@@ -771,12 +772,12 @@ class _ReceiptViewerScreenState extends State<_ReceiptViewerScreen> {
               child: InteractiveViewer(
                 maxScale: 6,
                 child: Center(
-                  child: Image.network(
-                    ApiConstants.fullUrl(item.receiptUrl ?? ''),
+                  child: AuthNetworkImage(
+                    path: item.receiptUrl ?? '',
                     fit: BoxFit.contain,
                     loadingBuilder: (_, child, progress) =>
                         progress == null ? child : const Center(child: CircularProgressIndicator(color: _green)),
-                    errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined,
+                    errorBuilder: (_) => const Icon(Icons.broken_image_outlined,
                         color: Colors.white24, size: 56),
                   ),
                 ),

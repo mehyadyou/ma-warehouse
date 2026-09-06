@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import '../../core/network/api_constants.dart';
 import '../utils/numbers.dart';
+import 'auth_network_image.dart';
 import 'notification_bell.dart';
 
 const _surfaceAlt = Color(0xFF22262D);
@@ -142,10 +142,10 @@ class DashboardHeader extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: hasAvatar
-          ? Image.network(
-              ApiConstants.fullUrl(avatarUrl!),
+          ? AuthNetworkImage(
+              path: avatarUrl!,
               fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
+              errorBuilder: (_) =>
                   const Icon(Icons.person_rounded, color: _green),
             )
           : const Icon(Icons.person_rounded, color: _green),

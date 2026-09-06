@@ -10,6 +10,9 @@ import type { Prisma } from '@prisma/client';
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
 
+// قفل در-پردازِ بوت‌استرپ: بعد از ساخت اولین مدیر، create-first-manager دیگر باز نمی‌شود
+let bootstrapComplete = false;
+
 // مدت اعتبار توکن رفرش — منبع حقیقت: REFRESH_TOKEN_TTL (مثل "14d" یا "90d")
 const parseTtl = (value: string): number => {
     const match = /^(\d+)([smhd])$/.exec(value.trim());
@@ -254,12 +257,18 @@ export const authService = {
     },
 
     createFirstManager: async (name: string, phone: string, password: string) => {
+        // بوت‌استرپ فقط تا ساخت اولین مدیر؛ بعد از آن مسیر به‌کلی خشک می‌شود (فقط بار اول)
+        if (bootstrapComplete) {
+            throw new AppError('ثبت مدیر فقط یک بار در ابتدای راه‌اندازی مجاز است', 403);
+        }
         const existingManager = await prisma.user.findFirst({
             where: { role: 'MANAGER' },
             select: { id: true },
         });
         if (existingManager) {
-            throw new AppError('مدیر سیستم قبلاً ثبت شده است');
+            // قفل همیشگی: پس از اولین مدیر، این مسیر حتی بعد از ری‌استارت باز نمی‌شود
+            bootstrapComplete = true;
+            throw new AppError('مدیر سیستم قبلاً ثبت شده است', 403);
         }
         assertPasswordPolicy(password);
 
@@ -272,6 +281,8 @@ export const authService = {
             },
             select: { id: true, name: true, phone: true, role: true },
         });
+        // ساخت موفق → بوت‌استرپ بسته می‌شود (مسیر دیگر باز نمی‌شود)
+        bootstrapComplete = true;
 
         // ممیزی ساخت مدیر اول
         await writeAuditStandalone({

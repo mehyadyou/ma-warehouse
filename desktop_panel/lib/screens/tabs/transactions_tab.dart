@@ -82,8 +82,8 @@ class TransactionsTabState extends State<TransactionsTab> {
         final typeLabel =
             _typeFilters.firstWhere((f) => f.value == _type).label;
         _status = dateFilter != null
-            ? '${_rows.length} تراکنش ${typeLabel} برای تاریخ $_selectedGregorianDate'
-            : '${_rows.length} تراکنش ${typeLabel} اخیر';
+            ? '${_rows.length} تراکنش $typeLabel برای تاریخ $_selectedGregorianDate'
+            : '${_rows.length} تراکنش $typeLabel اخیر';
       });
     } catch (exc) {
       if (!mounted) return;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/network/api_constants.dart';
+import 'auth_network_image.dart';
 
 class AppDrawer extends StatelessWidget {
   final VoidCallback onLogout;
@@ -254,16 +254,10 @@ class AppDrawer extends StatelessWidget {
             Positioned.fill(
               child: ClipOval(
                 child: hasAvatar
-                    ? Image.network(
-                        ApiConstants.fullUrl(avatarUrl!),
+                    ? AuthNetworkImage(
+                        path: avatarUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (
-                          BuildContext context,
-                          Object error,
-                          StackTrace? stackTrace,
-                        ) {
-                          return _buildDefaultAvatarIcon();
-                        },
+                        errorBuilder: (_) => _buildDefaultAvatarIcon(),
                       )
                     : _buildDefaultAvatarIcon(),
               ),

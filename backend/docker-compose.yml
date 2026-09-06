@@ -8,7 +8,8 @@
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ma_warehouse
     ports:
-      - "5433:5432"
+      # فقط روی localhost منتشر می‌شود — دیتابیس هرگز از اینترنت قابل دسترس نیست
+      - "127.0.0.1:5433:5432"
     mem_limit: 3g
     command:
       - "-c"
@@ -81,9 +82,14 @@
     image: redis:7-alpine
     container_name: ma-warehouse-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # رمز اجباری + AOF — REDIS_PASSWORD از .env خوانده می‌شود
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD در .env تنظیم نشده است}
     ports:
-      - "6379:6379"
+      # ⚠️ در سرور عمومی این پورت را حذف کنید یا فایروال کنید؛
+      # سرویس‌های داخل compose از طریق شبکهٔ داخلی (redis:6379) وصل می‌شوند.
+      - "127.0.0.1:6379:6379"
     mem_limit: 512m
     volumes:
       - redis_data:/data
@@ -93,7 +99,7 @@
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -110,7 +116,8 @@
       - ./docker/userlist.txt:/etc/pgbouncer/userlist.txt:ro
       - postgres_data:/var/lib/postgresql/data:ro
     ports:
-      - "6432:5432"
+      # فقط روی localhost — دسترسی اپ از طریق شبکهٔ داخلی یا SSH tunnel
+      - "127.0.0.1:6432:5432"
     depends_on:
       postgres:
         condition: service_healthy

@@ -142,8 +142,8 @@ class ApiService {
       'GET',
       '/warehouse-keeper/transactions',
       query: {
-        if (date != null) 'date': date,
-        if (type != null) 'type': type,
+        'date': ?date,
+        'type': ?type,
       },
     );
     return (payload is Map<String, dynamic> ? payload['transactions'] : null)

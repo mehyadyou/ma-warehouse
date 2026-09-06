@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# امضای release — هرگز در گیت
+/android/key.properties
+/android/app/ma-release-key.jks
+*.jks
+*.keystore
