@@ -38,6 +38,11 @@ function buildDatabasePool(): Pool {
     return new Pool({
         connectionString: url.toString(),
         ...(ssl ? { ssl } : {}),
+        // سقف صریح هم‌خوان با PgBouncer (default_pool_size=30): پولِ بی‌سقفِ pg
+        // در پیک ۱۰۰ انباردار، اتصال‌های سرور را قفل می‌کرد
+        max: Number(process.env.PG_POOL_MAX) || 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
     })
 }
 

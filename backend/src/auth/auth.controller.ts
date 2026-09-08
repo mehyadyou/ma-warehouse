@@ -56,11 +56,11 @@ export const authController = {
 
     }),
 
-    // ویرایش پروفایل
+    // ویرایش پروفایل — در صورت تغییر رمز، توکن‌های تازه هم برمی‌گردد
     updateProfile: asyncHandler(async (req: Request, res: Response) => {
         const { name, phone, password } = req.body;
-        const profile = await authService.updateProfile(req.user!.id, { name, phone, password });
-        res.json({ message: 'پروفایل با موفقیت ویرایش شد', profile });
+        const result = await authService.updateProfile(req.user!.id, { name, phone, password });
+        res.json({ message: 'پروفایل با موفقیت ویرایش شد', ...result });
 
     }),
 

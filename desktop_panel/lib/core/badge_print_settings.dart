@@ -18,6 +18,7 @@ class BadgePrintSettings {
     this.singleScalePercent = 100,
     this.singleOffsetXmm = 0,
     this.singleOffsetYmm = 0,
+    this.printerName = '',
   });
 
   /// true = دو بیجک در هر برگه (A5 افقی) | false = یک بیجک در هر برگه (A6)
@@ -32,6 +33,10 @@ class BadgePrintSettings {
   final double singleScalePercent;
   final double singleOffsetXmm;
   final double singleOffsetYmm;
+
+  /// نام چاپگر بیجک (معمولاً چاپگر معمولی مثل Canon)؛ خالی = دیالوگ سیستمی.
+  /// جدا از چاپگر لیبل (حرارتی) است چون خروجی‌ها کاغذ متفاوت دارند.
+  final String printerName;
 
   /// مقادیرِ حالتِ فعال — چاپ و پیش‌نمایش از این‌ها می‌خوانند
   double get scalePercent => dualMode ? dualScalePercent : singleScalePercent;
@@ -48,6 +53,7 @@ class BadgePrintSettings {
     double? singleScalePercent,
     double? singleOffsetXmm,
     double? singleOffsetYmm,
+    String? printerName,
   }) {
     return BadgePrintSettings(
       dualMode: dualMode ?? this.dualMode,
@@ -57,6 +63,7 @@ class BadgePrintSettings {
       singleScalePercent: singleScalePercent ?? this.singleScalePercent,
       singleOffsetXmm: singleOffsetXmm ?? this.singleOffsetXmm,
       singleOffsetYmm: singleOffsetYmm ?? this.singleOffsetYmm,
+      printerName: printerName ?? this.printerName,
     );
   }
 
@@ -68,6 +75,7 @@ class BadgePrintSettings {
         'singleScalePercent': singleScalePercent,
         'singleOffsetXmm': singleOffsetXmm,
         'singleOffsetYmm': singleOffsetYmm,
+        'printerName': printerName,
       };
 
   factory BadgePrintSettings.fromJson(Map<String, dynamic> json) {
@@ -97,6 +105,7 @@ class BadgePrintSettings {
       singleScalePercent: d('singleScalePercent', defaults.singleScalePercent),
       singleOffsetXmm: dAny('singleOffsetXmm', defaults.singleOffsetXmm),
       singleOffsetYmm: dAny('singleOffsetYmm', defaults.singleOffsetYmm),
+      printerName: json['printerName']?.toString() ?? '',
     );
   }
 
@@ -109,7 +118,8 @@ class BadgePrintSettings {
       other.dualOffsetYmm == dualOffsetYmm &&
       other.singleScalePercent == singleScalePercent &&
       other.singleOffsetXmm == singleOffsetXmm &&
-      other.singleOffsetYmm == singleOffsetYmm;
+      other.singleOffsetYmm == singleOffsetYmm &&
+      other.printerName == printerName;
 
   @override
   int get hashCode => Object.hash(
@@ -120,6 +130,7 @@ class BadgePrintSettings {
         singleScalePercent,
         singleOffsetXmm,
         singleOffsetYmm,
+        printerName,
       );
 }
 

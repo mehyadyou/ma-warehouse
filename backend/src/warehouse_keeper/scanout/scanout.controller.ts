@@ -8,12 +8,12 @@ import { ScanOutInput, ManualExitInput, AssignDriverInput } from './scanout.sche
 
 export const scanOutController = {
   scan: asyncHandler(async (req: Request, res: Response) => {
-    const { qrPayload, serialNumber, orderId, transferId } = req.body as ScanOutInput;
+    const { qrPayload, serialNumber, orderId, transferId, clientKey } = req.body as ScanOutInput;
     const userId      = req.user!.id;
     const warehouseId = req.user!.warehouseId;
     if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
 
-    const result = await scanOutService.scanOut({ qrPayload, serialNumber, orderId, transferId }, warehouseId, userId);
+    const result = await scanOutService.scanOut({ qrPayload, serialNumber, orderId, transferId, clientKey }, warehouseId, userId);
 
     if (!result.valid) {
       await notificationService.create(userId, 'خطای خروج', result.error, 'error', { type: 'SCAN_OUT_ERROR' });
@@ -41,13 +41,13 @@ export const scanOutController = {
 
   //خروج دستی (بدون QR) — محصول + مدل + تعداد، اعتبارسنجی مطابق سفارش/دستور مدیر
   manual: asyncHandler(async (req: Request, res: Response) => {
-    const { productId, modelId, quantity, driverId, orderId, transferId } = req.body as ManualExitInput;
+    const { productId, modelId, quantity, driverId, orderId, transferId, clientKey } = req.body as ManualExitInput;
     const userId      = req.user!.id;
     const warehouseId = req.user!.warehouseId;
     if (!warehouseId) return res.status(403).json({ error: 'شما به هیچ انباری متصل نیستید' });
 
     const result = await scanOutService.manualExit(
-      { productId, modelId, quantity, driverId, orderId, transferId },
+      { productId, modelId, quantity, driverId, orderId, transferId, clientKey },
       warehouseId,
       userId,
     );

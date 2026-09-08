@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
@@ -116,12 +117,15 @@ class UpdateService {
       final savePath =
           '${dir.path}${Platform.pathSeparator}ma-${info.versionCode}.apk';
 
-      // اگر قبلاً کامل دانلود شده، دوباره دانلود نکن (resume تجربهٔ بهتر)
+      // اگر قبلاً کامل دانلود شده، دوباره دانلود نکن —
+      // اعتبارسنجی با هش (نه فقط حجم): فایل دست‌کاری‌شده هرگز نصب نمی‌شود
       final existing = File(savePath);
-      if (await existing.exists() &&
-          await existing.length() == info.apkSizeBytes &&
-          info.apkSizeBytes > 0) {
-        return savePath;
+      if (await existing.exists() && info.apkSizeBytes > 0) {
+        if (await existing.length() == info.apkSizeBytes &&
+            await _verifySha256(existing, info.apkSha256)) {
+          return savePath;
+        }
+        await existing.delete().catchError((_) => existing);
       }
 
       await _http.download(
@@ -137,7 +141,7 @@ class UpdateService {
             onProgress?.call(DownloadProgress(received: received, total: total)),
       );
 
-      // اعتبارسنجی حجم — هش کامل در آپ رفرش‌دهنده سنگین است؛ حداقل حجم چک شود
+      // اعتبارسنجی حجم + هش SHA256 سرور — عدم تطابق = حذف و انصراف از نصب
       if (info.apkSizeBytes > 0) {
         final len = await File(savePath).length();
         if (len != info.apkSizeBytes) {
@@ -145,9 +149,26 @@ class UpdateService {
           return null;
         }
       }
+      if (!await _verifySha256(File(savePath), info.apkSha256)) {
+        await existing.delete().catchError((_) => existing);
+        return null;
+      }
       return savePath;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// محاسبه SHA256 فایل و مقایسه با هش اعلام‌شدهٔ سرور.
+  /// اگر سرور هشی نفرستاده (خالی) فقط حجم ملاک است → true.
+  static Future<bool> _verifySha256(File file, String expectedHex) async {
+    if (expectedHex.isEmpty) return true;
+    try {
+      final bytes = await file.readAsBytes();
+      final actual = sha256.convert(bytes).toString();
+      return actual.toLowerCase() == expectedHex.toLowerCase();
+    } catch (_) {
+      return false;
     }
   }
 
@@ -157,8 +178,9 @@ class UpdateService {
     return result.type == ResultType.done;
   }
 
+  /// پوشهٔ اختصاصی دانلود APK (داخل temp سیستم — پس از نصب قابل پاک‌سازی است)
   Future<Directory> getApkDirectory() async {
     final dir = await Directory.systemTemp.createTemp('ma_update');
-    return dir.parent;
+    return dir;
   }
 }

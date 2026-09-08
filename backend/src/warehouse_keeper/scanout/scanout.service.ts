@@ -13,8 +13,48 @@ const cartonInclude = {
   order: { select: { id: true, customerPhone: true, city: true, address: true } },
 } as const;
 
-interface CartonWithRefs {
-  id: string;
+// ── ایدمپوتنسی خروج: ریت‌رای/صف آفلاین با همان clientKey هرگز دوبار خروج نمی‌زند ──
+// الگو مشابه checkin: پیش‌بررسی پاسخ ذخیره‌شده + ذخیره پاسخ موفق (فقط موفق‌ها کش می‌شوند
+// تا تلاش ناموفق با همان کلید دوباره اجرا شود).
+const IDEMPOTENCY_SCANOUT = 'scanout';
+const IDEMPOTENCY_MANUAL = 'scanout-manual';
+
+async function findStoredResponse(userId: string | undefined, operation: string, clientKey: string | undefined) {
+  if (!userId || !clientKey) return null;
+  const existing = await prisma.idempotencyKey.findUnique({
+    where: { userId_operation_key: { userId, operation, key: clientKey } },
+  });
+  return (existing?.responseJson as unknown) ?? null;
+}
+
+async function storeResponse(userId: string | undefined, operation: string, clientKey: string | undefined, response: unknown) {
+  if (!userId || !clientKey) return;
+  try {
+    await prisma.idempotencyKey.create({
+      data: {
+        userId,
+        operation,
+        key: clientKey,
+        responseJson: response as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch {
+    // مسابقه هم‌زمان با کلید یکسان: برنده قبلاً ذخیره کرده — نادیده بگیر
+  }
+}
+
+// ── ذخیره پاسخ موفق + برگرداندن همان مقدار ──
+// ژنریک است تا literal-بودن `valid: true as const` در استنتاج حفظ شود و
+// باریک‌سازی `if (!result.valid)` در کنترلر (با strictNullChecks:false) نشکند.
+async function storeAndReturn<T>(userId: string | undefined, operation: string, clientKey: string | undefined, response: T): Promise<T> {
+  await storeResponse(userId, operation, clientKey, response);
+  return response;
+}
+
+// ── ایدمپوتنسی خروج: replay دقیقاً همان شکل success را برمی‌گرداند (literal تایپ‌شده
+// inline تا باریک‌سازی `if (!result.valid)` در کنترلر — با strictNullChecks:false — سالم بماند.
+
+interface CartonWithRefs {  id: string;
   productId: string;
   modelId: string | null;
   warehouseId: string;
@@ -404,10 +444,39 @@ export const scanOutService = {
    * کل عملیات داخل تراکنش Serializable است؛ تعارض با حذف/ویرایش هم‌زمان سفارش → retry خودکار
    */
   scanOut: async (
-    input: { qrPayload: string; serialNumber: string; orderId?: string | null; transferId?: string | null },
+    input: { qrPayload: string; serialNumber: string; orderId?: string | null; transferId?: string | null; clientKey?: string | null },
     warehouseId: string,
     userId?: string,
   ) => {
+    // پاسخ قبلی برای کلید یکسان — ریت‌رای بعد از تایم‌اوت یا فلاش صف آفلاین.
+    // نکته تایپی: پاسخ ذخیره‌شده در literal تازه پیچیده می‌شود (به‌جای `as` مستقیم)
+    // تا باریک‌سازی `if (!result.valid)` در کنترلر سالم بماند.
+    const stored = await findStoredResponse(userId, IDEMPOTENCY_SCANOUT, input.clientKey?.trim() || undefined);
+    if (stored) {
+      const s = stored as { carton: unknown };
+      return {
+        valid: true as const,
+        carton: s.carton as {
+          id: string;
+          serialNumber: string | null;
+          productName: string;
+          modelName: string;
+          unit: string;
+          packageType: string;
+          capacityPerBox: number;
+          isIndividualUnit: boolean;
+          order: {
+            id: string;
+            orderNumber: number;
+            customerPhone: string | null;
+            city: string | null;
+            address: string | null;
+          } | null;
+          transfer: { id: string; toWarehouseId: string | null; toWarehouseName: string | null } | null;
+        },
+      };
+    }
+
     let carton: CartonWithRefs | null = null;
 
     if (input.qrPayload) {
@@ -746,7 +815,7 @@ export const scanOutService = {
       });
     }
 
-    return {
+    return storeAndReturn(userId, IDEMPOTENCY_SCANOUT, input.clientKey?.trim() || undefined, {
       valid: true as const,
       carton: {
         id: carton.id,
@@ -768,7 +837,7 @@ export const scanOutService = {
           : null,
         transfer: transferContext,
       },
-    };
+    });
   },
 
   /**
@@ -808,10 +877,41 @@ export const scanOutService = {
       // انتخاب صریح هدف (از پیکر وقتی چند هدف فعال است) — سفارش یا دستور خروج/جابه‌جایی
       orderId?: string | null;
       transferId?: string | null;
+      clientKey?: string | null;
     },
     warehouseId: string,
     userId?: string,
   ) => {
+    // پاسخ قبلی برای کلید یکسان — ریت‌رای بعد از تایم‌اوت یا فلاش صف آفلاین.
+    // (literal تازه برای حفظ باریک‌سازی کنترلر — توضیح بالا)
+    const storedManual = await findStoredResponse(userId, IDEMPOTENCY_MANUAL, input.clientKey?.trim() || undefined);
+    if (storedManual) {
+      const sm = storedManual as { quantity: unknown; carton: unknown };
+      return {
+        valid: true as const,
+        quantity: sm.quantity as number,
+        carton: sm.carton as {
+          id: string;
+          serialNumber: string | null;
+          productName: string;
+          modelName: string;
+          unit: string;
+          packageType: string;
+          capacityPerBox: number;
+          isIndividualUnit: boolean;
+          order: {
+            id: string;
+            orderNumber: number;
+            customerPhone: string | null;
+            city: string | null;
+            address: string | null;
+          } | null;
+          transfer: { id: string; toWarehouseId: string | null; toWarehouseName: string | null } | null;
+          driver: { id: string; name: string } | null;
+        },
+      };
+    }
+
     const product = await prisma.product.findUnique({
       where: { id: input.productId.trim() },
       select: { id: true, name: true, unit: true, deletedAt: true },
@@ -1170,12 +1270,14 @@ export const scanOutService = {
       });
     }
 
-    return {
+    return storeAndReturn(userId, IDEMPOTENCY_MANUAL, input.clientKey?.trim() || undefined, {
       valid: true as const,
       quantity,
       carton: {
         id: 'manual',
-        serialNumber: null,
+        // تایپ صریح nullها: با strictNullChecks:false استنتاج `null` به any می‌رسد و
+        // anyِ تودرتو باریک‌سازی union در کنترلر را می‌شکند
+        serialNumber: null as string | null,
         productName: product.name,
         modelName: model?.name ?? '',
         unit: product.unit ?? 'عدد',
@@ -1192,14 +1294,14 @@ export const scanOutService = {
             }
           : null,
         transfer: target.kind === 'transfer'
-          ? { id: target.id, toWarehouseId: null, toWarehouseName: null }
+          ? { id: target.id, toWarehouseId: null as string | null, toWarehouseName: null as string | null }
           : null,
         // راننده‌ای که این بار برایش تعریف شد
         driver: driverId
           ? { id: driverId, name: driverName ?? '' }
           : null,
       },
-    };
+    });
   },
 
   //کارتن‌های خروج‌زده‌شده از این انبار

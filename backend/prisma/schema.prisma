@@ -240,12 +240,21 @@ model SerialSequence {
   lastSeq Int
 }
 
+/// شمارنده شمارهٔ روزانهٔ سفارش به تفکیک روز شمسی تهران (yyyymmdd) —
+/// جایگزین count+1 (رقابت روی کلید روز در پیک ۱۰۰ انبار). افزایش اتمی داخل تراکنش ثبت سفارش.
+model OrderDaySequence {
+  day        Int @id
+  lastNumber Int @default(0)
+}
+
 model Order {
   id             String      @id @default(uuid())
   /// شمارهٔ روزانهٔ سفارش — از اول هر روزِ شمسی (کلید روز در orderDay) از ۱ شماره می‌خورد
   orderNumber    Int
   /// کلید روزِ شمسیِ ساخت سفارش (yyyymmdd) — مبنای شمارشِ روزانهٔ orderNumber
-  orderDay       Int?
+  /// الزامی (NOT NULL): مقدار NULL ایندکس یکتای [orderDay, orderNumber] را در
+  /// Postgres دور می‌زند؛ همهٔ مسیرهای ساخت، orderDay را از OrderDaySequence می‌گیرند
+  orderDay       Int
   warehouseId    String
   warehouse      Warehouse   @relation(fields: [warehouseId], references: [id])
   status         OrderStatus @default(PENDING)

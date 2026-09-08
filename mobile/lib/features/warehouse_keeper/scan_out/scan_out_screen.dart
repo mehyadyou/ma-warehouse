@@ -7,6 +7,8 @@ import '../models/scan_out_result_model.dart';
 import '../providers/warehouse_keeper_provider.dart';
 import 'target_picker_sheet.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/network/client_keys.dart';
+import '../../offline/pending_ops.dart';
 
 const _bg      = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
@@ -91,31 +93,99 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
   Future<void> _processScan(String? raw, String? serial, {ScanOutTargetModel? target}) async {
     _markHandled(raw ?? serial);
     setState(() { _scanning = false; _processing = true; });
+    // کلید ایدمپوتنسی این عملیات: در ریت‌رای، صف آفلاین و فلاش ثابت می‌ماند
+    final clientKey = newClientKey();
     try {
       final data = await (serial != null
           ? ref.read(wkApiProvider).scanOutSerial(
               serial,
               orderId: target?.kind == 'order' ? target!.id : widget.orderId,
               transferId: target?.kind == 'transfer' ? target!.id : widget.transferId,
+              clientKey: clientKey,
             )
           : ref.read(wkApiProvider).scanOut(
               raw!,
               orderId: target?.kind == 'order' ? target!.id : widget.orderId,
               transferId: target?.kind == 'transfer' ? target!.id : widget.transferId,
+              clientKey: clientKey,
             ));
       // پنجرهٔ نادیده‌گیری از لحظهٔ نتیجه هم تازه شود تا دوربین همان کد را
       // بعد از از سرگیری خودکار دوباره اسکن نکند
       _markHandled(raw ?? serial);
       _handleScanResult(data);
     } on DioException catch (e) {
-      await _handleScanError(e, raw, serial);
+      await _handleScanError(e, raw, serial, clientKey,
+          target: target,
+          orderId: target?.kind == 'order' ? target!.id : widget.orderId,
+          transferId: target?.kind == 'transfer' ? target!.id : widget.transferId);
+    }
+  }
+
+  /// خطای شبکه (قطعی/تایم‌اوت) → ذخیره خودکار در صف آفلاین با همان clientKey؛
+  /// با بازگشت اینترنت فلاش می‌شود و سرور به‌لطف ایدمپوتنسی دوبار ثبت نمی‌کند.
+  Future<void> _enqueueOffline({
+    required String clientKey,
+    String? raw,
+    String? serial,
+    String? orderId,
+    String? transferId,
+  }) async {
+    if (serial != null) {
+      await ref.read(pendingOpsProvider.notifier).enqueue(PendingOp(
+            key: clientKey,
+            type: PendingOpType.scanOutSerial,
+            payload: {
+              'serialNumber': serial,
+              if (orderId != null) 'orderId': orderId,
+              if (transferId != null) 'transferId': transferId,
+            },
+            createdAt: DateTime.now(),
+            label: 'خروج سریال $serial',
+          ));
+    } else {
+      await ref.read(pendingOpsProvider.notifier).enqueue(PendingOp(
+            key: clientKey,
+            type: PendingOpType.scanOutQr,
+            payload: {
+              'qrPayload': raw,
+              if (orderId != null) 'orderId': orderId,
+              if (transferId != null) 'transferId': transferId,
+            },
+            createdAt: DateTime.now(),
+            label: 'خروج QR (${(raw ?? '').length > 24 ? '${(raw ?? '').substring(0, 24)}…' : raw ?? ''})',
+          ));
     }
   }
 
   /// خطای اسکن: اگر سرور لیست هدف‌های ممکن (candidates) را داده، مستقیم برگهٔ انتخاب
   /// باز می‌شود (بدون نمایش کارت خطا)؛ در غیر این صورت کارت خطا + از سرگیری خودکار اسکن.
-  Future<void> _handleScanError(DioException e, String? raw, String? serial) async {
+  Future<void> _handleScanError(DioException e, String? raw, String? serial, String clientKey, {ScanOutTargetModel? target, String? orderId, String? transferId}) async {
     if (!mounted) return;
+    // قطعی شبکه → صف آفلاین (به‌جای کارت خطای خشک)
+    if (isNetworkError(e)) {
+      await _enqueueOffline(
+        clientKey: clientKey,
+        raw: raw,
+        serial: serial,
+        orderId: orderId,
+        transferId: transferId,
+      );
+      if (!mounted) return;
+      final pending = ref.read(pendingOpsProvider).length;
+      setState(() {
+        _lastResult = _ScanResult(
+          valid: false,
+          message: 'اینترنت قطع است — اسکن در صف آفلاین ذخیره شد ($pending در صف). با اتصال، خودکار ارسال می‌شود.',
+          queued: true,
+        );
+        _processing = false;
+      });
+      _markHandled(raw ?? serial);
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() { _scanning = true; _lastResult = null; });
+      });
+      return;
+    }
     final body = e.response?.data;
     final rawCandidates = (body is Map && body['candidates'] is List)
         ? (body['candidates'] as List)
@@ -375,7 +445,47 @@ class _ScanOutScreenState extends ConsumerState<ScanOutScreen> {
           ),
         ),
 
-        MobileScanner(controller: _controller, onDetect: _onDetect),
+        MobileScanner(
+          controller: _controller,
+          onDetect: _onDetect,
+          // رد مجوز/خرابی دوربین = صفحه سیاه نباشد؛ راهنمای فارسی + تلاش مجدد
+          errorBuilder: (context, error) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.videocam_off_rounded,
+                      color: Colors.white38, size: 56),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'دوربین در دسترس نیست',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'دسترسی دوربین را در تنظیمات گوشی فعال کنید، یا سریال را دستی وارد کنید.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => _controller.start(),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('تلاش مجدد'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _green,
+                      foregroundColor: Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
         Center(
           child: Container(
             width: 240, height: 240,
@@ -428,6 +538,8 @@ class _ScanResult {
   final String? orderId;
   final int?    orderNumber;
   final ScanOutDriverModel? driver;
+  /// در صف آفلاین ذخیره شده — با بازگشت اینترنت خودکار ارسال می‌شود
+  final bool queued;
   const _ScanResult({
     required this.valid,
     required this.message,
@@ -440,6 +552,7 @@ class _ScanResult {
     this.orderId,
     this.orderNumber,
     this.driver,
+    this.queued = false,
   });
 }
 
@@ -450,7 +563,7 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = result.valid ? _green : _red;
+    final color = result.valid ? _green : (result.queued ? _orange : _red);
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -463,7 +576,7 @@ class _ResultCard extends StatelessWidget {
         Container(
           width: 48, height: 48,
           decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-          child: Icon(result.valid ? Icons.check_circle_rounded : Icons.error_rounded, color: color, size: 28),
+          child: Icon(result.valid ? Icons.check_circle_rounded : (result.queued ? Icons.cloud_off_rounded : Icons.error_rounded), color: color, size: 28),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -471,7 +584,7 @@ class _ResultCard extends StatelessWidget {
             Text(
               result.valid
                   ? (result.transfer != null ? 'اجرای دستور ثبت شد' : 'خروج ثبت شد')
-                  : 'خطا',
+                  : (result.queued ? 'ذخیره در صف آفلاین' : 'خطا'),
               style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),

@@ -33,11 +33,26 @@ $cutoff = (Get-Date).AddDays(-$RetentionDays)
 Get-ChildItem $Dir -Filter "*.dump" |
     Where-Object { $_.LastWriteTime -lt $cutoff } |
     Remove-Item -Force
+Get-ChildItem $Dir -Filter "*.dump.sha256" -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt $cutoff } |
+    Remove-Item -Force
+
+# ── چک‌سام SHA256 برای راستی‌آزمایی انتقال آفسایت ──
+$hash = Get-FileHash -Path $out -Algorithm SHA256
+"$($hash.Hash.ToLower())  $(Split-Path $out -Leaf)" | Set-Content -Path "$out.sha256" -Encoding ASCII
+Write-Host "Checksum OK: $out.sha256"
 
 Write-Host "Backup OK: $out"
 
 if ($RemoteDir -ne "") {
     New-Item -ItemType Directory -Force -Path $RemoteDir | Out-Null
     Copy-Item $out $RemoteDir -Force
+    Copy-Item "$out.sha256" $RemoteDir -Force
     Write-Host "Remote copy OK: $RemoteDir"
+} elseif ($envVars["BACKUP_REMOTE_DIR"]) {
+    $autoRemote = $envVars["BACKUP_REMOTE_DIR"]
+    New-Item -ItemType Directory -Force -Path $autoRemote | Out-Null
+    Copy-Item $out $autoRemote -Force
+    Copy-Item "$out.sha256" $autoRemote -Force
+    Write-Host "Remote copy OK (from .env BACKUP_REMOTE_DIR): $autoRemote"
 }

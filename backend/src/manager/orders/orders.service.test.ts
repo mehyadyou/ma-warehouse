@@ -30,6 +30,12 @@ function makeTx(overrides: Record<string, any> = {}) {
             delete: vi.fn().mockResolvedValue({}),
             count: vi.fn().mockResolvedValue(0),
         },
+        orderDaySequence: {
+            upsert: vi.fn().mockImplementation(async ({ create }: any) => ({
+                day: create.day,
+                lastNumber: 1,
+            })),
+        },
         orderItem: {
             deleteMany: vi.fn().mockResolvedValue({}),
             createMany: vi.fn().mockResolvedValue({}),
@@ -160,7 +166,7 @@ describe('ordersService.createOrder', () => {
         );
     });
 
-    it('شمارهٔ سفارش روزانه است: تعداد سفارش‌های همان روز + ۱ (اولِ هر روز از ۱)', async () => {
+    it('شمارهٔ سفارش روزانه است: upsert اتمی روی OrderDaySequence (اولِ هر روز از ۱)', async () => {
         const tx = await runCreate(makeTx(), [
             'wh1', 'user1', [{ productId: 'p1', quantity: 1 }], 'باربری',
             undefined, undefined, undefined, undefined, undefined,
@@ -168,12 +174,14 @@ describe('ordersService.createOrder', () => {
         ]);
 
         const createData = tx.order.create.mock.calls[0][0].data;
-        // شمارش بر اساس کلیدِ روزِ شمسیِ امروز انجام می‌شود
-        expect(tx.order.count).toHaveBeenCalledWith({
-            where: { orderDay: expect.any(Number) },
+        // شمارش اتمی روی ردیف روزِ شمسیِ امروز (نه count کل جدول)
+        expect(tx.orderDaySequence.upsert).toHaveBeenCalledWith({
+            where: { day: expect.any(Number) },
+            update: { lastNumber: { increment: 1 } },
+            create: { day: expect.any(Number), lastNumber: 1 },
         });
         expect(createData.orderDay).toEqual(expect.any(Number));
-        expect(createData.orderNumber).toBe(1); // count موک = ۰ → اولین سفارش روز
+        expect(createData.orderNumber).toBe(1); // سید موک lastNumber=۱ → اولین سفارش روز
     });
 
     it('badge عکسِ اطلاعات ارسال را نگه می‌دارد (تیپاکس با همهٔ فیلدها)', async () => {

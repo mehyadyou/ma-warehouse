@@ -1,0 +1,6 @@
+# قالب userlist.txt برای PgBouncer (auth_type=scram-sha-256)
+# فایل واقعی docker/userlist.txt هرگز کامیت نمی‌شود (.gitignore) — بعد از چرخش رمزها بازسازی کنید:
+#   docs/db-ops.md بخش «چرخش رمز»
+"postgres" "SCRAM-SHA-256$4096:REPLACE_ME==$REPLACE_ME=:REPLACE_ME="
+"ma_app" "SCRAM-SHA-256$4096:REPLACE_ME==$REPLACE_ME=:REPLACE_ME="
+"ma_migrator" "SCRAM-SHA-256$4096:REPLACE_ME==$REPLACE_ME=:REPLACE_ME="

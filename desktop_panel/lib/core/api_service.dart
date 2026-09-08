@@ -99,6 +99,15 @@ class ApiService {
     return payload;
   }
 
+  /// تغییر رمز عبور کاربر جاری (تغییر اجباری در اولین ورود با رمز موقت)
+  Future<void> updateMyPassword(String newPassword) async {
+    await _request(
+      'PUT',
+      '/auth/profile',
+      data: {'password': newPassword},
+    );
+  }
+
   Future<Map<String, dynamic>> getMyWarehouse() async {
     final payload = await _request('GET', '/warehouse-keeper/my-warehouse');
     return ((payload is Map<String, dynamic>) ? payload['warehouse'] : null)

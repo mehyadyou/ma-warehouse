@@ -286,8 +286,8 @@ describe('authService.logout', () => {
 });
 
 describe('authService.updateProfile', () => {
-    it('تغییر رمز: فقط دقیقاً ۶ رقم عددی پذیرفته می‌شود', async () => {
-        (prisma.user.findUnique as any).mockResolvedValue(baseUser());
+    it('تغییر رمز انباردار: فقط دقیقاً ۶ رقم عددی پذیرفته می‌شود', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(baseUser({ role: 'WAREHOUSE_KEEPER' }));
         // کوتاه‌تر از ۶ رقم → رد
         await expect(
             authService.updateProfile('u1', { password: 'short' })
@@ -305,8 +305,20 @@ describe('authService.updateProfile', () => {
             authService.updateProfile('u1', { password: 'پارسکالا1234' })
         ).rejects.toThrow('دقیقاً ۶ رقم');
         // دقیقاً ۶ رقم → پذیرفته
-        (prisma.user.update as any).mockResolvedValue(baseUser());
+        (prisma.user.update as any).mockResolvedValue(baseUser({ role: 'WAREHOUSE_KEEPER' }));
         await authService.updateProfile('u1', { password: '123456' });
+        expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('تغییر رمز مدیر: رمز قوی (حرف+عدد، حداقل ۸ کاراکتر) الزامی است', async () => {
+        (prisma.user.findUnique as any).mockResolvedValue(baseUser({ role: 'MANAGER' }));
+        // PIN شش‌رقمی برای مدیر → رد
+        await expect(
+            authService.updateProfile('u1', { password: '123456' })
+        ).rejects.toThrow('حداقل ۸ کاراکتر');
+        // رمز قوی → پذیرفته
+        (prisma.user.update as any).mockResolvedValue(baseUser({ role: 'MANAGER' }));
+        await authService.updateProfile('u1', { password: 'Manager123' });
         expect(prisma.user.update).toHaveBeenCalled();
     });
 
@@ -314,7 +326,7 @@ describe('authService.updateProfile', () => {
         (prisma.user.findUnique as any).mockResolvedValue(baseUser());
         (prisma.user.update as any).mockResolvedValue(baseUser());
 
-        await authService.updateProfile('u1', { password: '123456' });
+        await authService.updateProfile('u1', { password: 'Manager123' });
 
         const data = (prisma.user.update as any).mock.calls[0][0].data;
         expect(data.password).toBe('hashed');

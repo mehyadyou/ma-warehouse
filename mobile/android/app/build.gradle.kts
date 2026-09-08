@@ -58,11 +58,25 @@ android {
 
     buildTypes {
         release {
-            // امضا با کلید واقعی اگر key.properties موجود باشد؛ وگرنه debug (فقط اجرای محلی)
+            // fail-closed: بیلد release بدون key.properties ممنوع — fallback بی‌صدا به
+            // کلید debug قبلاً باعث می‌شد APK «ریلیز» با امضای debug منتشر شود.
+            // نکته: این چک فقط وقتی اجرا می‌شود که واقعاً تسک release در حال اجراست،
+            // چون فاز configuration گریدل برای همه تسک‌ها (حتی debug) اجرا می‌شود.
             if (keystoreProperties.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
-                signingConfig = signingConfigs.getByName("debug")
+                val buildingRelease = gradle.startParameter.taskNames.any {
+                    it.contains("Release", ignoreCase = true)
+                }
+                if (buildingRelease) {
+                    throw GradleException(
+                        " keystore برای بیلد release یافت نشد: android/key.properties بسازید " +
+                        "(راهنما بالای همین فایل). برای اجرای محلی از بیلد debug استفاده کنید."
+                    )
+                } else {
+                    // بیلد debug در حال اجراست — بلوک release فقط configure می‌شود
+                    signingConfig = signingConfigs.getByName("debug")
+                }
             }
             // کوچک‌سازی و obfuscation برای کاهش حجم و سختی مهندسی معکوس
             isMinifyEnabled = true

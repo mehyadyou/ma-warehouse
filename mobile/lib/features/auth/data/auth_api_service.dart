@@ -44,6 +44,20 @@ class AuthApiService {
     return response.data?['ok'] == true;
   }
 
+  /// تغییر رمز عبور — سرور در صورت تغییر رمز، توکن‌های تازه برمی‌گرداند
+  /// (چون tokenVersion بالا می‌رود و توکن‌های قبلی باطل می‌شوند)
+  Future<Map<String, dynamic>> updateProfile({String? name, String? phone, String? password}) async {
+    final response = await _dio.put(
+      '/auth/profile',
+      data: {
+        if (name != null) 'name': name,
+        if (phone != null) 'phone': phone,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   /// خروج — ابطال توکن رفرش جاری در سرور.
   /// توکن اکسس صریح داده می‌شود چون خروج پس از پاک‌سازی محلی فرستاده می‌شود
   /// و اینترسپتور دیگر توکنی برای افزودن ندارد.

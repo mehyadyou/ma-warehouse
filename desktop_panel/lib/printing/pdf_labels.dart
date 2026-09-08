@@ -76,7 +76,12 @@ class PdfLabels {
       _labelHeightMm() * PdfPageFormat.mm,
       marginAll: 0,
     );
-    return _showPrintDialog(document, pageFormat);
+    return _showPrintDialog(
+      document,
+      pageFormat,
+      docName: 'warehouse_label.pdf',
+      printerName: PrinterSettingsHolder.instance.current.printerName,
+    );
   }
 
   static Future<Uint8List?> buildLabelPdfBytes(List<LabelData> labels) async {
@@ -235,7 +240,12 @@ class PdfLabels {
       _badgePageHeightMm * PdfPageFormat.mm,
       marginAll: 0,
     );
-    return _showPrintDialog(document, pageFormat);
+    return _showPrintDialog(
+      document,
+      pageFormat,
+      docName: 'warehouse_badge.pdf',
+      printerName: s.printerName,
+    );
   }
 
   static Future<Uint8List?> buildBadgePdfBytes(List<BadgeData> badges) async {
@@ -492,11 +502,40 @@ class PdfLabels {
 
   static Future<bool> _showPrintDialog(
     pw.Document document,
-    PdfPageFormat pageFormat,
-  ) async {
+    PdfPageFormat pageFormat, {
+    String docName = 'warehouse_print.pdf',
+    String? printerName,
+  }) async {
+    // چاپگر ذخیره‌شده → چاپ مستقیم بدون دیالوگ (حرارتی لیبل‌زن)؛
+    // ناموفق/پیدانشدن → دیالوگ سیستمی (کاربر چاپگر را می‌بیند و تأیید می‌کند)
+    final saved = (printerName ?? '').trim();
+    if (saved.isNotEmpty) {
+      try {
+        final printers = await Printing.listPrinters();
+        final match = printers.firstWhere(
+          (p) =>
+              p.name.toLowerCase() == saved.toLowerCase() ||
+              p.url.toLowerCase() == saved.toLowerCase(),
+          orElse: () => printers.firstWhere(
+            (p) =>
+                p.name.toLowerCase().contains(saved.toLowerCase()) ||
+                saved.toLowerCase().contains(p.name.toLowerCase()),
+          ),
+        );
+        return await Printing.directPrintPdf(
+          printer: match,
+          onLayout: (format) async => document.save(),
+          name: docName,
+          format: pageFormat,
+          forceCustomPrintPaper: true,
+        );
+      } catch (_) {
+        // ادامه با دیالوگ سیستمی
+      }
+    }
     try {
       return await Printing.layoutPdf(
-        name: 'warehouse_label.pdf',
+        name: docName,
         format: pageFormat,
         // صفحه‌ی PDF دقیقاً به اندازه‌ی لیبل فیزیکی است تا چاپگر محتوا را وسط قرار دهد
         forceCustomPrintPaper: true,

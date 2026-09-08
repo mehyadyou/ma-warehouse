@@ -157,34 +157,40 @@ class WarehouseKeeperApiService {
   }
 
   Future<CheckInResultModel> submitCheckin(
-    List<Map<String, dynamic>> items,
-  ) async {
+    List<Map<String, dynamic>> items, {
+    String? clientKey,
+  }) async {
     final res = await _dio.post(
       '/warehouse-keeper/checkin',
-      data: {'items': items},
+      data: {
+        'items': items,
+        if (clientKey != null && clientKey.isNotEmpty) 'clientKey': clientKey,
+      },
     );
     return CheckInResultModel.fromJson(Map<String, dynamic>.from(res.data));
   }
 
-  Future<ScanOutResultModel> scanOut(String qrPayload, {String? orderId, String? transferId}) async {
+  Future<ScanOutResultModel> scanOut(String qrPayload, {String? orderId, String? transferId, String? clientKey}) async {
     final res = await _dio.post(
       '/warehouse-keeper/scan-out',
       data: {
         'qrPayload': qrPayload,
         if (orderId != null) 'orderId': orderId,
         if (transferId != null) 'transferId': transferId,
+        if (clientKey != null && clientKey.isNotEmpty) 'clientKey': clientKey,
       },
     );
     return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));
   }
 
-  Future<ScanOutResultModel> scanOutSerial(String serialNumber, {String? orderId, String? transferId}) async {
+  Future<ScanOutResultModel> scanOutSerial(String serialNumber, {String? orderId, String? transferId, String? clientKey}) async {
     final res = await _dio.post(
       '/warehouse-keeper/scan-out',
       data: {
         'serialNumber': serialNumber,
         if (orderId != null) 'orderId': orderId,
         if (transferId != null) 'transferId': transferId,
+        if (clientKey != null && clientKey.isNotEmpty) 'clientKey': clientKey,
       },
     );
     return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));
@@ -201,6 +207,7 @@ class WarehouseKeeperApiService {
     String? driverId,
     String? orderId,
     String? transferId,
+    String? clientKey,
   }) async {
     final res = await _dio.post(
       '/warehouse-keeper/scan-out/manual',
@@ -211,6 +218,7 @@ class WarehouseKeeperApiService {
         if (driverId != null && driverId.trim().isNotEmpty) 'driverId': driverId,
         if (orderId != null && orderId.trim().isNotEmpty) 'orderId': orderId,
         if (transferId != null && transferId.trim().isNotEmpty) 'transferId': transferId,
+        if (clientKey != null && clientKey.isNotEmpty) 'clientKey': clientKey,
       },
     );
     return ScanOutResultModel.fromJson(Map<String, dynamic>.from(res.data));

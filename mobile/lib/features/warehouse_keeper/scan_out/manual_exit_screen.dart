@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
+import '../../../core/network/client_keys.dart';
+import '../../offline/pending_ops.dart';
 import '../../../shared/widgets/search_picker.dart';
 import '../models/keeper_driver_model.dart';
 import '../models/keeper_product_model.dart';
@@ -153,8 +155,10 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
       return;
     }
     setState(() => _submitting = true);
+    // کلید ایدمپوتنسی این خروج: بین تلاش اول و تلاش بعد از انتخاب هدف (پیکر) ثابت می‌ماند
+    final clientKey = newClientKey();
     try {
-      await _sendExitRequest();
+      await _sendExitRequest(clientKey: clientKey);
     } on DioException catch (e) {
       // چند هدف فعال — لیست هدف‌های ممکن برای انتخاب صریح انباردار
       final body = e.response?.data;
@@ -187,22 +191,65 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
           ),
         );
         if (picked != null && mounted) {
-          await _sendExitRequest(
-            orderId: picked.kind == 'order' ? picked.id : null,
-            transferId: picked.kind == 'transfer' ? picked.id : null,
-          );
+          try {
+            await _sendExitRequest(
+              clientKey: clientKey,
+              orderId: picked.kind == 'order' ? picked.id : null,
+              transferId: picked.kind == 'transfer' ? picked.id : null,
+            );
+          } on DioException catch (retryError) {
+            if (isNetworkError(retryError)) {
+              await _enqueueManualOffline(
+                clientKey,
+                orderId: picked.kind == 'order' ? picked.id : null,
+                transferId: picked.kind == 'transfer' ? picked.id : null,
+              );
+            } else {
+              _snack(friendlyError(retryError));
+            }
+          }
         }
         return;
       }
-      _snack(friendlyError(e));
+      if (isNetworkError(e)) {
+        await _enqueueManualOffline(clientKey);
+      } else {
+        _snack(friendlyError(e));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
+  /// ذخیره خروج دستی در صف آفلاین (قطعی شبکه) + پیام مناسب
+  Future<void> _enqueueManualOffline(
+    String clientKey, {
+    String? orderId,
+    String? transferId,
+  }) async {
+    await ref.read(pendingOpsProvider.notifier).enqueue(PendingOp(
+          key: clientKey,
+          type: PendingOpType.manualExit,
+          payload: {
+            'productId': _product!.id,
+            if (_model?.id != null) 'modelId': _model!.id,
+            'quantity': _quantity,
+            if (_driver?.id != null) 'driverId': _driver!.id,
+            if (orderId != null) 'orderId': orderId,
+            if (transferId != null) 'transferId': transferId,
+          },
+          createdAt: DateTime.now(),
+          label: 'خروج دستی ${_product!.name} (×$_quantity)',
+        ));
+    if (mounted) {
+      final pending = ref.read(pendingOpsProvider).length;
+      _snack('اینترنت قطع است — خروج در صف آفلاین ذخیره شد ($pending در صف)');
+    }
+  }
+
   /// ارسال درخواست خروج دستی — [orderId]/[transferId] وقتی انباردار از پیکر
   /// «کدام هدف؟» انتخاب کرده باشد (چند سفارش/دستور فعال برای همین کالا/مدل).
-  Future<void> _sendExitRequest({String? orderId, String? transferId}) async {
+  Future<void> _sendExitRequest({required String clientKey, String? orderId, String? transferId}) async {
     final result = await ref.read(wkApiProvider).manualExit(
           productId: _product!.id,
           modelId: _model?.id,
@@ -210,6 +257,7 @@ class _ManualExitScreenState extends ConsumerState<ManualExitScreen> {
           driverId: _driver?.id,
           orderId: orderId,
           transferId: transferId,
+          clientKey: clientKey,
         );
     if (!mounted) return;
     final transfer = result.carton?.transfer;

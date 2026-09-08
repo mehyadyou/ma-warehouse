@@ -291,7 +291,7 @@ export const warehousesService = {
         if (!/^09\d{9}$/.test(phone)) {
             throw new AppError('شماره موبایل معتبر نیست؛ باید ۱۱ رقم با پیشوند 09 باشد', 400);
         }
-        assertPasswordPolicy(keeperPassword);
+        assertPasswordPolicy(keeperPassword, 'WAREHOUSE_KEEPER');
 
         const existingUser = await prisma.user.findUnique({
             where: { phone },

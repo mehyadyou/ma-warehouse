@@ -18,6 +18,8 @@ import '../scan_out/scan_out_screen.dart';
 import 'transfers/transfer_instructions_screen.dart';
 import '../drivers/drivers_screen.dart';
 import '../carriers/carriers_screen.dart';
+import '../../offline/pending_ops.dart';
+import '../../../shared/widgets/offline_banner.dart';
 
 const _bg = Color(0xFF0F1114);
 const _green = Color(0xFF4ADE80);
@@ -58,6 +60,33 @@ class _WarehouseKeeperDashboardScreenState
 
     // Setup socket listeners for real-time updates
     Future.microtask(_registerSocketListeners);
+    // فلاش صف آفلاین هنگام اتصال مجدد سوکت (بازگشت اینترنت)
+    Future.microtask(() {
+      ref.read(socketServiceProvider).addReconnectListener(_flushPendingOps);
+    });
+  }
+
+  /// فلاش خودکار صف آفلاین بعد از اتصال مجدد — بدون مزاحمت؛ فقط در موفقیت پیام می‌دهد
+  Future<void> _flushPendingOps() async {
+    if (!mounted) return;
+    if (ref.read(pendingOpsProvider).isEmpty) return;
+    try {
+      final result = await ref.read(pendingOpsProvider.notifier).flush();
+      if (!mounted) return;
+      if (result.sent > 0) {
+        ref.invalidate(inventorySummaryProvider);
+        ref.invalidate(keeperInventoryListProvider);
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(ordersProvider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${result.sent} عملیات صف آفلاین ارسال شد'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   /// لیست هندلرهای سوکت — برای حذف کامل در dispose نگه داشته می‌شود
@@ -181,6 +210,7 @@ class _WarehouseKeeperDashboardScreenState
   @override
   void dispose() {
     final socket = ref.read(socketServiceProvider);
+    socket.removeReconnectListener(_flushPendingOps);
     _socketHandlers.forEach(
       (event, handler) => socket.offEvent(event, handler),
     );
@@ -316,6 +346,7 @@ class _WarehouseKeeperDashboardScreenState
         child: Column(
           children: [
             WarehouseHeader(avatarUrl: auth.avatarUrl),
+            const OfflineBanner(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: Row(

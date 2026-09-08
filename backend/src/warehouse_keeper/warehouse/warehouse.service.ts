@@ -591,6 +591,8 @@ export const warehouseService = {
             return { products, items: products.length, total, page: opts.page, pageSize: opts.pageSize };
         }
 
-        return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include });
+        // سقف ایمنی مسیر بدون صفحه‌بندی (شکل پاسخ آرایه می‌ماند؛ بیش از ۵۰۰ → page/pageSize)
+        const UNPAGED_MAX = 500;
+        return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include, take: UNPAGED_MAX });
     },
 };

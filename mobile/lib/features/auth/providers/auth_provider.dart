@@ -3,6 +3,7 @@ import '../data/auth_api_service.dart';
 import '../lock/lock_config.dart';
 import '../lock/lock_provider.dart';
 import '../lock/lock_storage.dart';
+import '../lock/offline_verifier.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/network/dio_client.dart';
@@ -38,6 +39,13 @@ class AuthState {
   final String? avatarUrl;
   final String? error;
 
+  /// رمز موقت داده‌شده توسط مدیر — کاربر باید قبل از هر کاری رمز را عوض کند
+  final bool mustChangePassword;
+
+  /// حالت آفلاین: رمز محلی تأیید شده ولی شبکه قطع است — توکن ذخیره‌شدهٔ معتبر
+  /// reuse می‌شود؛ ثبت‌ها در صف آفلاین می‌مانند تا اتصال برگردد
+  final bool offlineMode;
+
   AuthState({
     this.isLoading = false,
     this.isInitializing = true,
@@ -49,6 +57,8 @@ class AuthState {
     this.phone,
     this.avatarUrl,
     this.error,
+    this.mustChangePassword = false,
+    this.offlineMode = false,
   });
 
   AuthState copyWith({
@@ -62,6 +72,8 @@ class AuthState {
     String? phone,
     String? avatarUrl,
     String? error,
+    bool? mustChangePassword,
+    bool? offlineMode,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
@@ -74,6 +86,8 @@ class AuthState {
       phone: phone ?? this.phone,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       error: error,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      offlineMode: offlineMode ?? this.offlineMode,
     );
   }
 }
@@ -114,6 +128,7 @@ class AuthNotifier extends Notifier<AuthState> {
         name: LocalStorage.getName(),
         phone: LocalStorage.getPhone(),
         avatarUrl: LocalStorage.getAvatarUrl(),
+        mustChangePassword: LocalStorage.getMustChangePassword(),
       );
 
       // برای نشست‌های قدیمی که مشخصات ذخیره نشده، از سرور بگیر
@@ -161,12 +176,17 @@ class AuthNotifier extends Notifier<AuthState> {
       final role = response['user']?['role'] as String? ?? '';
       final name = response['user']?['name'] as String?;
       final avatarUrl = response['user']?['avatarUrl'] as String?;
+      final mustChangePassword =
+          response['user']?['mustChangePassword'] as bool? ?? false;
 
       await SecureStorage.saveTokens(
         accessToken: token,
         refreshToken: refreshToken,
       );
+      // verifier آنلاک آفلاین (هش نمک‌دار در Keystore — plaintext هرگز)
+      await OfflineVerifier.save(password);
       await LocalStorage.saveRole(role);
+      await LocalStorage.setMustChangePassword(mustChangePassword);
       await LocalStorage.saveUserData(
         name: name,
         phone: phone,
@@ -185,6 +205,8 @@ class AuthNotifier extends Notifier<AuthState> {
         name: name,
         phone: phone,
         avatarUrl: avatarUrl,
+        mustChangePassword: mustChangePassword,
+        offlineMode: false,
       );
 
       await _connectServices();
@@ -234,6 +256,7 @@ class AuthNotifier extends Notifier<AuthState> {
         name: LocalStorage.getName(),
         phone: LocalStorage.getPhone(),
         avatarUrl: LocalStorage.getAvatarUrl(),
+        offlineMode: false,
       );
 
       await _connectServices();
@@ -270,6 +293,61 @@ class AuthNotifier extends Notifier<AuthState> {
     );
   }
 
+  /// ثبت توکن‌های تازه پس از تغییر رمز + پاک‌کردن پرچم تغییر اجباری
+  Future<void> applyPasswordChanged({
+    required String token,
+    required String refreshToken,
+    String? password,
+  }) async {
+    if (token.isNotEmpty && refreshToken.isNotEmpty) {
+      await SecureStorage.saveTokens(accessToken: token, refreshToken: refreshToken);
+    }
+    // verifier آفلاین با رمز جدید به‌روز می‌شود
+    if (password != null && password.isNotEmpty) {
+      await OfflineVerifier.save(password);
+    }
+    await LocalStorage.setMustChangePassword(false);
+    state = state.copyWith(
+      token: token.isNotEmpty ? token : state.token,
+      mustChangePassword: false,
+      isLoggedIn: true,
+      isLocked: false,
+      offlineMode: false,
+    );
+  }
+
+  /// ورود حالت آفلاین: رمز/بیومتریک هم‌اکنون تأیید شده ولی شبکه قطع است.
+  /// فقط اگر توکن ذخیره‌شده هنوز معتبر باشد (بدون صدور توکن جدید — امن).
+  /// برمی‌گرداند true یعنی وارد حالت آفلاین شدیم.
+  Future<bool> enterOfflineMode() async {
+    final token = await SecureStorage.getAccessToken();
+    if (token == null ||
+        token.isEmpty ||
+        isAccessTokenExpiringSoon(token, within: const Duration(minutes: 5))) {
+      return false;
+    }
+    final role = LocalStorage.getRole();
+    if (role == null || role.isEmpty) return false;
+    state = state.copyWith(
+      isLoggedIn: true,
+      isLocked: false,
+      token: token,
+      role: role,
+      name: LocalStorage.getName(),
+      phone: LocalStorage.getPhone(),
+      avatarUrl: LocalStorage.getAvatarUrl(),
+      offlineMode: true,
+    );
+    return true;
+  }
+
+  /// خروج از حالت آفلاین (اتصال برگشته) — رفرش سایلنت؛ ناموفق = همچنان آفلاین
+  Future<bool> retryOnline() async {
+    if (!state.offlineMode) return true;
+    final result = await unlock();
+    return result == UnlockResult.success;
+  }
+
   void _registerForceLogoutListener() {
     SocketService().off('user:force:logout');
     SocketService().on('user:force:logout', (_) {
@@ -296,6 +374,8 @@ class AuthNotifier extends Notifier<AuthState> {
       SocketService().disconnect();
 
       await SecureStorage.clearTokens();
+      // verifier آنلاک آفلاین هم پاک می‌شود — دستگاه بعدی نباید با رمز قبلی باز شود
+      await OfflineVerifier.clear();
       // پاک‌سازی قفل برنامه (پین و روش قفل) — مصوب: بعد از خروج کامل پاک شوند
       await ref.read(lockProvider.notifier).clearAllForLogout();
       await LocalStorage.clearAll();

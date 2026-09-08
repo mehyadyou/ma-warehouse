@@ -32,7 +32,7 @@ describe('authService.createFirstManager — قفل بوت‌استرپ (سنا�
             id: 'u-new', name: 'مدیر اول', phone: '09120000000', role: 'MANAGER',
         });
 
-        const result = await authService.createFirstManager('مدیر اول', '09120000000', '123456');
+        const result = await authService.createFirstManager('مدیر اول', '09120000000', 'Manager123');
         expect(result.role).toBe('MANAGER');
         expect(prisma.user.create).toHaveBeenCalledTimes(1);
     });
@@ -40,7 +40,7 @@ describe('authService.createFirstManager — قفل بوت‌استرپ (سنا�
     it('گام ۲ — بار دوم حتی با DB خالی: 403 (قفل در-پرداز فعال شده)', async () => {
         (prisma.user.findFirst as any).mockResolvedValue(null); // DB را خالی فرض کن
         await expect(
-            authService.createFirstManager('مدیر دوم', '09120000001', '123456'),
+            authService.createFirstManager('مدیر دوم', '09120000001', 'Manager123'),
         ).rejects.toMatchObject({ statusCode: 403 });
         // هیچ create دومی انجام نشده
         expect(prisma.user.create).toHaveBeenCalledTimes(1);
@@ -49,10 +49,10 @@ describe('authService.createFirstManager — قفل بوت‌استرپ (سنا�
     it('گام ۳ — مسیر با قفل همیشگی بسته می‌ماند', async () => {
         (prisma.user.findFirst as any).mockResolvedValue(null);
         await expect(
-            authService.createFirstManager('مدیر سوم', '09120000002', '123456'),
+            authService.createFirstManager('مدیر سوم', '09120000002', 'Manager123'),
         ).rejects.toMatchObject({ statusCode: 403 });
         await expect(
-            authService.createFirstManager('مدیر چهارم', '09120000003', '123456'),
+            authService.createFirstManager('مدیر چهارم', '09120000003', 'Manager123'),
         ).rejects.toMatchObject({ statusCode: 403 });
         expect(prisma.user.create).toHaveBeenCalledTimes(1);
     });
@@ -77,7 +77,7 @@ describe('authService.createFirstManager — ری‌استارت سرور (ما�
 
         prismaFresh.user.findFirst.mockResolvedValue({ id: 'existing' });
         await expect(
-            fresh.createFirstManager('مدیر دوم', '09120000001', '123456'),
+            fresh.createFirstManager('مدیر دوم', '09120000001', 'Manager123'),
         ).rejects.toMatchObject({
             statusCode: 403,
             message: expect.stringContaining('قبلاً'),
@@ -86,7 +86,7 @@ describe('authService.createFirstManager — ری‌استارت سرور (ما�
         // بعدش حتی با DB خالی هم 403 — قفل دوباره فعال شد
         prismaFresh.user.findFirst.mockResolvedValue(null);
         await expect(
-            fresh.createFirstManager('مدیر سوم', '09120000002', '123456'),
+            fresh.createFirstManager('مدیر سوم', '09120000002', 'Manager123'),
         ).rejects.toMatchObject({ statusCode: 403 });
         expect(prismaFresh.user.create).not.toHaveBeenCalled();
     });

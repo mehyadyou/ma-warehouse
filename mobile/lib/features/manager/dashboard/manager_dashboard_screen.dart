@@ -23,6 +23,7 @@ import 'navigation_drawer/screens/product_history_screen.dart';
 import '../delivery_inbox/delivery_inbox_screen.dart';
 import '../../../../shared/settings/settings_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../../shared/widgets/offline_banner.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surface = Color(0xFF1A1D22);
@@ -225,6 +226,7 @@ class _ManagerDashboardScreenState extends ConsumerState<ManagerDashboardScreen>
                     parent: BouncingScrollPhysics(),
                   ),
                   slivers: [
+                    const SliverToBoxAdapter(child: OfflineBanner()),
                     SliverToBoxAdapter(
                       child: HeaderSection(
                         title: auth.name ?? 'کاربر',

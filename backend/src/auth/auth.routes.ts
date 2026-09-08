@@ -2,7 +2,7 @@
 import { authController } from './auth.controller';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
-import { rateLimit } from '../middleware/rateLimit';
+import { rateLimit, userRateLimit } from '../middleware/rateLimit';
 import { loginSchema, createFirstManagerSchema, updateProfileSchema, refreshSchema, logoutSchema, verifyPasswordSchema } from './auth.schema';
 
 const router = Router();
@@ -35,11 +35,21 @@ router.post('/refresh',
 router.post('/logout', authenticate, validate(logoutSchema), authController.logout);
 
 // تأیید رمز اصلی برای قفل‌گشایی برنامه (نیازمند توکن)
-router.post('/verify-password', authenticate, validate(verifyPasswordSchema), authController.verifyPassword);
+// ⚠️ سقف per-user (نه per-IP): کاربران پشت NAT یک IP مشترک دارند؛ بدون این، حدس PIN ممکن بود
+router.post('/verify-password',
+    authenticate,
+    userRateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'verify-password' }),
+    validate(verifyPasswordSchema), authController.verifyPassword);
 
-// پروفایل (نیازمند توکن)
-router.get('/profile', authenticate, authController.getProfile);
-router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
+// پروفایل (نیازمند توکن) — سقف سخاوتمندانه ضد سوءاستفاده
+router.get('/profile',
+    authenticate,
+    userRateLimit({ windowMs: 60 * 1000, max: 120, keyPrefix: 'profile-get' }),
+    authController.getProfile);
+router.put('/profile',
+    authenticate,
+    userRateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyPrefix: 'profile-put' }),
+    validate(updateProfileSchema), authController.updateProfile);
 router.post('/profile/avatar', authenticate, authController.uploadAvatar);
 
 export const authRoutes = router;

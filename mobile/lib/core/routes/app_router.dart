@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/lock_screen.dart';
 import '../../features/auth/screens/splash_screen.dart';
+import '../../features/auth/screens/change_password_screen.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/manager/manager_screens.dart';
 import '../../features/warehouse_keeper/dashboard/warehouse_keeper_dashboard_screen.dart';
@@ -25,9 +26,18 @@ String? authRedirect(AuthState auth, String location) {
 
   if (!auth.isLoggedIn && location != '/login') return '/login';
 
+  // رمز موقت — تا تغییر رمز، هیچ صفحه‌ای جز صفحهٔ تغییر رمز در دسترس نیست
+  if (auth.isLoggedIn && auth.mustChangePassword && location != '/change-password') {
+    return '/change-password';
+  }
+
   // لاگین‌شده → داشبورد نقش (از هر صفحهٔ ورودی: ورود/قفل/اسپلش)
+  // صفحهٔ تغییر رمز فقط وقتی پرچم false است به داشبورد هدایت می‌شود
   if (auth.isLoggedIn &&
-      (location == '/login' || location == '/lock' || location == '/splash')) {
+      (location == '/login' ||
+          location == '/lock' ||
+          location == '/splash' ||
+          (location == '/change-password' && !auth.mustChangePassword))) {
     switch (auth.role) {
       case 'MANAGER':
         return '/manager/dashboard';
@@ -51,6 +61,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/lock', builder: (_, __) => const LockScreen()),
+      GoRoute(path: '/change-password', builder: (_, __) => const ChangePasswordScreen()),
       GoRoute(path: '/manager/dashboard', builder: (_, __) => const ManagerDashboardScreen()),
       GoRoute(path: '/manager/warehouses', builder: (_, __) => const WarehousesScreen()),
       GoRoute(path: '/manager/orders/create', builder: (_, __) => const CreateOrderScreen()),

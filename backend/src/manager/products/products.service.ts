@@ -143,7 +143,11 @@ export const productsService = {
             return { products, items: products.length, total, page: opts.page, pageSize: opts.pageSize };
         }
 
-        return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include });
+        // سقف ایمنی مسیر بدون صفحه‌بندی: شکل پاسخ (آرایه) عوض نمی‌شود تا
+        // کلاینت‌های قدیمی نشکنند، ولی با ۱۰هزار محصول کل جدول دانلود نمی‌شود.
+        // برای فراتر از سقف، page/pageSize بفرستید (سقف هر صفحه ۵۰۰ در کنترلر).
+        const UNPAGED_MAX = 500;
+        return await prisma.product.findMany({ where, orderBy: { name: 'asc' }, include, take: UNPAGED_MAX });
     },
 
     //یک محصول با مدل‌هایش — برای فرم ویرایش (بدون واکشی کل لیست)
@@ -166,11 +170,12 @@ export const productsService = {
         });
     },
 
-    //محصولات بایگانی‌شده — برای بازیابی با آخرین دادهٔ کامل
+    //محصولات بایگانی‌شده — برای بازیابی با آخرین دادهٔ کامل (سقف ۵۰۰؛ بایگانی انبوه صفحه‌بندی می‌خواهد)
     getArchivedProducts: async () => {
         return await prisma.product.findMany({
             where: { deletedAt: { not: null } },
             orderBy: { deletedAt: 'desc' },
+            take: 500,
             include: {
                 models: {
                     orderBy: { name: 'asc' },

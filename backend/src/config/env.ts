@@ -11,6 +11,18 @@ if (missing.length > 0) {
     );
 }
 
+// ── اعتبارسنجی قدرت سکرت (حداقل ۳۲ کاراکتر؛ توصیه ۶۴-hex) ──
+// از بوتِ بی‌سروصدا با سکرت ضعیف جلوگیری می‌کند (یافته ممیزی: فقط presence چک می‌شد)
+for (const key of REQUIRED_KEYS) {
+    const value = process.env[key] || '';
+    if (value.length < 32 || /CHANGE_ME/i.test(value)) {
+        throw new Error(
+            `متغیر ${key} ناامن است (کمتر از ۳۲ کاراکتر یا CHANGE_ME). ` +
+            'با دستور بالا کلید ۶۴ کاراکتری بسازید و هر ۶ ماه بچرخانید (docs/db-ops.md).',
+        );
+    }
+}
+
 export const env = {
     JWT_SECRET: process.env.JWT_SECRET as string,
     QR_SECRET:  process.env.QR_SECRET as string,

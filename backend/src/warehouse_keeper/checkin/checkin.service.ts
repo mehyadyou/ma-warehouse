@@ -1,7 +1,7 @@
 ﻿import crypto from 'crypto';
 import { prisma } from '../../utils/prisma';
 import { buildQrForSerial, verifySerialPayload } from '../../utils/qr';
-import { nextSerial } from '../../utils/serial';
+import { nextSerials } from '../../utils/serial';
 import { AppError } from '../../common/exceptions/AppError';
 import type { Prisma } from '@prisma/client';
 
@@ -199,6 +199,16 @@ export const checkinService = {
 
         try {
             await prisma.$transaction(async (tx) => {
+            // تخصیص دسته‌ای همهٔ سریال‌های تازه با «یک» upsert اتمی در ابتدای
+            // تراکنش — هر کارتنِ cartonCount سریال تازه می‌خواهد؛ تکی‌ها فقط وقتی
+            // سریال مرجوعی ندارند (مرجوعیِ سریال‌دار همان سریال را reuse می‌کند)
+            const needFreshSerials = items.reduce((sum, item) => {
+                const returnedSerial = item.entryType === 'RETURNED' ? item.serialNumber?.trim() : '';
+                return sum + Math.max(0, item.cartonCount) + (returnedSerial ? 0 : Math.max(0, item.individualCount));
+            }, 0);
+            const freshSerials = await nextSerials(tx, needFreshSerials);
+            let freshIdx = 0;
+            const takeFreshSerial = () => freshSerials[freshIdx++]!;
             for (const item of items) {
                 const product = productMap.get(item.productId)!;
                 const model = item.modelId ? modelMap.get(item.modelId)! : null;
@@ -210,7 +220,7 @@ export const checkinService = {
                     const id = crypto.randomUUID();
                     // هر کارتن سریال اختصاصی می‌گیرد؛ داخل QR علاوه بر سریال، نام
                     // محصول/مدل و ظرفیت هم می‌آید تا با اسکن گوشی اطلاعات کالا دیده شود
-                    const serial = await nextSerial(tx);
+                    const serial = takeFreshSerial();
                     const { qrPayload, hmac } = buildQrForSerial({
                         serial,
                         uuid: id,
@@ -266,7 +276,7 @@ export const checkinService = {
                     }
                     const id = crypto.randomUUID();
                     // مرجوعی: سریال همان کارتن خروج‌زده؛ بدون QR: سریال تازه؛ جدید: سریال اختصاصی
-                    const serial = serialNumber ?? (await nextSerial(tx));
+                    const serial = serialNumber ?? takeFreshSerial();
                     lastIndividualSerial = serial;
                     const { qrPayload, hmac } = buildQrForSerial({
                         serial,

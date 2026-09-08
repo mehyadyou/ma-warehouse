@@ -72,4 +72,38 @@ void main() {
       expect(authRedirect(loggedIn('UNKNOWN'), '/splash'), isNull);
     });
   });
+
+  group('authRedirect (پرچم تغییر اجباری رمز)', () {
+    AuthState mustChange(String role) => AuthState(
+          isInitializing: false,
+          isLoggedIn: true,
+          isLocked: false,
+          role: role,
+          mustChangePassword: true,
+        );
+
+    test('رمز موقت → همهٔ مسیرها به صفحهٔ تغییر رمز قفل می‌شوند', () {
+      expect(authRedirect(mustChange('MANAGER'), '/splash'), '/change-password');
+      expect(authRedirect(mustChange('MANAGER'), '/login'), '/change-password');
+      expect(authRedirect(mustChange('MANAGER'), '/manager/dashboard'),
+          '/change-password');
+      expect(
+          authRedirect(mustChange('WAREHOUSE_KEEPER'), '/warehouse/dashboard'),
+          '/change-password');
+      expect(authRedirect(mustChange('DRIVER'), '/driver/dashboard'),
+          '/change-password');
+    });
+
+    test('خودِ صفحهٔ تغییر رمز → بدون تغییر (null)', () {
+      expect(authRedirect(mustChange('MANAGER'), '/change-password'), isNull);
+    });
+
+    test('بعد از تغییر رمز (پرچم false) → مسیر عادی نقش', () {
+      expect(authRedirect(loggedIn('MANAGER'), '/manager/dashboard'), isNull);
+      expect(
+        authRedirect(loggedIn('MANAGER'), '/change-password'),
+        '/manager/dashboard',
+      );
+    });
+  });
 }

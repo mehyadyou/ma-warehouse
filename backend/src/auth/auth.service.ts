@@ -218,7 +218,7 @@ export const authService = {
             updateData.phone = phone;
         }
         if (data.password !== undefined && data.password) {
-            assertPasswordPolicy(data.password);
+            assertPasswordPolicy(data.password, user.role);
             updateData.password = await bcrypt.hash(data.password, 12);
             updateData.mustChangePassword = false;
             updateData.failedLoginAttempts = 0;
@@ -242,9 +242,29 @@ export const authService = {
                 actorId: id, action: 'user.change_password', entity: 'User', entityId: id,
                 before: { mustChangePassword: user.mustChangePassword }, after: { mustChangePassword: false },
             }).catch(() => {});
+
+            // صدور توکن‌های تازه با tokenVersion جدید — نشستِ همین دستگاه پس از تغییر رمز
+            // سالم می‌ماند (توکن‌های سایر دستگاه‌ها بالاتر ابطال شده‌اند)
+            const fresh = await prisma.user.findUnique({
+                where: { id },
+                select: { tokenVersion: true, role: true, warehouseId: true },
+            });
+            const token = signToken(
+                { id, role: fresh!.role, warehouseId: fresh!.warehouseId || undefined },
+                fresh!.tokenVersion,
+            );
+            const refreshToken = generateRefreshToken();
+            await prisma.refreshToken.create({
+                data: {
+                    userId: id,
+                    tokenHash: hashToken(refreshToken),
+                    expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+                },
+            });
+            return { profile: updated, token, refreshToken };
         }
 
-        return updated;
+        return { profile: updated, token: null, refreshToken: null };
     },
 
     //آپدیت آواتار
@@ -270,7 +290,7 @@ export const authService = {
             bootstrapComplete = true;
             throw new AppError('مدیر سیستم قبلاً ثبت شده است', 403);
         }
-        assertPasswordPolicy(password);
+        assertPasswordPolicy(password, 'MANAGER');
 
         const user = await prisma.user.create({
             data: {
@@ -278,6 +298,8 @@ export const authService = {
                 phone,
                 password: await bcrypt.hash(password, 12),
                 role: 'MANAGER',
+                // حتی مدیر اول هم باید در اولین ورود رمز را عوض کند
+                mustChangePassword: true,
             },
             select: { id: true, name: true, phone: true, role: true },
         });

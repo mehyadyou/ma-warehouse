@@ -4,6 +4,7 @@ import 'package:ma_app/features/warehouse_keeper/providers/warehouse_keeper_prov
 import 'activity_section.dart';
 import 'inventory_chart_card.dart';
 import 'unreviewed_orders_card.dart';
+import '../../../offline/pending_ops_card.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key, this.onOpenOrders});
@@ -21,6 +22,8 @@ class HomeScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // عملیات ثبت‌شده در قطعی اینترنت — با بازگشت اتصال ارسال می‌شوند
+          const PendingOpsCard(),
           UnreviewedOrdersCard(onTap: onOpenOrders),
           const InventoryChartCard(),
           const SizedBox(height: 22),

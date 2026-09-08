@@ -291,6 +291,13 @@ class _UserDialogState extends State<_UserDialog> {
 
   bool get _needsWarehouse => _role == 'WAREHOUSE_KEEPER';
 
+  /// اعتبارسنجی نقش‌آگاه رمز — مدیر: قوی؛ انباردار/راننده: PIN شش‌رقمی
+  String? _validatePasswordForRole(String password) {
+    return _role == 'MANAGER'
+        ? validateManagerPassword(password)
+        : validatePassword(password);
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -311,10 +318,10 @@ class _UserDialogState extends State<_UserDialog> {
       error = validatePhone(phone);
     } else if (_needsWarehouse && _warehouseId == null) {
       error = 'برای نقش انباردار، انتخاب انبار الزامی است';
-    } else if (!_isEdit && validatePassword(password) != null) {
-      error = validatePassword(password);
-    } else if (_isEdit && password.isNotEmpty && validatePassword(password) != null) {
-      error = validatePassword(password);
+    } else if (!_isEdit && _validatePasswordForRole(password) != null) {
+      error = _validatePasswordForRole(password);
+    } else if (_isEdit && password.isNotEmpty && _validatePasswordForRole(password) != null) {
+      error = _validatePasswordForRole(password);
     }
     if (error != null) {
       setState(() => _saveError = error);
@@ -429,12 +436,20 @@ class _UserDialogState extends State<_UserDialog> {
           TextField(
             controller: _passCtrl,
             obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            keyboardType: _role == 'MANAGER'
+                ? TextInputType.visiblePassword
+                : TextInputType.number,
+            maxLength: _role == 'MANAGER' ? 64 : 6,
+            inputFormatters: _role == 'MANAGER'
+                ? null
+                : [FilteringTextInputFormatter.digitsOnly],
             style: const TextStyle(color: Colors.white),
             decoration: _decoration(
-              _isEdit ? 'رمز عبور جدید (۶ رقم — اختیاری)' : 'رمز عبور (۶ رقم)',
+              _isEdit
+                  ? (_role == 'MANAGER'
+                      ? 'رمز عبور جدید (حرف+عدد — اختیاری)'
+                      : 'رمز عبور جدید (۶ رقم — اختیاری)')
+                  : (_role == 'MANAGER' ? 'رمز عبور (حرف+عدد)' : 'رمز عبور (۶ رقم)'),
             ),
           ),
           const SizedBox(height: 12),

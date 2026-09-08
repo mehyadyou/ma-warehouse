@@ -106,6 +106,21 @@ class LocalStorage {
 
   static String? getAvatarUrl() => _prefs.getString('user_avatar');
 
+  // ═══ پرچم تغییر اجباری رمز در اولین ورود ═══
+  static const _mustChangePasswordKey = 'must_change_password';
+
+  static Future<void> setMustChangePassword(bool value) async {
+    if (value) {
+      await _prefs.setBool(_mustChangePasswordKey, true);
+    } else {
+      await _prefs.remove(_mustChangePasswordKey);
+    }
+  }
+
+  /// پیش‌فرض false — فقط وقتی سرور/لاگین گفته باشد true می‌شود
+  static bool getMustChangePassword() =>
+      _prefs.getBool(_mustChangePasswordKey) ?? false;
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

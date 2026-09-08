@@ -5,6 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/warehouse_keeper_provider.dart';
 import '../models/keeper_product_model.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/network/client_keys.dart';
+import '../../offline/pending_ops.dart';
 import '../../../shared/widgets/search_picker.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -155,23 +157,28 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
       }
     }
     setState(() => _submitting = true);
+    // بیرون try تا در catch (صف آفلاین) هم در دسترس باشند
+    final items = _rows
+        .map(
+          (r) => {
+            'productId': r.productId!,
+            'modelId': r.modelId!,
+            'entryType': r.entryType,
+            if (r.entryType == 'RETURNED' && !r.withoutQr)
+              'serialNumber': r.serialCtrl.text.trim(),
+            if (r.entryType == 'RETURNED')
+              'withoutQr': r.withoutQr,
+            'cartonCount': r.cartonCount,
+            'individualCount': r.individualCount,
+          },
+        )
+        .toList();
+    // کلید ایدمپوتنسی این ورود: در ریت‌رای و فلاش صف آفلاین ثابت می‌ماند
+    final clientKey = newClientKey();
     try {
-      final items = _rows
-          .map(
-            (r) => {
-              'productId': r.productId!,
-              'modelId': r.modelId!,
-              'entryType': r.entryType,
-              if (r.entryType == 'RETURNED' && !r.withoutQr)
-                'serialNumber': r.serialCtrl.text.trim(),
-              if (r.entryType == 'RETURNED')
-                'withoutQr': r.withoutQr,
-              'cartonCount': r.cartonCount,
-              'individualCount': r.individualCount,
-            },
-          )
-          .toList();
-      final result = await ref.read(wkApiProvider).submitCheckin(items);
+      final result = await ref
+          .read(wkApiProvider)
+          .submitCheckin(items, clientKey: clientKey);
       final cartons = result.cartons.length;
       if (mounted) {
         final serials = result.cartons
@@ -222,7 +229,22 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
         );
       }
     } on DioException catch (e) {
-      _snack(friendlyError(e));
+      // قطعی شبکه → ذخیره خودکار در صف آفلاین با همان clientKey (بدون از دست رفتن ردیف‌ها)
+      if (isNetworkError(e)) {
+        await ref.read(pendingOpsProvider.notifier).enqueue(PendingOp(
+              key: clientKey,
+              type: PendingOpType.checkin,
+              payload: {'items': items},
+              createdAt: DateTime.now(),
+              label: 'ورود کالا (${items.length} ردیف)',
+            ));
+        if (mounted) {
+          final pending = ref.read(pendingOpsProvider).length;
+          _snack('اینترنت قطع است — ورود در صف آفلاین ذخیره شد ($pending در صف)');
+        }
+      } else {
+        _snack(friendlyError(e));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -9,6 +9,7 @@ import '../lock/lock_config.dart';
 import '../lock/lock_provider.dart';
 import '../lock/lock_storage.dart';
 import '../providers/auth_provider.dart';
+import '../../../core/storage/local_storage.dart';
 
 const _bg = Color(0xFF0F1114);
 const _surfaceAlt = Color(0xFF22262D);
@@ -29,10 +30,15 @@ class LockScreen extends ConsumerStatefulWidget {
 
 class _LockScreenState extends ConsumerState<LockScreen> {
   final _localAuth = LocalAuthentication();
+  final _managerPasswordController = TextEditingController();
 
   bool _checking = true;
   bool _supported = false;
   bool _unlocking = false;
+
+  /// مدیر رمز قوی حروفی دارد → فیلد متنی؛ انباردار/راننده PIN شش‌رقمی → صفحه‌کلید عددی
+  bool _isManager = false;
+  bool _obscureManagerPassword = true;
 
   String? _error;
 
@@ -49,11 +55,14 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   void dispose() {
     _cooldownTimer?.cancel();
+    _managerPasswordController.dispose();
     super.dispose();
   }
 
   Future<void> _init() async {
     final method = await LockStorage.getMethod();
+    // نقش از حافظه محلی خوانده می‌شود (در حالت قفل، سینک و بدون شبکه در دسترس است)
+    final isManager = LocalStorage.getRole() == 'MANAGER';
 
     bool supported = false;
     try {
@@ -67,6 +76,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() {
       _supported = supported;
       _checking = false;
+      _isManager = isManager;
     });
 
     // روش ذخیره‌شده بیومتریک و دستگاه سنسور دارد → تلاش خودکار بیومتریک
@@ -105,11 +115,28 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     ref.read(lockProvider.notifier).resetAttempts();
     final result = await ref.read(authProvider.notifier).unlock();
     if (result != UnlockResult.success && mounted) {
+      // قطعی شبکه بعد از تأیید رمز/بیومتریک → ورود حالت آفلاین (توکن معتبر
+      // ذخیره‌شده reuse می‌شود؛ ثبت‌ها در صف می‌مانند)
+      if (result == UnlockResult.networkError) {
+        final offlineOk =
+            await ref.read(authProvider.notifier).enterOfflineMode();
+        if (offlineOk && mounted) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('حالت آفلاین — با اتصال اینترنت همگام می‌شوید'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return;
+        }
+      }
       setState(() {
         _unlocking = false;
         _error = result == UnlockResult.invalidSession
             ? 'نشست شما منقضی شده است؛ از حساب خارج شده و دوباره وارد شوید'
-            : 'اتصال برقرار نشد؛ دوباره تلاش کنید';
+            : 'اتصال برقرار نشد؛ یک‌بار آنلاین وارد شوید تا حالت آفلاین فعال شود';
       });
     }
   }
@@ -129,12 +156,16 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Future<void> _submitPassword() async {
+    final password =
+        _isManager ? _managerPasswordController.text.trim() : _password;
+    if (password.isEmpty) return;
     setState(() => _unlocking = true);
-    final ok = await ref.read(lockProvider.notifier).verifyPassword(_password);
+    final ok = await ref.read(lockProvider.notifier).verifyPassword(password);
     if (!mounted) return;
 
     if (ok) {
       setState(() => _password = '');
+      _managerPasswordController.clear();
       await _completeUnlock();
       return;
     }
@@ -144,6 +175,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       _unlocking = false;
       _error = 'رمز عبور اشتباه است';
     });
+    _managerPasswordController.clear();
     HapticFeedback.heavyImpact();
 
     final lock = ref.read(lockProvider);
@@ -261,10 +293,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         ),
       );
     }
-    return const Text(
-      'رمز ۶ رقمی خود را وارد کنید',
+    return Text(
+      _isManager ? 'رمز عبور خود را وارد کنید' : 'رمز ۶ رقمی خود را وارد کنید',
       textAlign: TextAlign.center,
-      style: TextStyle(
+      style: const TextStyle(
         color: Colors.white54,
         fontSize: 13,
       ),
@@ -272,11 +304,95 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Widget _passwordSection(bool inCooldown) {
+    // مدیر: فیلد متنی رمز قوی + دکمه تأیید (صفحه‌کلید عددی ۶ رقمی برای رمز حروفی کار نمی‌کند)
+    if (_isManager) return _managerPasswordSection(inCooldown);
     return Column(
       children: [
         _passwordDots(),
         const SizedBox(height: 24),
         _keypad(enabled: !inCooldown && !_unlocking),
+        const SizedBox(height: 24),
+        if (_supported)
+          TextButton(
+            onPressed: inCooldown ? null : _unlockWithBiometrics,
+            child: const Text(
+              'ورود با اثر انگشت',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+          ),
+        TextButton(
+          onPressed: _logout,
+          child: const Text(
+            'خروج از حساب',
+            style: TextStyle(color: Colors.white38, fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// فیلد رمز مدیر (حروفی-عددی) + دکمه تأیید
+  Widget _managerPasswordSection(bool inCooldown) {
+    final busy = inCooldown || _unlocking;
+    return Column(
+      children: [
+        TextField(
+          controller: _managerPasswordController,
+          obscureText: _obscureManagerPassword,
+          keyboardType: TextInputType.visiblePassword,
+          enabled: !busy,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            labelText: 'رمز عبور',
+            labelStyle: const TextStyle(color: Colors.white54),
+            filled: true,
+            fillColor: _surfaceAlt,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _border),
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureManagerPassword
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                color: Colors.white38,
+              ),
+              onPressed: () => setState(
+                  () => _obscureManagerPassword = !_obscureManagerPassword),
+            ),
+          ),
+          onSubmitted: (_) => _submitPassword(),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: busy ? null : _submitPassword,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _green,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: _unlocking
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: Colors.black),
+                  )
+                : const Text('تأیید',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ),
         const SizedBox(height: 24),
         if (_supported)
           TextButton(

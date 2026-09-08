@@ -36,12 +36,6 @@
 	<string>برای تبدیل گفتار به متن در دستیار هوشمند از تشخیص گفتار استفاده می‌شود</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>برای انتخاب عکس پروفایل از گالری استفاده می‌شود</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<comment>فقط برای توسعه با سرور http — در نسخه تولید باید به https منتقل شود</comment>
-	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

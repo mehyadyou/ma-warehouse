@@ -13,6 +13,19 @@ class SocketService {
 
   bool get isConnected => _isConnected;
 
+  /// شنونده‌های اتصال مجدد — مثل فلاش صف آفلاین هنگام بازگشت اینترنت
+  final List<void Function()> _reconnectListeners = [];
+
+  void addReconnectListener(void Function() listener) {
+    if (!_reconnectListeners.contains(listener)) {
+      _reconnectListeners.add(listener);
+    }
+  }
+
+  void removeReconnectListener(void Function() listener) {
+    _reconnectListeners.remove(listener);
+  }
+
   Future<void> connect() async {
     if (_isConnected) return;
 
@@ -36,7 +49,16 @@ class SocketService {
     );
 
     _socket?.onConnect((_) {
+      final wasConnected = _isConnected;
       _isConnected = true;
+      // اتصال مجدد (بعد از قطعی) → شنونده‌ها (فلاش صف آفلاین)
+      if (!wasConnected) {
+        for (final l in List.of(_reconnectListeners)) {
+          try {
+            l();
+          } catch (_) {}
+        }
+      }
     });
 
     _socket?.onDisconnect((_) {

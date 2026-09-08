@@ -84,7 +84,7 @@ describe('آدیت ۴ — Token Revocation Cascade (تغییر رمز → ابط
         (prisma.user.update as any).mockResolvedValue(baseUser({ tokenVersion: 1 }));
         (prisma.refreshToken.updateMany as any).mockResolvedValue({ count: 3 });
 
-        await authService.updateProfile('u1', { password: '123456' });
+        await authService.updateProfile('u1', { password: 'Manager123' });
 
         expect(prisma.user.update).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -96,7 +96,7 @@ describe('آدیت ۴ — Token Revocation Cascade (تغییر رمز → ابط
             where: { userId: 'u1', revokedAt: null },
             data: { revokedAt: expect.any(Date) },
         });
-        expect(bcrypt.hash).toHaveBeenCalledWith('123456', 12);
+        expect(bcrypt.hash).toHaveBeenCalledWith('Manager123', 12);
     });
 
     it('گام ۲ — access توکنِ صادرشده قبل از تغییرِ رمز (ver=0) → 401 و بدونِ next', async () => {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/widgets/app_drawer.dart';
 import '../../../shared/widgets/dashboard_header.dart';
+import '../../../shared/widgets/offline_banner.dart';
 import '../providers/driver_provider.dart';
 import '../widgets/loading_plan_tab.dart';
 import '../widgets/delivery_tab.dart';
@@ -150,6 +151,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
             avatarUrl: auth.avatarUrl,
             trailing: _onlineBadge(),
           ),
+          const OfflineBanner(),
           Expanded(
             child: IndexedStack(
               index: _currentTab,

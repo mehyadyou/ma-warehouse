@@ -279,7 +279,12 @@ export const transfersService = {
         });
     },
 
-    /** لغو دستور توسط مدیر — فقط در انتظار و بدون هیچ اسکن اجراشده */
+    /**
+     * لغو دستور توسط مدیر — فقط در انتظار و بدون هیچ اسکن اجراشده.
+     * کل بررسی + لغو داخل تراکنش Serializable با updateMany شرطی است تا مسابقه
+     * با scanOut هم‌زمان (که بین count و update می‌نشیند) نتواند دستورِ شروع‌شده
+     * را لغو کند یا لغوِ هم‌زمان را دو بار اعمال کند.
+     */
     cancelTransfer: async (id: string, userId: string) => {
         const transfer = await prisma.transfer.findUnique({
             where: { id },
@@ -294,44 +299,59 @@ export const transfersService = {
         if (transfer.status !== 'PENDING') {
             throw new AppError('فقط دستورهای «در انتظار» قابل لغو هستند', 400);
         }
-        const scanned = await prisma.carton.count({
-            where: { transferId: id, scannedOutAt: { not: null } },
-        });
-        if (scanned > 0) {
-            throw new AppError('این دستور شروع به اجرا شده و قابل لغو نیست', 400);
-        }
-        await prisma.transfer.update({
-            where: { id },
-            data: { status: 'CANCELED' },
-        });
-        await prisma.activityLog.create({
-            data: {
-                type: transfer.toWarehouseId ? 'product_transfer' : 'product_exit',
-                label: `لغو دستور ${transfer.toWarehouseId ? 'جابه‌جایی' : 'خروج'} ${transfer.quantity} واحدی`,
-                userId,
-            },
-        });
 
-        // رویداد تراکنشی‌گونه — انباردارهای مبدأ (و مقصد) از لغو دستور باخبر می‌شوند
-        await prisma.outboxEvent.create({
-            data: {
-                aggregate: 'transfer',
-                type: 'transfer:canceled',
-                payload: {
-                    transferId: transfer.id,
-                    kind: transfer.toWarehouseId ? 'transfer' : 'exit',
-                    fromWarehouseId: transfer.fromWarehouseId,
-                    fromWarehouseName: (transfer as any).fromWarehouse?.name ?? '',
-                    toWarehouseId: transfer.toWarehouseId ?? null,
-                    toWarehouseName: (transfer as any).toWarehouse?.name ?? null,
-                    productId: transfer.productId,
-                    productName: (transfer as any).product?.name ?? '',
-                    modelId: transfer.modelId ?? null,
-                    modelName: (transfer as any).model?.name ?? null,
-                    quantity: transfer.quantity,
-                    canceledAt: new Date().toISOString(),
+        await runSerializable(async (tx) => {
+            // بازخوانی داخل تراکنش: اگر scanOut هم‌زمان وضعیت را عوض کرده یا
+            // اسکنی ثبت کرده، لغو انجام نمی‌شود
+            const fresh = await tx.transfer.findUnique({
+                where: { id },
+                select: { status: true },
+            });
+            if (!fresh || fresh.status !== 'PENDING') {
+                throw new AppError('این دستور دیگر فعال نیست', 400);
+            }
+            const scanned = await tx.carton.count({
+                where: { transferId: id, scannedOutAt: { not: null } },
+            });
+            if (scanned > 0) {
+                throw new AppError('این دستور شروع به اجرا شده و قابل لغو نیست', 400);
+            }
+            const updated = await tx.transfer.updateMany({
+                where: { id, status: 'PENDING' },
+                data: { status: 'CANCELED' },
+            });
+            if (updated.count !== 1) {
+                throw new AppError('این دستور دیگر فعال نیست', 400);
+            }
+            await tx.activityLog.create({
+                data: {
+                    type: transfer.toWarehouseId ? 'product_transfer' : 'product_exit',
+                    label: `لغو دستور ${transfer.toWarehouseId ? 'جابه‌جایی' : 'خروج'} ${transfer.quantity} واحدی`,
+                    userId,
                 },
-            },
+            });
+
+            // رویداد تراکنشی‌گونه — انباردارهای مبدأ (و مقصد) از لغو دستور باخبر می‌شوند
+            await tx.outboxEvent.create({
+                data: {
+                    aggregate: 'transfer',
+                    type: 'transfer:canceled',
+                    payload: {
+                        transferId: transfer.id,
+                        kind: transfer.toWarehouseId ? 'transfer' : 'exit',
+                        fromWarehouseId: transfer.fromWarehouseId,
+                        fromWarehouseName: (transfer as any).fromWarehouse?.name ?? '',
+                        toWarehouseId: transfer.toWarehouseId ?? null,
+                        toWarehouseName: (transfer as any).toWarehouse?.name ?? null,
+                        productId: transfer.productId,
+                        productName: (transfer as any).product?.name ?? '',
+                        modelId: transfer.modelId ?? null,
+                        modelName: (transfer as any).model?.name ?? null,
+                        quantity: transfer.quantity,
+                        canceledAt: new Date().toISOString(),
+                    },
+                },
+            });
         });
     },
 

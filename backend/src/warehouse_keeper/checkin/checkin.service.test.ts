@@ -20,6 +20,13 @@ vi.mock('../../utils/qr', () => ({
 
 vi.mock('../../utils/serial', () => ({
     nextSerial: vi.fn().mockResolvedValue('MA-1405-000001'),
+    // تخصیص دسته‌ای: سریال‌های ترتیبی MA-1405-000001.. برمی‌گرداند
+    nextSerials: vi.fn().mockImplementation(async (_tx: unknown, count: number) =>
+        Array.from(
+            { length: Math.max(0, count) },
+            (_, i) => `MA-1405-${String(i + 1).padStart(6, '0')}`,
+        ),
+    ),
 }));
 
 import { checkinService, CheckinItem } from './checkin.service';
@@ -184,10 +191,14 @@ describe('checkinService.submitCheckin - موفقیت', () => {
             { productId: 'p1', modelId: 'm1', cartonCount: 1, individualCount: 1 },
         ]);
 
+        // هر واحد سریال یکتا می‌گیرد (تخصیص دسته‌ای ترتیبی)
         expect(result.cartons[0].serialNumber).toBe('MA-1405-000001');
-        expect(result.cartons[1].serialNumber).toBe('MA-1405-000001');
+        expect(result.cartons[1].serialNumber).toBe('MA-1405-000002');
         expect(buildQrForSerial).toHaveBeenCalledWith(
             expect.objectContaining({ serial: 'MA-1405-000001' })
+        );
+        expect(buildQrForSerial).toHaveBeenCalledWith(
+            expect.objectContaining({ serial: 'MA-1405-000002' })
         );
         expect(result.cartons[0].qrPayload).toContain('MA-1405-000001');
     });

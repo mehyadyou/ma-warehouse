@@ -1,3 +1,0 @@
-"postgres" "SCRAM-SHA-256$4096:GU0GpyA+bz7ykksyNUfxzA==$dA0wkyh1fy1QjsuvVKp6fjynuctwp3UkReaY+lI0WcM=:OIY27xutr1ffdn/4rNbO6qsrnAjcF+2wOA/YMAHI4oA="
-"ma_app" "SCRAM-SHA-256$4096:bcvja6m2WnKSRRxretvOBw==$Xl1yXlexymKVdg+96H3YC3yppijWVSbnhFPQdnll+MY=:n8Ldp/2IQpSXB3WixsxuT30cvlli2gn7rqDBFUhFnIw="
-"ma_migrator" "SCRAM-SHA-256$4096:DSwI26k2wBa0BCu0XTWHOw==$0LDwH6+VNfm8Mngnh0fd2WctYOtKHSDLCM+W4XGLg9Y=:OgAUr7gQSufcZ+pJRfsW67tsi3Oo/MI9SPg5xTBx46k="

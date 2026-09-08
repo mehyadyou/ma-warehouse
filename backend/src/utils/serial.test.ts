@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { jalaliYear } from './jalali';
-import { nextSerial } from './serial';
+import { nextSerial, nextSerials } from './serial';
 
 describe('jalaliYear', () => {
     it('تبدیل تاریخ میلادی به سال شمسی', () => {
@@ -37,5 +37,33 @@ describe('nextSerial', () => {
 
         const year = jalaliYear(new Date());
         expect(await nextSerial(tx)).toBe(`MA-${year}-000001`);
+    });
+});
+
+describe('nextSerials', () => {
+    it('تخصیص دسته‌ای با یک upsert (increment به‌اندازه تعداد)', async () => {
+        const tx = {
+            serialSequence: {
+                upsert: vi.fn().mockResolvedValue({ year: 1405, lastSeq: 10 }),
+            },
+        } as any;
+
+        expect(await nextSerials(tx, 3)).toEqual([
+            'MA-1405-000008',
+            'MA-1405-000009',
+            'MA-1405-000010',
+        ]);
+        expect(tx.serialSequence.upsert).toHaveBeenCalledTimes(1);
+        expect(tx.serialSequence.upsert).toHaveBeenCalledWith({
+            where: { year: 1405 },
+            update: { lastSeq: { increment: 3 } },
+            create: { year: 1405, lastSeq: 3 },
+        });
+    });
+
+    it('تعداد صفر/منفی → آرایه خالی بدون تماس DB', async () => {
+        const tx = { serialSequence: { upsert: vi.fn() } } as any;
+        expect(await nextSerials(tx, 0)).toEqual([]);
+        expect(tx.serialSequence.upsert).not.toHaveBeenCalled();
     });
 });

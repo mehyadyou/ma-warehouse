@@ -9,6 +9,8 @@ export const scanOutSchema = z.object({
     // وقتی انباردار کارتن را برای یک دستور جابه‌جایی/خروج مدیر اسکن می‌کند، کارتن
     // به همان دستور متصل شده و اجرا می‌شود (تا تکمیل سهمیه → دستور DONE)
     transferId:   z.string().trim().nullish(),
+    // کلید ایدمپوتنسی سمت کلاینت: ریت‌رای/صف آفلاین با کلید یکسان، پاسخ قبلی را می‌گیرد
+    clientKey:    z.string().trim().max(128).nullish(),
 }).refine(
     (v) => v.qrPayload.length > 0 || v.serialNumber.length > 0,
     { message: 'qrPayload یا serialNumber الزامی است' },
@@ -26,6 +28,8 @@ export const manualExitSchema = z.object({
     // انتخاب صریح هدف وقتی چند سفارش/دستور فعال برای این کالا/مدل وجود دارد
     orderId:    z.string().trim().nullish(),
     transferId: z.string().trim().nullish(),
+    // کلید ایدمپوتنسی سمت کلاینت: ریت‌رای/صف آفلاین با کلید یکسان، پاسخ قبلی را می‌گیرد
+    clientKey:  z.string().trim().max(128).nullish(),
 }).refine(
     (v) => !(v.orderId && v.transferId),
     { message: 'فقط یکی از سفارش یا دستور جابه‌جایی/خروج را انتخاب کنید' },

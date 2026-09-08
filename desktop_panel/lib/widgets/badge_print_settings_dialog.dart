@@ -5,6 +5,7 @@ import '../core/label_data.dart';
 import '../core/palette.dart';
 import 'app_widgets.dart';
 import 'badge_sheet_widget.dart';
+import 'printer_dropdown.dart';
 
 /// نمونه برای پیش‌نمایشِ واقعی بیجک — همان ساختار محتوای چاپ‌شده
 final BadgeData _sampleBadge = BadgeData(
@@ -139,6 +140,14 @@ class _BadgePrintSettingsDialogState extends State<BadgePrintSettingsDialog> {
                                 _modeCard(s),
                                 const SizedBox(height: 14),
                                 _pageInfoCard(s),
+                                const SizedBox(height: 14),
+                                // معمولاً چاپگر معمولی (مثل Canon) — جدا از لیبل‌زن حرارتی
+                                PrinterDropdown(
+                                  value: s.printerName,
+                                  label: 'چاپگر بیجک (پیشنهاد: چاپگر معمولی)',
+                                  onChanged: (v) => _draft.value =
+                                      _draft.value.copyWith(printerName: v),
+                                ),
                                 const SizedBox(height: 16),
                                 Row(
                                   children: [

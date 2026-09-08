@@ -4,6 +4,7 @@ import '../core/label_data.dart';
 import '../core/palette.dart';
 import '../core/printer_settings.dart';
 import 'app_widgets.dart';
+import 'printer_dropdown.dart';
 import 'qr_label_widget.dart';
 
 /// نمونه برای پیش‌نمایشِ واقعی لیبل — همان ساختار محتوای چاپ‌شده
@@ -22,6 +23,7 @@ final LabelData _sampleLabel = LabelData(
 const List<(String name, double w, double h)> _presets = [
   ('لیبل ۱۰×۸ سانتی (پیش‌فرض)', 100, 80),
   ('لیبل ۱۰×۱۰ سانتی', 100, 100),
+  ('لیبل حرارتی ۵×۳ (4BARCODE)', 50, 30),
   ('برچسب ۴×۲.۵ سانتی', 40, 25),
   ('برچسب ۲×۲ سانتی', 20, 20),
 ];
@@ -295,7 +297,6 @@ class _PrinterSettingsDialogState extends State<PrinterSettingsDialog> {
       );
 
   Widget _printerInfoCard(PrinterSettings s) {
-    final isDefault = s.printerName.isEmpty;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -303,29 +304,40 @@ class _PrinterSettingsDialogState extends State<PrinterSettingsDialog> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Palette.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.print_outlined, color: Palette.textMuted, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isDefault ? 'چاپگر پیش‌فرض ویندوز' : s.printerName,
+          Row(
+            children: [
+              const Icon(Icons.print_outlined,
+                  color: Palette.textMuted, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  s.printerName.isEmpty
+                      ? 'چاپ مستقیم خاموش است'
+                      : 'چاپ مستقیم به ${s.printerName}',
                   style: const TextStyle(
                     color: Palette.text,
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'خروجی به چاپگر پیش‌فرض ویندوز ارسال می‌شود؛ در پنجره‌ی چاپ، نام چاپگر را ببینید/تأیید کنید.',
-                  style: TextStyle(color: Palette.textMuted, fontSize: 11),
-                ),
-              ],
-            ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // معمولاً لیبل‌زن حرارتی (مثل 4BARCODE)؛ بیجک چاپگر جدا دارد
+          PrinterDropdown(
+            value: s.printerName,
+            label: 'چاپگر لیبل (پیشنهاد: لیبل‌زن حرارتی)',
+            onChanged: (v) => _draft.value =
+                _draft.value.copyWith(printerName: v),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'با انتخاب چاپگر، چاپ بدون پنجره انجام می‌شود؛ خالی = دیالوگ سیستمی.',
+            style: TextStyle(color: Palette.textMuted, fontSize: 11),
           ),
         ],
       ),

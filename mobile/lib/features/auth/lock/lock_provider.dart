@@ -7,6 +7,7 @@ import '../../../core/storage/local_storage.dart';
 import '../data/auth_api_service.dart';
 import 'lock_config.dart';
 import 'lock_storage.dart';
+import 'offline_verifier.dart';
 
 final lockProvider = NotifierProvider<LockNotifier, LockState>(
   LockNotifier.new,
@@ -138,8 +139,8 @@ class LockNotifier extends Notifier<LockState> {
     return true;
   }
 
-  /// بررسی رمز اصلی (۶ رقمی) روی صفحه قفل — تأیید سمت سرور با همان رمز ورود.
-  /// مدیریت تلاش‌های اشتباه و کولداون.
+  /// بررسی رمز اصلی روی صفحه قفل — اول سمت سرور، در قطعی شبکه با verifier
+  /// محلی Keystore (فقط برای ورود حالت آفلاین). مدیریت تلاش‌های اشتباه و کولداون.
   Future<bool> verifyPassword(String password) async {
     final now = DateTime.now();
     if (state.cooldownUntil != null && now.isBefore(state.cooldownUntil!)) {
@@ -168,7 +169,12 @@ class LockNotifier extends Notifier<LockState> {
     try {
       return await ref.read(lockVerifyApiProvider).verifyPassword(password);
     } catch (e) {
-      // خطای شبکه/سرور — به‌عنوان شکست تلاش حساب می‌شود تا کاربر دوباره تلاش کند
+      // قطعی شبکه → راستی‌آزمایی محلی (هش Keystore) تا انباردار پشت در نماند؛
+      // خطای واقعی سرور (401 و...) همچنان شکست حساب می‌شود
+      if (isNetworkError(e)) {
+        debugPrint('lock verify offline fallback');
+        return OfflineVerifier.verify(password);
+      }
       debugPrint('lock verify error: ${friendlyError(e)}');
       return false;
     }

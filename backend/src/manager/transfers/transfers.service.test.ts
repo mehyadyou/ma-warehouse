@@ -8,9 +8,13 @@ const mocks = vi.hoisted(() => {
         warehouse: { findUnique: vi.fn() },
         product: { findUnique: vi.fn() },
         productModel: { findUnique: vi.fn() },
-        carton: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        carton: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), count: vi.fn().mockResolvedValue(0) },
         transaction: { create: vi.fn().mockResolvedValue({}) },
-        transfer: { create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: 't1', createdAt: new Date('2026-01-01'), ...data })) },
+        transfer: {
+            create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: 't1', createdAt: new Date('2026-01-01'), ...data })),
+            findUnique: vi.fn(),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
         outboxEvent: { create: vi.fn().mockResolvedValue({}) },
         $queryRaw: vi.fn(),
@@ -299,10 +303,13 @@ describe('transfersService.listTransfers', () => {
 describe('transfersService.cancelTransfer', () => {
     beforeEach(() => {
         vi.mocked(prisma.transfer.findUnique).mockReset();
-        vi.mocked(prisma.carton.count).mockReset();
-        vi.mocked(prisma.carton.count).mockResolvedValue(0);
+        mocks.tx.transfer.findUnique.mockReset();
+        mocks.tx.transfer.findUnique.mockResolvedValue({ id: 't1', status: 'PENDING' });
+        mocks.tx.carton.count.mockReset();
+        mocks.tx.carton.count.mockResolvedValue(0);
+        mocks.tx.transfer.updateMany.mockReset();
+        mocks.tx.transfer.updateMany.mockResolvedValue({ count: 1 });
         vi.mocked(prisma.transfer.update).mockReset();
-        vi.mocked(prisma.transfer.update).mockResolvedValue({} as any);
     });
 
     it('لغو دستور PENDING بدون اسکن → CANCELED + لاگ + اعلان به انباردارها', async () => {
@@ -315,14 +322,15 @@ describe('transfersService.cancelTransfer', () => {
 
         await transfersService.cancelTransfer('t1', 'u1');
 
-        expect(prisma.transfer.update).toHaveBeenCalledWith({
-            where: { id: 't1' },
+        // لغو اتمیک داخل تراکنش با updateMany شرطی (محافظ مسابقه با scanOut)
+        expect(mocks.tx.transfer.updateMany).toHaveBeenCalledWith({
+            where: { id: 't1', status: 'PENDING' },
             data: { status: 'CANCELED' },
         });
-        expect(prisma.activityLog.create).toHaveBeenCalledWith(
+        expect(mocks.tx.activityLog.create).toHaveBeenCalledWith(
             expect.objectContaining({ data: expect.objectContaining({ type: 'product_exit' }) }),
         );
-        expect(prisma.outboxEvent.create).toHaveBeenCalledWith(
+        expect(mocks.tx.outboxEvent.create).toHaveBeenCalledWith(
             expect.objectContaining({
                 data: expect.objectContaining({
                     aggregate: 'transfer',
@@ -348,19 +356,33 @@ describe('transfersService.cancelTransfer', () => {
         await expect(
             transfersService.cancelTransfer('t1', 'u1'),
         ).rejects.toThrowError(new AppError('فقط دستورهای «در انتظار» قابل لغو هستند', 400));
-        expect(prisma.transfer.update).not.toHaveBeenCalled();
+        expect(mocks.tx.transfer.updateMany).not.toHaveBeenCalled();
     });
 
     it('لغو دستور شروع‌شده (با کارتن اسکن‌شده) → رد', async () => {
         vi.mocked(prisma.transfer.findUnique).mockResolvedValue({
             id: 't1', status: 'PENDING', toWarehouseId: 'wh2', quantity: 10,
         } as any);
-        vi.mocked(prisma.carton.count).mockResolvedValue(1);
+        mocks.tx.carton.count.mockResolvedValue(1);
 
         await expect(
             transfersService.cancelTransfer('t1', 'u1'),
         ).rejects.toThrowError(new AppError('این دستور شروع به اجرا شده و قابل لغو نیست', 400));
-        expect(prisma.transfer.update).not.toHaveBeenCalled();
+        expect(mocks.tx.transfer.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('مسابقه لغو با scanOut هم‌زمان (وضعیت داخل تراکنش عوض شده) → رد', async () => {
+        vi.mocked(prisma.transfer.findUnique).mockResolvedValue({
+            id: 't1', status: 'PENDING', toWarehouseId: null, quantity: 10,
+            fromWarehouseId: 'wh1', productId: 'p1',
+        } as any);
+        // بین خوانش اول و تراکنش، scanOut دستور را DONE کرده
+        mocks.tx.transfer.findUnique.mockResolvedValue({ id: 't1', status: 'DONE' });
+
+        await expect(
+            transfersService.cancelTransfer('t1', 'u1'),
+        ).rejects.toThrowError(new AppError('این دستور دیگر فعال نیست', 400));
+        expect(mocks.tx.transfer.updateMany).not.toHaveBeenCalled();
     });
 
     it('دستور یافت نشد → ۴۰۴', async () => {

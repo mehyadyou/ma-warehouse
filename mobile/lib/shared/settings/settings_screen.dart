@@ -133,8 +133,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     final newPassword = _passwordCtrl.text.trim();
+    final isManager = ref.read(authProvider).role == 'MANAGER';
     if (newPassword.isNotEmpty) {
-      final passwordError = validatePassword(newPassword);
+      final passwordError = isManager
+          ? validateManagerPassword(newPassword)
+          : validatePassword(newPassword);
       if (passwordError != null) {
         _showError(passwordError);
         return;
@@ -147,17 +150,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() => _saving = true);
     try {
-      final profile = await _api.updateProfile(
+      final result = await _api.updateProfile(
         name: _nameCtrl.text.trim(),
         phone: _phoneCtrl.text.trim(),
         password: newPassword.isEmpty ? null : newPassword,
       );
+      final profile = Map<String, dynamic>.from(result['profile'] as Map? ?? {});
       await ref.read(authProvider.notifier).updateProfileFields(
         name: profile['name'] as String?,
         phone: profile['phone'] as String?,
       );
+      // تغییر رمز → توکن‌های تازه (tokenVersion جدید) جایگزین می‌شوند تا نشست همین دستگاه سالم بماند
+      final token = result['token'] as String?;
+      final refreshToken = result['refreshToken'] as String?;
+      if (token != null && token.isNotEmpty && refreshToken != null && refreshToken.isNotEmpty) {
+        await ref.read(authProvider.notifier).applyPasswordChanged(
+          token: token,
+          refreshToken: refreshToken,
+          password: newPassword.isEmpty ? null : newPassword,
+        );
+      }
       if (!mounted) return;
       setState(() => _saving = false);
+      _passwordCtrl.clear();
+      _confirmCtrl.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('پروفایل با موفقیت ذخیره شد'), backgroundColor: _green, behavior: SnackBarBehavior.floating),
       );
@@ -271,10 +287,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _field(
                   controller: _passwordCtrl,
                   icon: Icons.lock_rounded,
-                  label: 'رمز عبور جدید (۶ رقم)',
-                  hint: '۶ رقم — خالی بگذارید تا تغییر نکند',
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
+                  label: ref.watch(authProvider).role == 'MANAGER'
+                      ? 'رمز عبور جدید (حرف+عدد)'
+                      : 'رمز عبور جدید (۶ رقم)',
+                  hint: ref.watch(authProvider).role == 'MANAGER'
+                      ? 'حداقل ۸ کاراکتر — خالی بگذارید تا تغییر نکند'
+                      : '۶ رقم — خالی بگذارید تا تغییر نکند',
+                  keyboardType: ref.watch(authProvider).role == 'MANAGER'
+                      ? TextInputType.visiblePassword
+                      : TextInputType.number,
+                  maxLength: ref.watch(authProvider).role == 'MANAGER' ? 64 : 6,
                   obscure: _obscure,
                   toggleVisibility: () => setState(() => _obscure = !_obscure),
                 ),

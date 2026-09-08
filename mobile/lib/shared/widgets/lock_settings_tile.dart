@@ -263,8 +263,10 @@ class _PasswordVerifyDialogState extends ConsumerState<_PasswordVerifyDialog> {
 
   Future<void> _submit() async {
     final password = _passwordCtrl.text.trim();
-    if (!RegExp(r'^\d{6}$').hasMatch(password)) {
-      setState(() => _error = 'رمز عبور باید دقیقاً ۶ رقم باشد');
+    // هم PIN شش‌رقمی و هم رمز قوی مدیر (سیاست سرور)
+    const any = r'^(?:\d{6}|(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*()_+\-=]{8,64})$';
+    if (!RegExp(any).hasMatch(password)) {
+      setState(() => _error = 'رمز عبور معتبر نیست');
       return;
     }
     final ok = await ref.read(lockProvider.notifier).verifyPassword(password);
@@ -288,14 +290,13 @@ class _PasswordVerifyDialogState extends ConsumerState<_PasswordVerifyDialog> {
           TextField(
             controller: _passwordCtrl,
             autofocus: true,
-            keyboardType: TextInputType.number,
+            keyboardType: TextInputType.visiblePassword,
             obscureText: true,
-            maxLength: 6,
+            maxLength: 64,
             maxLengthEnforcement: MaxLengthEnforcement.none,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: const TextStyle(color: Colors.white, letterSpacing: 8, fontSize: 16),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
             decoration: InputDecoration(
-              labelText: 'رمز ۶ رقمی',
+              labelText: 'رمز عبور',
               labelStyle: const TextStyle(color: Colors.white54),
               counterText: '',
               filled: true,

@@ -57,6 +57,13 @@ function makeTx(orderCount: number) {
             count: vi.fn().mockResolvedValue(orderCount),
             create: vi.fn().mockResolvedValue({}),
         },
+        // شمارنده اتمی روزانه: lastNumber = تعداد قبلی + ۱ (معادل معنایی count+1 قدیم)
+        orderDaySequence: {
+            upsert: vi.fn().mockImplementation(async ({ create }: any) => ({
+                day: create.day,
+                lastNumber: orderCount + 1,
+            })),
+        },
         productModel: { findUnique: vi.fn().mockResolvedValue(null) },
         activityLog: { create: vi.fn().mockResolvedValue({}) },
         outboxEvent: { create: vi.fn().mockResolvedValue({}) },

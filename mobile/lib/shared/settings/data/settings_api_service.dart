@@ -19,6 +19,7 @@ class SettingsApiService {
   }
 
   /// ویرایش پروفایل (نام / شماره / رمز عبور)
+  /// در صورت تغییر رمز، پاسخ شامل token/refreshToken تازه هم هست
   Future<Map<String, dynamic>> updateProfile({
     String? name,
     String? phone,
@@ -32,7 +33,7 @@ class SettingsApiService {
         if (password != null && password.isNotEmpty) 'password': password,
       },
     );
-    return Map<String, dynamic>.from(response.data['profile']);
+    return Map<String, dynamic>.from(response.data as Map);
   }
 
   /// آپلود عکس پروفایل (بایت‌های آماده‌شده — مربع‌شده در سمت اپ)

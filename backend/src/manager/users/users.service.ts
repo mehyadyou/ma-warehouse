@@ -136,7 +136,7 @@ export const usersService = {
         if (role === 'WAREHOUSE_KEEPER' && !warehouseId) {
             throw new AppError('برای ساخت انباردار، انتخاب انبار الزامی است', 400);
         }
-        assertPasswordPolicy(password);
+        assertPasswordPolicy(password, role);
 
         const existingUser = await prisma.user.findUnique({ where: { phone } });
 
@@ -152,6 +152,8 @@ export const usersService = {
                     warehouseId: warehouseId || null,
                     isActive: true,
                     deletedAt: null,
+                    // رمز جدیدِ تعیین‌شده توسط مدیر موقتی است — کاربر باید در اولین ورود عوضش کند
+                    mustChangePassword: true,
                 },
                 select: {
                     id: true,
@@ -192,6 +194,8 @@ export const usersService = {
                 password: hashedPassword,
                 role: role as Role,
                 warehouseId: warehouseId || null,
+                // رمز اولیه‌ای که مدیر تعیین کرده موقتی است — کاربر باید در اولین ورود عوضش کند
+                mustChangePassword: true,
             },
             select: {
                 id: true,
@@ -254,9 +258,12 @@ export const usersService = {
             updateData.phone = data.phone;
         }
         if (data.password) {
-            assertPasswordPolicy(data.password);
+            // نقش مؤثر: اگر نقش هم‌زمان عوض می‌شود همان، وگرنه نقش فعلی کاربر
+            const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+            assertPasswordPolicy(data.password, (data.role as string) ?? target?.role);
             updateData.password = await bcrypt.hash(data.password, 12);
-            updateData.mustChangePassword = false;
+            // رمزی که مدیر برای کاربر تعیین می‌کند موقتی است — کاربر باید در اولین ورود عوضش کند
+            updateData.mustChangePassword = true;
         }
         if (data.role) updateData.role = data.role as Role;
         if (data.warehouseId !== undefined) {

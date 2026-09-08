@@ -46,6 +46,8 @@ const mocks = vi.hoisted(() => {
         activityLogCreate: vi.fn().mockResolvedValue({}),
         orderFindUnique: vi.fn(),
         userFindUnique: vi.fn(),
+        idempotencyFindUnique: vi.fn().mockResolvedValue(null),
+        idempotencyCreate: vi.fn().mockResolvedValue({}),
     };
 });
 
@@ -65,6 +67,10 @@ vi.mock('../../utils/prisma', () => ({
         user: { findUnique: mocks.userFindUnique },
         $queryRaw: mocks.tx.$queryRaw,
         activityLog: { create: mocks.activityLogCreate },
+        idempotencyKey: {
+            findUnique: mocks.idempotencyFindUnique,
+            create: mocks.idempotencyCreate,
+        },
     },
 }));
 
@@ -114,6 +120,10 @@ beforeEach(() => {
     mocks.tx.auditLog.create.mockResolvedValue({});
     mocks.tx.carton.findMany.mockReset();
     mocks.tx.carton.findMany.mockResolvedValue([]);
+    mocks.idempotencyFindUnique.mockReset();
+    mocks.idempotencyFindUnique.mockResolvedValue(null);
+    mocks.idempotencyCreate.mockReset();
+    mocks.idempotencyCreate.mockResolvedValue({});
 });
 
 const orderRow = (overrides: any = {}) => ({
@@ -923,5 +933,62 @@ describe('scanOutService.assignDriver - تخصیص بار به راننده (ب�
                 data: expect.objectContaining({ type: 'order:driver:assigned', payload: expect.objectContaining({ driverId: 'd2' }) }),
             })
         );
+    });
+});
+
+describe('scanOutService - ?????????? clientKey (???????/?? ??????)', () => {
+    it('scanOut ?? ???? ?????? ? ???? ????????? ???? ????? ????', async () => {
+        const cached = { valid: true as const, carton: { id: 'c1', serialNumber: 'S1' } };
+        mocks.idempotencyFindUnique.mockResolvedValue({ responseJson: cached });
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1', clientKey: 'key-1' }, 'wh1', 'u1',
+        );
+        expect(result).toEqual(cached);
+        // ??? ?????/???? ????? ????? ???? � ?????? ?????? ???? ????
+        expect(mocks.findFirst).not.toHaveBeenCalled();
+        expect(mocks.tx.carton.updateMany).not.toHaveBeenCalled();
+        expect(mocks.idempotencyFindUnique).toHaveBeenCalledWith({
+            where: { userId_operation_key: { userId: 'u1', operation: 'scanout', key: 'key-1' } },
+        });
+    });
+
+    it('scanOut ???? ?? ???? ???? ? ???? ????? ??????', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ serialNumber: 'S1' }));
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow());
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1', orderId: 'order1', clientKey: 'key-2' }, 'wh1', 'u1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.idempotencyCreate).toHaveBeenCalledWith({
+            data: expect.objectContaining({ userId: 'u1', operation: 'scanout', key: 'key-2' }),
+        });
+    });
+
+    it('scanOut ???? ???? ? ???? ???? idempotency (??????? ?????)', async () => {
+        mocks.findFirst.mockResolvedValue(makeCarton({ serialNumber: 'S1' }));
+        mocks.tx.order.findUnique.mockResolvedValue(orderRow());
+
+        const result = await scanOutService.scanOut(
+            { qrPayload: '', serialNumber: 'S1', orderId: 'order1' }, 'wh1', 'u1',
+        );
+        expect(result.valid).toBe(true);
+        expect(mocks.idempotencyFindUnique).not.toHaveBeenCalled();
+        expect(mocks.idempotencyCreate).not.toHaveBeenCalled();
+    });
+
+    it('manualExit ?? ???? ?????? ? ???? ?????????', async () => {
+        const cached = { valid: true as const, quantity: 10, carton: { id: 'manual' } };
+        mocks.idempotencyFindUnique.mockResolvedValue({ responseJson: cached });
+
+        const result = await scanOutService.manualExit(
+            { productId: 'p1', quantity: 10, clientKey: 'key-m1' }, 'wh1', 'u1',
+        );
+        expect(result).toEqual(cached);
+        expect(mocks.productFindUnique).not.toHaveBeenCalled();
+        expect(mocks.idempotencyFindUnique).toHaveBeenCalledWith({
+            where: { userId_operation_key: { userId: 'u1', operation: 'scanout-manual', key: 'key-m1' } },
+        });
     });
 });

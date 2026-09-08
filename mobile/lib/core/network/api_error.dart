@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 /// تبدیل هر خطا به پیام فارسی قابل نمایش برای کاربر.
@@ -38,4 +40,20 @@ String friendlyError(Object error) {
   }
 
   return error.toString().replaceFirst('Exception: ', '');
+}
+
+/// آیا این خطا یعنی «شبکه در دسترس نیست» (ارزش صف‌شدن/فال‌بک آفلاین دارد)؟
+/// خطاهای ۴xx/۵xx سرور صف نمی‌شوند — فقط قطعی/تایم‌اوت.
+bool isNetworkError(Object e) {
+  if (e is DioException) {
+    return switch (e.type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout ||
+      DioExceptionType.connectionError =>
+        true,
+      _ => false,
+    };
+  }
+  return e is SocketException;
 }
