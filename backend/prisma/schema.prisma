@@ -520,7 +520,23 @@ model ApiKey {
   createdAt    DateTime  @default(now())
   revokedAt    DateTime?
 
+  dailyUsage ApiKeyDailyUsage[]
+
   @@index([isActive])
+}
+
+/// مصرف روزانهٔ هر کلید API — برای داشبورد CRM (نمودار/هشدار سوءاستفاده).
+/// فقط از هوک fire-and-forget میدل‌ور عمومی نوشته می‌شود؛ هیچ منطق دامنه‌ای به آن وابسته نیست.
+model ApiKeyDailyUsage {
+  apiKeyId String
+  apiKey   ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  /// کلید روز شمسی تهران (yyyymmdd — مثل orderDay) تا نمودارها با تقویم ایران هم‌خوان باشند
+  dayKey   Int
+  hits     Int    @default(0)
+  errors   Int    @default(0)
+
+  @@id([apiKeyId, dayKey])
+  @@index([dayKey])
 }
 
 /// پیکربندی مدل هوش مصنوعی دستیار مدیر — یک ردیف تکی (id='default')

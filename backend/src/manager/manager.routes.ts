@@ -20,6 +20,7 @@ import { assistantConfigController } from './assistant/assistant-config.controll
 import { assistantChatSchema } from './assistant/assistant.schema';
 import { assistantConfigSchema, assistantConfigTestSchema } from './assistant/assistant-config.service';
 import { productHistoryController } from './product_history/product-history.controller';
+import { crmController } from './crm/crm.controller';
 
 const router = Router();
 
@@ -114,6 +115,16 @@ router.post(
 // ── Product History (سابقهٔ کامل محصولات از ابتدای سیستم) ──
 router.get('/product-history', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:ph' }), productHistoryController.list);
 router.get('/product-history/:id', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:phd' }), productHistoryController.detail);
+
+// ── CRM مالک (فقط‌خواندنی — هیچ تغییری در داده ایجاد نمی‌کند) ──
+router.get('/crm/overview', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.overview);
+router.get('/crm/customers', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.customers);
+router.get('/crm/customers/:phone', userRateLimit({ windowMs: 60_000, max: 120, keyPrefix: 'm:crm' }), crmController.customerDetail);
+router.get('/crm/audit', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.audit);
+router.get('/crm/user-activity', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.userActivity);
+router.get('/crm/finance', userRateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'm:crm' }), crmController.finance);
+router.get('/crm/api-usage', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.apiUsage);
+router.get('/crm/health', userRateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'm:crm' }), crmController.health);
 
 // ── Assistant Model Config (پیکربندی مدل دستیار — از تنظیمات مدیریت) ──
 router.get('/assistant/config', assistantConfigController.get);

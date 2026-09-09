@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# خروجی نصاب Inno Setup (فایل Setup-*.exe) — اسکریپت iss و vendor ردیابی می‌شوند
+/installer/output/

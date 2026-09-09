@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "ma_warehouse_panel" "\0"
+            VALUE "CompanyName", "MA Warehouse" "\0"
+            VALUE "FileDescription", "MA Warehouse - Warehouse Panel" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "ma_warehouse_panel" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 MA Warehouse." "\0"
             VALUE "OriginalFilename", "ma_warehouse_panel.exe" "\0"
-            VALUE "ProductName", "ma_warehouse_panel" "\0"
+            VALUE "ProductName", "MA Warehouse Panel" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
