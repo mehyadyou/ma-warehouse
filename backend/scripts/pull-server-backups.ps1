@@ -26,6 +26,18 @@ function Invoke-ServerSsh([string]$remoteCmd) {
     if ($LASTEXITCODE -ne 0) { throw "SSH failed (exit $LASTEXITCODE): $remoteCmd" }
 }
 
+# تبدیل نام سرور (میلادی) به نام لوکال (شمسی):
+#   ma_warehouse_20260910_020001.dump -> ma_warehouse_14050619_020001.dump
+# ساعت داخل نام، ساعت تهرانِ لحظه بکاپ است پس تبدیل مستقیم تقویمی درست است.
+$persianCal = New-Object System.Globalization.PersianCalendar
+function Get-JalaliLocalName([string]$serverFile) {
+    $m = [regex]::Match($serverFile, '^ma_warehouse_(\d{8})_(\d{6})\.dump$')
+    if (-not $m.Success) { return $serverFile } # فرمت ناآشنا: بدون تغییر
+    $dt = [datetime]::ParseExact($m.Groups[1].Value + $m.Groups[2].Value, 'yyyyMMddHHmmss', $null)
+    $j = '{0:D4}{1:D2}{2:D2}' -f $persianCal.GetYear($dt), $persianCal.GetMonth($dt), $persianCal.GetDayOfMonth($dt)
+    return "ma_warehouse_${j}_$($m.Groups[2].Value).dump"
+}
+
 if (-not (Test-Path -LiteralPath $LocalDir)) {
     New-Item -ItemType Directory -Path $LocalDir | Out-Null
 }
@@ -38,12 +50,13 @@ if (-not $remoteFiles) { Write-Log 'WARN: no dumps found on server'; exit 1 }
 
 $copied = 0
 foreach ($file in $remoteFiles) {
-    $localDump = Join-Path $LocalDir $file
+    $localName = Get-JalaliLocalName $file
+    $localDump = Join-Path $LocalDir $localName
     $localHash = "$localDump.sha256"
     if ((Test-Path -LiteralPath $localDump) -and (Test-Path -LiteralPath $localHash)) {
         continue # قبلاً گرفته شده
     }
-    Write-Log "copy: $file"
+    Write-Log "copy: $file -> $localName"
     & scp -i $SshKey -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no `
         "$ServerUser@${ServerHost}:$RemoteDir/$file" "$localDump"
     if ($LASTEXITCODE -ne 0) { Write-Log "ERROR: scp dump failed: $file"; continue }
@@ -59,7 +72,7 @@ foreach ($file in $remoteFiles) {
         Remove-Item -LiteralPath $localDump, $localHash -Force -ErrorAction SilentlyContinue
         continue
     }
-    Write-Log "ok: $file (sha256 verified)"
+    Write-Log "ok: $localName (sha256 verified)"
     $copied++
 }
 
