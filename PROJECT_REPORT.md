@@ -77,7 +77,7 @@
 
 ### زیرساخت
 - `docker-compose.yml`: PostgreSQL 16 (tuned: shared_buffers=2GB، statement_timeout=30s، archive_mode=on، WAL archiving)، Redis 7 (AOF)، PgBouncer (userlist با هش SCRAM).
-- `pg_hba_final.conf`: بدون trust — همه‌جا scram-sha-256؛ TCP فقط با TLS؛ hostnossl reject.
+- `backend/docker/pg_hba_final.conf`: بدون trust — همه‌جا scram-sha-256؛ TCP فقط با TLS؛ hostnossl reject.
 - `ecosystem.config.cjs`: PM2 برای بار تستِ staging.
 - `scripts/backup.ps1|sh` / `restore.ps1|sh` / `verify-backup.ps1` / `db-health.ps1`: پشتیبان‌گیری/بازیابی و سلامت.
 - `docs/db-ops.md`: Runbook عملیاتی (چرخش رمز ۶ ماهه، نقش‌ها، PgBouncer).
@@ -188,7 +188,7 @@ ma-warehouse/                          # ریشهٔ Monorepo
 ├── .git/                              # مخزن Git
 ├── .idea/                             # تنظیمات IDE (gitignore)
 ├── .gitignore
-├── pg_hba_final.conf                  # سیاست احراز هویت Postgres: scram همه‌جا، TLS اجباری
+├── backend/docker/pg_hba_final.conf     # سیاست احراز هویت Postgres: scram همه‌جا، TLS اجباری
 │
 ├── backend/                           # ═══ API سرور (Node/TS) ═══
 │   ├── .env                           # secrets واقعی (gitignore)

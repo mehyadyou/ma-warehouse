@@ -50,6 +50,7 @@
 فایل در `PGDATA/pg_hba.conf` — امن شده (هیچ `trust`، همهجا `scram-sha-256`،
 تمامی TCP از طریق `hostssl` و `hostnossl reject`).
 هر تغییری: با `docker exec` کپی در فایل + `SELECT pg_reload_conf();`
+(نسخه مرجع در مخزن: `backend/docker/pg_hba_final.conf`)
 
 ## مانیتورینگ و هشدار
 
