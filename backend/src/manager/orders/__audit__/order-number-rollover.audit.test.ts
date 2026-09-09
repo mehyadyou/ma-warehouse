@@ -101,7 +101,10 @@ async function createAtFakeTime(orderCount: number) {
     (prisma.product.findMany as any).mockResolvedValue([{ id: 'p1' }]);
     (prisma.order.findUniqueOrThrow as any).mockResolvedValue(mappedOrder);
 
-    await ordersService.createOrder('wh1', 'u1', [{ productId: 'p1', quantity: 5 }], 'شهری');
+    await ordersService.createOrder(
+        'wh1', 'u1', [{ productId: 'p1', quantity: 5 }], 'شهری',
+        undefined, undefined, undefined, undefined, '09120000000',
+    );
     expect(tx.order.create).toHaveBeenCalledTimes(1);
     const data = tx.order.create.mock.calls[0][0].data;
     return data as { orderNumber: number; orderDay: number };

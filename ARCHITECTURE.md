@@ -42,5 +42,6 @@ ma-warehouse/
 - اعتبارسنجی ورودی: zod در لبه (`validate`), سیاست دامنه در سرویس.
 - Decimal دیتابیس فقط برای نمایش به Number (L5) — محاسبه مالی روی Decimal.
 - تست‌ها: unit با Prisma mock؛ integration واقعی فقط روی staging.
+- TypeScript با `strict: true` — بدون any ضمنی؛ خطای تایپ = خطای بیلد.
 - فارسی/شمسی: روز کاری تهران (`jalaliDayKey`)، اعداد نمایشی فارسی در UI.
 - کامیت‌ها: فارسی، دستوری، با scope (`feat/fix/test/docs/ops:`).

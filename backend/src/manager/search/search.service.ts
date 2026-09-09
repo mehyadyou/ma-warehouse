@@ -123,7 +123,7 @@ export const searchService = {
                                       filters.model
                                           ? { model: { contains: filters.model, mode: 'insensitive' as const } }
                                           : null,
-                                  ].filter(Boolean),
+                                  ].filter((c): c is Exclude<typeof c, null> => c !== null),
                               },
                           },
                       }
@@ -140,7 +140,7 @@ export const searchService = {
                           ],
                       }
                     : null,
-            ].filter(Boolean),
+            ].filter((c): c is Exclude<typeof c, null> => c !== null),
         };
 
         const safePage = Math.max(1, Math.floor(filters.page ?? 1));

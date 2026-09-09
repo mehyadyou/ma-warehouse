@@ -146,7 +146,7 @@ describe('ordersService.createOrder', () => {
                 { productId: 'p1', quantity: 3, model: 'M1', price: 100, exchangeRate: 50000 },
                 { productId: 'p2', quantity: 2, model: 'M2', price: 200, exchangeRate: 50000 },
             ],
-            'باربری', undefined, undefined, undefined, undefined, undefined,
+            'باربری', undefined, undefined, undefined, undefined, '09120000000',
             'فرستنده', 'گیرنده',
         ]);
 
@@ -169,7 +169,7 @@ describe('ordersService.createOrder', () => {
     it('شمارهٔ سفارش روزانه است: upsert اتمی روی OrderDaySequence (اولِ هر روز از ۱)', async () => {
         const tx = await runCreate(makeTx(), [
             'wh1', 'user1', [{ productId: 'p1', quantity: 1 }], 'باربری',
-            undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, '09120000000',
             'فرستنده', 'گیرنده',
         ]);
 
@@ -242,7 +242,7 @@ describe('ordersService.createOrder', () => {
                 { productId: 'p1', quantity: 3, modelId: 'm1', model: 'مدل آ' },
                 { productId: 'p2', quantity: 2 },
             ],
-            'باربری', undefined, undefined, undefined, undefined, undefined,
+            'باربری', undefined, undefined, undefined, undefined, '09120000000',
             'فرستنده', 'گیرنده',
         ], [{ id: 'm1', productId: 'p1' }]);
 
@@ -263,7 +263,7 @@ describe('ordersService.createOrder', () => {
     it('وقتی فرستنده/گیرنده نباشد badge ساخته نمیشود', async () => {
         const tx = await runCreate(makeTx(), [
             'wh1', 'user1', [{ productId: 'p1', quantity: 2 }], 'باربری',
-            undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, '09120000000',
             undefined, undefined,
         ]);
 
@@ -275,7 +275,7 @@ describe('ordersService.createOrder', () => {
     it('رویداد outbox و فعالیت‌ها پس از ثبت سفارش نوشته میشوند', async () => {
         const tx = await runCreate(makeTx(), [
             'wh1', 'user1', [{ productId: 'p1', quantity: 1 }], 'باربری',
-            undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, '09120000000',
             'فرستنده', 'گیرنده',
         ]);
 
@@ -304,7 +304,7 @@ describe('ordersService.createOrder', () => {
 
         await ordersService.createOrder(
             'wh1', 'user1', [{ productId: 'p3', quantity: 30 }],
-            'باربری', undefined, undefined, undefined, undefined, undefined,
+            'باربری', undefined, undefined, undefined, undefined, '09120000000',
             'فرستنده', 'گیرنده',
         );
 
@@ -325,7 +325,7 @@ describe('ordersService.createOrder', () => {
         await expect(
             ordersService.createOrder(
                 'wh1', 'user1', [{ productId: 'p3', quantity: 30 }],
-                'باربری', undefined, undefined, undefined, undefined, undefined,
+                'باربری', undefined, undefined, undefined, undefined, '09120000000',
                 'فرستنده', 'گیرنده',
             )
         ).rejects.toThrow('موجودی کافی نیست (موجودی: 10)');
@@ -346,10 +346,20 @@ describe('ordersService.createOrder', () => {
         await expect(
             ordersService.createOrder(
                 'wh1', 'user1', [{ productId: 'p1', quantity: 10 }],
-                'باربری',
+                'باربری', undefined, undefined, undefined, undefined, '09120000000',
             )
         ).rejects.toThrow('موجودی کافی نیست (موجودی: 5)');
         expect(tx.order.create).not.toHaveBeenCalled();
+    });
+
+    it('بدون شمارهٔ تماس گیرنده → AppError 400 (به‌جای خطای ۵۰۰ دیتابیس)', async () => {
+        // customerPhone در اسکیما اجباری است؛ اعتبارسنجی پیشینی پیام واضح می‌دهد
+        await expect(
+            ordersService.createOrder(
+                'wh1', 'user1', [{ productId: 'p1', quantity: 1 }],
+                'باربری',
+            )
+        ).rejects.toThrow('شمارهٔ تماس گیرنده الزامی است');
     });
 });
 

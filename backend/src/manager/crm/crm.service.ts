@@ -113,7 +113,7 @@ export const crmService = {
 
         const groups = await prisma.order.groupBy({
             by: ['customerPhone'],
-            where: { customerPhone: q ? { contains: q } : { not: null } },
+            where: q ? { customerPhone: { contains: q } } : undefined,
             _count: { _all: true },
             _max: { createdAt: true },
             orderBy: { _max: { createdAt: 'desc' } },
@@ -136,13 +136,14 @@ export const crmService = {
 
         const agg = new Map<string, { orders: number; spent: number; items: number; city: string | null; name: string | null; lastAt: string | null }>();
         for (const g of groups) {
+            const countObj = g._count && typeof g._count === 'object' ? g._count : null;
             agg.set(g.customerPhone as string, {
-                orders: g._count._all,
+                orders: countObj?._all ?? 0,
                 spent: 0,
                 items: 0,
                 city: null,
                 name: null,
-                lastAt: g._max.createdAt ? (g._max.createdAt as Date).toISOString() : null,
+                lastAt: g._max?.createdAt ? g._max.createdAt.toISOString() : null,
             });
         }
         for (const o of withItems) {

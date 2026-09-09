@@ -312,6 +312,12 @@ export const ordersService = {
             senderNationalId, senderPhone, receiverName, customerPhone, city, address, postalCode,
         });
 
+        // customerPhone در اسکیما اجباری است (String غیرنال) — به‌جای خطای ۵۰۰ دیتابیس، ۴۰۰ واضح
+        const normalizedPhone = (customerPhone ?? '').trim();
+        if (!normalizedPhone) {
+            throw new AppError('شمارهٔ تماس گیرنده الزامی است', 400);
+        }
+
         // اعتبارسنجی پیشینی: انبار و همه‌ی محصولات باید واقعاً وجود داشته باشند —
         // به‌جای خطای FK مبهم (P2003) پیام مشخص بده
         const warehouseExists = await prisma.warehouse.findUnique({
@@ -387,7 +393,7 @@ export const ordersService = {
                     city: normalizedCity,
                     postalCode: normalizedPostal,
                     address: address || null,
-                    customerPhone: customerPhone || null,
+                    customerPhone: normalizedPhone,
                     senderName: senderName || null,
                     senderNationalId: senderNationalId?.trim() || null,
                     senderPhone: senderPhone?.trim() || null,
@@ -419,7 +425,7 @@ export const ordersService = {
                                 receiverCity: normalizedCity,
                                 receiverPostalCode: normalizedPostal,
                                 receiverAddress: address || null,
-                                receiverPhone: customerPhone || null,
+                                receiverPhone: normalizedPhone,
                             },
                         }
                         : undefined,
