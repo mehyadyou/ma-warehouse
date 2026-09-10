@@ -45,6 +45,13 @@
 - **بازیابی واقعی:** `.\scripts\restore.ps1 -File <dump> -DropFirst`
   ⚠️ زمانبندی بکاپ و restore همزمان نشوند (رقابت روی dump).
 
+## ترتیب دیپلوی روی سرور (بعد از git pull)
+1. `npm ci`
+2. `npx prisma generate` (اجباری بعد از هر npm ci — بدون آن بیلد strict می‌شکند)
+3. `npx prisma migrate deploy`
+4. `npm run build`
+5. `sudo systemctl restart ma-warehouse.service` + چک `/healthz`
+
 ## امنیت اتصال (pg_hba)
 
 فایل در `PGDATA/pg_hba.conf` — امن شده (هیچ `trust`، همهجا `scram-sha-256`،
