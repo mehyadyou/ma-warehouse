@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../providers/auth_provider.dart';
 
 const _bg = Color(0xFF0F1114);
@@ -155,11 +156,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              'نسخه ۱.۰.۰',
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontSize: 11.5,
+                            FutureBuilder<PackageInfo>(
+                              future: PackageInfo.fromPlatform(),
+                              builder: (context, snap) => Text(
+                                'نسخه ${snap.data?.version ?? '...'}',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 11.5,
+                                ),
                               ),
                             ),
                           ],
