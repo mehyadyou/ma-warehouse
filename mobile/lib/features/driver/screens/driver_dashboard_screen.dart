@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ma_app/core/refresh/resume_tick.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/widgets/app_drawer.dart';
 import '../../../shared/widgets/dashboard_header.dart';
@@ -125,6 +126,8 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    // بازگشت از پس‌زمینه → تازه‌سازی خودکار سفارش‌ها (بدون خروج/ورود)
+    ref.listen<int>(resumeTickProvider, (_, _) => _onOrdersChanged(null));
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _bg,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ma_app/core/refresh/resume_tick.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/warehouses_provider.dart';
 import '../providers/activity_provider.dart';
@@ -148,6 +149,10 @@ class _ManagerDashboardScreenState extends ConsumerState<ManagerDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    // بازگشت از پس‌زمینه → تازه‌سازی خودکار (بدون خروج/ورود)
+    ref.listen<int>(resumeTickProvider, (_, _) {
+      if (mounted) _invalidateTransactionData();
+    });
     return Theme(
       data: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: _bg,

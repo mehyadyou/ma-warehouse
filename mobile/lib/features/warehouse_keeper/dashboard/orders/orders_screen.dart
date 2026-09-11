@@ -63,18 +63,42 @@ class OrdersScreen extends ConsumerWidget {
             ),
           ),
           data: (orders) {
+            Future<void> refreshOrders() async {
+              ref.invalidate(ordersProvider);
+              await ref.read(ordersProvider.future).then((_) {}, onError: (_) {});
+            }
+
             if (orders.isEmpty) {
-              return Center(
-                child: Text(
-                  'سفارشی ثبت نشده',
-                  style: TextStyle(color: Colors.white.withOpacity(0.4)),
+              return LayoutBuilder(
+                builder: (context, constraints) => RefreshIndicator(
+                  color: _green,
+                  backgroundColor: _surface,
+                  onRefresh: refreshOrders,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Center(
+                        child: Text(
+                          'سفارشی ثبت نشده',
+                          style:
+                              TextStyle(color: Colors.white.withOpacity(0.4)),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               );
             }
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: orders.length,
-              itemBuilder: (context, index) {
+            return RefreshIndicator(
+              color: _green,
+              backgroundColor: _surface,
+              onRefresh: refreshOrders,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: orders.length,
+                itemBuilder: (context, index) {
                 final o = orders[index];
                 return GestureDetector(
                   onTap: () => Navigator.push(
@@ -142,7 +166,8 @@ class OrdersScreen extends ConsumerWidget {
                     ),
                   ),
                 );
-              },
+                },
+              ),
             );
           },
         );

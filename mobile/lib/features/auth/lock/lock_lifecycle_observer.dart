@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/refresh/resume_tick.dart';
 import '../providers/auth_provider.dart';
 import 'lock_config.dart';
 import 'lock_provider.dart';
@@ -43,7 +44,13 @@ class _LockLifecycleObserverState extends ConsumerState<LockLifecycleObserver>
       case AppLifecycleState.resumed:
         final at = _backgroundedAt;
         _backgroundedAt = null;
-        if (at != null) _lockIfTimedOut(at);
+        if (at != null) {
+          _lockIfTimedOut(at);
+          // بازگشت واقعی از پس‌زمینه با نشست باز → تیک رفرش برای داشبوردها
+          if (ref.read(authProvider).isLoggedIn) {
+            ref.read(resumeTickProvider.notifier).bump();
+          }
+        }
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         break;

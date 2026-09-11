@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ma_app/core/refresh/resume_tick.dart';
 import 'package:ma_app/features/manager/dashboard/bottom_nav_bar/bottom_nav_bar.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/widgets/app_drawer.dart';
@@ -316,6 +317,14 @@ class _WarehouseKeeperDashboardScreenState
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    // بازگشت از پس‌زمینه → تازه‌سازی خودکار همه‌چیز (بدون خروج/ورود)
+    ref.listen<int>(resumeTickProvider, (_, _) {
+      if (!mounted) return;
+      ref.invalidate(inventorySummaryProvider);
+      ref.invalidate(keeperInventoryListProvider);
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(ordersProvider);
+    });
     return Scaffold(
       backgroundColor: _bg,
       drawer: AppDrawer(
