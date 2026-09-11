@@ -25,7 +25,10 @@ export const checkinController = {
   listRecent: asyncHandler(async (req: Request, res: Response) => {
     const warehouseId = req.user?.warehouseId;
     if (!warehouseId) { res.status(403).json({ error: 'دسترسی نامعتبر' }); return; }
-    const cartons = await checkinService.listRecentCartons(warehouseId);
+    // سقف صریح برای صف چاپ پنل دسکتاپ (پیش‌فرض ۵۰ برای سازگاری) — حداکثر ۵۰۰
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 50;
+    const cartons = await checkinService.listRecentCartons(warehouseId, limit);
     res.json({ cartons });
   }),
 

@@ -115,8 +115,14 @@ class ApiService {
         {};
   }
 
-  Future<List<dynamic>> getCartons() async {
-    final payload = await _request('GET', '/warehouse-keeper/checkin/recent');
+  /// صف چاپ لیبل: همهٔ کارتن‌های چاپ‌نشده (سقف ۵۰۰ — سرور بیشتر نمی‌دهد).
+  /// سقف قبلیِ ضمنی ۵۰ باعث می‌شد در انبارهای شلوغ بخشی از لیبل‌ها دیده نشوند.
+  Future<List<dynamic>> getCartons({int limit = 500}) async {
+    final payload = await _request(
+      'GET',
+      '/warehouse-keeper/checkin/recent',
+      query: {'limit': limit},
+    );
     return (payload is Map<String, dynamic> ? payload['cartons'] : null)
             as List<dynamic>? ??
         [];

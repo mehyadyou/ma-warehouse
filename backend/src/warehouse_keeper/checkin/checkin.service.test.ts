@@ -413,6 +413,14 @@ describe('checkinService - چاپ لیبل', () => {
         );
     });
 
+    it('listRecentCartons سقف دلخواه را به take می‌دهد (صف چاپ پنل: ۵۰۰)', async () => {
+        (prisma.carton.findMany as any).mockResolvedValue([]);
+        await checkinService.listRecentCartons('wh1', 500);
+        expect(prisma.carton.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({ take: 500 })
+        );
+    });
+
     it('listPrintedCartons کارتن‌های چاپ‌شده را با ترتیب چاپ برمی‌گرداند', async () => {
         (prisma.carton.findMany as any).mockResolvedValue([{ id: 'c1', printedAt: new Date() }]);
         const res = await checkinService.listPrintedCartons('wh1');
