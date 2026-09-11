@@ -2,13 +2,13 @@
 ; ساخت:
 ;   1) flutter build windows --release
 ;   2) ISCC.exe installer\ma-warehouse-panel.iss
-; خروجی: installer\output\Setup-MA-Warehouse-Panel-v1.0.0.exe
+; خروجی: installer\output\Setup-MA-Warehouse-Panel-v1.0.1.exe
 ;
 ; قرارداد نسخه: هنگام انتشار جدید، AppVersion و OutputBaseFilename را
 ; با pubspec.yaml هم‌خوان کنید.
 
 #define MyAppName "MA Warehouse Panel"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "MA Warehouse"
 #define MyAppExeName "ma_warehouse_panel.exe"
 #define SrcDir "..\build\windows\x64\runner\Release"
@@ -20,7 +20,7 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\MA Warehouse Panel
-OutputBaseFilename=Setup-MA-Warehouse-Panel-v1.0.0
+OutputBaseFilename=Setup-MA-Warehouse-Panel-v1.0.1
 OutputDir=output
 Compression=lzma2/max
 SolidCompression=yes
