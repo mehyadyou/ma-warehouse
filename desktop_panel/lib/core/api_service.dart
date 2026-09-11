@@ -17,7 +17,17 @@ class ApiService {
 
   late Dio _dio;
   String? token;
+  String? refreshToken;
   Map<String, dynamic>? user;
+
+  /// وقتی رفرش هم شکست (خروج اجباری/ابطال) — UI به صفحه ورود برمی‌گردد.
+  void Function()? onAuthExpired;
+
+  /// بعد از هر تمدید موفق — سوکت باید با توکن جدید وصل شود.
+  void Function(String token)? onTokenRefreshed;
+
+  /// single-flight: چند 401 هم‌زمان فقط یک رفرش می‌زنند (چرخش رفرش‌توکن).
+  Future<String>? _refreshing;
 
   Future<String> loadServerUrl() async {
     final prefs = await SharedPreferences.getInstance();
@@ -45,6 +55,29 @@ class ApiService {
             options.headers['Authorization'] = 'Bearer $token';
           }
           handler.next(options);
+        },
+        // توکن دسترسی ۱۵ دقیقه است؛ روی 401 یک بار رفرش و تکرار درخواست.
+        // اگر رفرش هم شکست → نشست واقعاً مرده: پاک‌سازی + بازگشت به ورود.
+        onError: (err, handler) async {
+          final req = err.requestOptions;
+          final status = err.response?.statusCode;
+          final isAuthCall = req.path.contains('/auth/');
+          if (status == 401 && !isAuthCall && req.extra['retried'] != true) {
+            if (refreshToken != null) {
+              try {
+                final newToken = await _refreshOnce();
+                req.extra['retried'] = true;
+                req.headers['Authorization'] = 'Bearer $newToken';
+                final retry = await _dio.fetch<dynamic>(req);
+                return handler.resolve(retry);
+              } catch (_) {
+                _dropSession();
+              }
+            } else {
+              _dropSession();
+            }
+          }
+          handler.next(err);
         },
       ),
     );
@@ -92,11 +125,56 @@ class ApiService {
       throw ApiError('پاسخ ورود نامعتبر است.');
     }
     token = payload['token'] as String?;
+    refreshToken = payload['refreshToken'] as String?;
     user = (payload['user'] as Map<String, dynamic>?) ?? {};
     if (token == null || user == null) {
       throw ApiError('اطلاعات کاربری کامل دریافت نشد.');
     }
     return payload;
+  }
+
+  /// تمدید نشست با چرخش رفرش‌توکن (سرور: POST /auth/refresh).
+  /// single-flight تا فراخوان‌های هم‌زمان باعث ابطال خانواده نشوند.
+  Future<String> _refreshOnce() {
+    final ongoing = _refreshing;
+    if (ongoing != null) return ongoing;
+    final fut = _performRefresh();
+    _refreshing = fut;
+    fut.then((_) {
+      _refreshing = null;
+    }, onError: (_) {
+      _refreshing = null;
+    });
+    return fut;
+  }
+
+  Future<String> _performRefresh() async {
+    final rt = refreshToken;
+    if (rt == null) throw ApiError('نشست منقضی شده است.');
+    final resp = await _dio.post<dynamic>(
+      '/auth/refresh',
+      data: {'refreshToken': rt},
+    );
+    final data = resp.data;
+    if (data is! Map<String, dynamic>) {
+      throw ApiError('پاسخ تمدید نشست نامعتبر است.');
+    }
+    final newToken = data['token'] as String?;
+    final newRefresh = data['refreshToken'] as String?;
+    if (newToken == null || newRefresh == null) {
+      throw ApiError('پاسخ تمدید نشست نامعتبر است.');
+    }
+    token = newToken;
+    refreshToken = newRefresh;
+    onTokenRefreshed?.call(newToken);
+    return newToken;
+  }
+
+  void _dropSession() {
+    token = null;
+    refreshToken = null;
+    user = null;
+    onAuthExpired?.call();
   }
 
   /// تغییر رمز عبور کاربر جاری (تغییر اجباری در اولین ورود با رمز موقت)
@@ -227,8 +305,18 @@ class ApiService {
     await _request('POST', '/badges/printed', data: {'badgeIds': badgeIds});
   }
 
-  void logout() {
+  /// خروج: ابطال سمت سرور (best-effort) + پاک‌سازی محلی.
+  Future<void> logout() async {
+    final rt = refreshToken;
     token = null;
+    refreshToken = null;
     user = null;
+    if (rt != null) {
+      try {
+        await _dio.post<dynamic>('/auth/logout', data: {'refreshToken': rt});
+      } catch (_) {
+        // خروج محلی مهم است؛ خطای شبکه نادیده گرفته می‌شود.
+      }
+    }
   }
 }

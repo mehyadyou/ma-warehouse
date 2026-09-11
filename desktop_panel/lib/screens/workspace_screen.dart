@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_service.dart';
 import '../core/badge_print_settings.dart';
 import '../core/palette.dart';
+import '../core/pending_prints.dart';
 import '../core/printer_settings.dart';
 import '../core/socket_client.dart';
 import '../widgets/app_widgets.dart';
@@ -37,6 +38,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   String _warehouseName = 'نامشخص';
   String _keeperName = '';
   String _subtitle = 'در حال بارگذاری اطلاعات...';
+  int _pendingPrints = 0;
 
   final GlobalKey<CartonsTabState> _recentKey = GlobalKey();
   final GlobalKey<CartonsTabState> _printedKey = GlobalKey();
@@ -156,19 +158,41 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _transactionsKey.currentState?.reloadLatest();
     _badgesKey.currentState?.load();
     _printedBadgesKey.currentState?.load();
+    _syncPending();
+  }
+
+  /// فلاش صف ثبت‌های چاپِ جامانده (حادثه BR 116) — قدیمی‌ترین اول.
+  Future<void> _syncPending() async {
+    int left;
+    try {
+      left = await PendingPrints.flush(widget.api.markCartonsPrinted);
+    } catch (_) {
+      left = await PendingPrints.count();
+    }
+    if (!mounted) return;
+    setState(() => _pendingPrints = left);
   }
 
   /// بعد از موفقیت چاپ: کارتن‌ها سمت سرور علامت چاپ می‌خورند و هر دو تب
-  /// «محصولات» و «چاپ شده‌ها» به‌روز می‌شوند
+  /// «محصولات» و «چاپ شده‌ها» به‌روز می‌شوند.
+  /// اگر ثبت ناموفق بود، آیدی‌ها در صف مقاوم می‌مانند تا با وصل‌شدن ثبت شوند
+  /// (بدون این صف، چاپ فیزیکی انجام می‌شد ولی دیتابیس بی‌خبر می‌ماند).
   Future<void> _handlePrinted(List<String> cartonIds) async {
     if (cartonIds.isEmpty) return;
     try {
       await widget.api.markCartonsPrinted(cartonIds);
+      await _syncPending();
     } catch (exc) {
+      final left = await PendingPrints.enqueue(cartonIds);
+      if (!mounted) return;
+      setState(() => _pendingPrints = left);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ثبت چاپ روی سرور ناموفق بود: $exc'),
+            content: Text(
+              'ثبت چاپ روی سرور ناموفق بود — در صف ماند ($left دسته). '
+              'با وصل‌شدن خودکار ثبت می‌شود.',
+            ),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -295,6 +319,49 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         variant: AppButtonVariant.secondary,
                         onPressed: loadData,
                       ),
+                      if (_pendingPrints > 0) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () async {
+                            await _syncPending();
+                            _recentKey.currentState?.reload();
+                            _printedKey.currentState?.reload();
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.amber.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.cloud_off_outlined,
+                                  size: 16,
+                                  color: Colors.amber,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$_pendingPrints ثبت‌نشده',
+                                  style: const TextStyle(
+                                    color: Colors.amber,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       PopupMenuButton<String>(
                         tooltip: 'تنظیمات',

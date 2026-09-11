@@ -147,6 +147,12 @@ async function deliver(type: string, rawPayload: unknown, eventId: string) {
         totalUnits: payload.totalUnits ?? 0,
         cartonCount: payload.cartonCount ?? 0,
       });
+      // پنل/اپ انباردار همان انبار هم باید زنده به‌روز شود (مثل scanout:done)
+      realtime.toWarehouse(payload.warehouseId, RealtimeEvents.CHECKIN_COMPLETED, {
+        warehouseId: payload.warehouseId,
+        totalUnits: payload.totalUnits ?? 0,
+        cartonCount: payload.cartonCount ?? 0,
+      });
       break;
     }
 

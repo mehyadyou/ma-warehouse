@@ -51,11 +51,26 @@ class _RootScreenState extends State<RootScreen> {
 
   bool _loggedIn = false;
   String _userName = 'انباردار';
+  String? _authNotice;
 
   @override
   void initState() {
     super.initState();
     _socket = SocketClient(ApiService.defaultServerUrl);
+    // تمدید خودکار توکن: سوکت با توکن تازه وصل می‌شود؛ اگر رفرش شکست،
+    // نشست مرده است و کاربر با پیام واضح به ورود برمی‌گردد (نه صفحه خالی).
+    _api.onTokenRefreshed = (newToken) {
+      _socket.reconnect(newToken);
+    };
+    _api.onAuthExpired = () {
+      _socket.disconnect();
+      if (mounted) {
+        setState(() {
+          _loggedIn = false;
+          _authNotice = 'نشست شما منقضی شد؛ لطفاً دوباره وارد شوید.';
+        });
+      }
+    };
   }
 
   Future<void> _onLoginSuccess() async {
@@ -70,6 +85,7 @@ class _RootScreenState extends State<RootScreen> {
       setState(() {
         _loggedIn = true;
         _userName = userName;
+        _authNotice = null;
       });
     }
   }
@@ -92,6 +108,10 @@ class _RootScreenState extends State<RootScreen> {
             userName: _userName,
             onLogout: _onLogout,
           )
-        : LoginScreen(api: _api, onLoginSuccess: _onLoginSuccess);
+        : LoginScreen(
+            api: _api,
+            onLoginSuccess: _onLoginSuccess,
+            notice: _authNotice,
+          );
   }
 }

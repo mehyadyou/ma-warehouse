@@ -67,6 +67,35 @@ beforeEach(() => {
     mocks.notification.upsert.mockResolvedValue({ id: 'n1' });
 });
 
+describe('dispatchOutbox - ورود کالا (پنل انبار زنده به‌روز می‌شود)', () => {
+    it('checkin:completed هم به مدیر و هم به اتاق همان انبار می‌رسد', async () => {
+        mocks.outboxEvent.findMany.mockResolvedValue([
+            makeEvent('checkin:completed', {
+                warehouseId: 'whA',
+                warehouseName: 'انبار الف',
+                totalUnits: 54,
+                cartonCount: 27,
+                entries: [{ productName: 'سینک', modelName: 'Sl 116', cartons: 27, individuals: 0, entryType: 'NEW' }],
+            }),
+        ]);
+        mocks.user.findMany.mockResolvedValue([{ id: 'm1' }]);
+
+        const delivered = await dispatchOutbox();
+
+        expect(delivered).toBe(1);
+        expect(mocks.toRole).toHaveBeenCalledWith(
+            'MANAGER', 'checkin:completed',
+            expect.objectContaining({ warehouseId: 'whA', totalUnits: 54, cartonCount: 27 }),
+        );
+        // رگرسیون دیروز: این ایونت فقط به مدیر می‌رفت و پنل انبار هیچ‌وقت زنده آپدیت نمی‌شد
+        expect(mocks.toWarehouse).toHaveBeenCalledWith(
+            'whA', 'checkin:completed',
+            expect.objectContaining({ warehouseId: 'whA', totalUnits: 54, cartonCount: 27 }),
+        );
+        expect(mocks.outboxEvent.updateMany).toHaveBeenCalledTimes(3);
+    });
+});
+
 describe('dispatchOutbox - نوتیفیکیشن سفارش برای انباردار', () => {
     it('سفارش جدید: نوتیفیکیشن فقط برای انباردارِ همان انبار ساخته میشود و به اتاق آن انبار ارسال میشود', async () => {
         mocks.outboxEvent.findMany.mockResolvedValue([

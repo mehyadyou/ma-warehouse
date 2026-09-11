@@ -12,10 +12,14 @@ class LoginScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.onLoginSuccess,
+    this.notice,
   });
 
   final ApiService api;
   final void Function() onLoginSuccess;
+
+  /// پیام نمایشی در ورود مجدد اجباری (مثلاً انقضای نشست).
+  final String? notice;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -39,6 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.notice != null && widget.notice!.isNotEmpty) {
+      _status = widget.notice!;
+    }
     widget.api.loadServerUrl().then((url) {
       if (mounted) _serverController.text = url;
     });
